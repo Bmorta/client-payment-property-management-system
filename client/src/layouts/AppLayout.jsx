@@ -29,6 +29,11 @@ export default function AppLayout() {
               <NavLink className="nav-link" to="/">
                 Dashboard
               </NavLink>
+              {user?.role === "ADMIN" && (
+                <NavLink className="nav-link" to="/users">
+                  Users
+                </NavLink>
+              )}
             </div>
 
             <div className="d-flex align-items-center gap-3">
