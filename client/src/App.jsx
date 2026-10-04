@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import AppLayout from "./layouts/AppLayout.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
+import ProjectsPage from "./pages/ProjectsPage.jsx";
 
 const DashboardPage = () => (
   <main className="container-fluid py-4 px-4">
@@ -51,6 +52,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
             </Route>
           </Route>
