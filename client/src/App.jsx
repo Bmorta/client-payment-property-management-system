@@ -6,6 +6,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
+import ClientsPage from "./pages/ClientsPage.jsx";
 
 const DashboardPage = () => (
   <main className="container-fluid py-4 px-4">
@@ -54,6 +55,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/clients" element={<ClientsPage />} />
               <Route path="/clients" element={<ClientsPage />} />
               <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
             </Route>
