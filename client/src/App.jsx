@@ -1,20 +1,57 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import AppLayout from "./layouts/AppLayout.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
+import UsersPage from "./pages/UsersPage.jsx";
 
-const Page = ({ title }) => (
-  <main className="container py-5">
-    <h1>{title}</h1>
-    <p className="text-secondary">Module scaffold ready for implementation.</p>
+const DashboardPage = () => (
+  <main className="container-fluid py-4 px-4">
+    <div className="mb-4">
+      <p className="text-uppercase small fw-semibold text-secondary mb-1">
+        Overview
+      </p>
+      <h1 className="h3 fw-bold mb-1">Dashboard</h1>
+      <p className="text-secondary mb-0">
+        Core financial and property modules will be added phase by phase.
+      </p>
+    </div>
+
+    <div className="row g-3">
+      {["Projects", "Clients", "Properties", "Collections"].map((item) => (
+        <div className="col-12 col-sm-6 col-xl-3" key={item}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-body">
+              <div className="small text-secondary">{item}</div>
+              <div className="fs-3 fw-bold mt-2">—</div>
+              <div className="small text-secondary mt-1">Coming in a later phase</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   </main>
 );
 
+const AdminRoute = ({ children }) => children;
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Page title="Dashboard" />} />
-        <Route path="/login" element={<Page title="Login" />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
