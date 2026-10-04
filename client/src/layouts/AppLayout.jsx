@@ -32,6 +32,9 @@ export default function AppLayout() {
               <NavLink className="nav-link" to="/clients">
                 Clients
               </NavLink>
+              <NavLink className="nav-link" to="/clients">
+                Clients
+              </NavLink>
               <NavLink className="nav-link" to="/projects">
                 Projects
               </NavLink>
