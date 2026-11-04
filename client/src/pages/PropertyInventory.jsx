@@ -1,129 +1,246 @@
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
 
-const newBlock = (blockNumber = 1) => ({ blockNumber, lotCount: 1, areasSqm: [""] });
+const STATUSES = ["AVAILABLE", "RESERVED", "SOLD"];
+const newBlock = (blockNumber = 1) => ({
+  blockNumber, lotCount: 1, defaultArea: "", areasSqm: [""], statuses: ["AVAILABLE"]
+});
 const newPhase = (phaseNumber = 1) => ({ phaseNumber, blocks: [newBlock()] });
+const areaValue = value => value === "" || value === null ? null : Number(value);
 
 export default function PropertyInventory({ project, onClose }) {
   const [phases, setPhases] = useState([newPhase()]);
   const [properties, setProperties] = useState([]);
+  const [drafts, setDrafts] = useState({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [areas, setAreas] = useState({});
+  const [showGenerator, setShowGenerator] = useState(true);
 
   const load = async () => {
-    try {
-      const { data } = await api.get(`/projects/${project._id}/properties`);
-      setProperties(data.data);
-      setAreas(Object.fromEntries(data.data.map(p => [p._id, p.areaSqm ?? ""])));
-    } catch (e) {
-      setError(e.response?.data?.message || "Unable to load properties.");
-    }
+    const { data } = await api.get(`/projects/${project._id}/properties`);
+    setProperties(data.data);
+    setDrafts(Object.fromEntries(data.data.map(p => [p._id, {
+      areaSqm: p.areaSqm ?? "", status: p.status
+    }])));
   };
-  useEffect(() => { load(); }, [project._id]);
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/projects/${project._id}/properties`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setProperties(data.data);
+        setDrafts(Object.fromEntries(data.data.map(p => [p._id, {
+          areaSqm: p.areaSqm ?? "", status: p.status
+        }])));
+      })
+      .catch(e => { if (!cancelled) setError(e.response?.data?.message || "Unable to load lots."); });
+    return () => { cancelled = true; };
+  }, [project._id]);
 
-  const updatePhase = (phaseIndex, fn) => setPhases(old => old.map((phase, i) => i === phaseIndex ? fn(phase) : phase));
-  const updateBlock = (phaseIndex, blockIndex, fn) => updatePhase(phaseIndex, phase => ({
-    ...phase, blocks: phase.blocks.map((block, i) => i === blockIndex ? fn(block) : block)
+  const updatePhase = (pi, fn) => setPhases(old => old.map((p, i) => i === pi ? fn(p) : p));
+  const updateBlock = (pi, bi, fn) => updatePhase(pi, p => ({
+    ...p, blocks: p.blocks.map((b, i) => i === bi ? fn(b) : b)
   }));
-  const changeLotCount = (phaseIndex, blockIndex, value) => {
-    const count = Number(value);
+  const setLotCount = (pi, bi, raw) => {
+    const count = Number(raw);
     if (!Number.isSafeInteger(count) || count < 1 || count > 100) return;
-    updateBlock(phaseIndex, blockIndex, block => ({
-      ...block, lotCount: count,
-      areasSqm: Array.from({ length: count }, (_, i) => block.areasSqm[i] ?? "")
+    updateBlock(pi, bi, b => ({
+      ...b, lotCount: count,
+      areasSqm: Array.from({ length: count }, (_, i) => b.areasSqm[i] ?? ""),
+      statuses: Array.from({ length: count }, (_, i) => b.statuses[i] ?? "AVAILABLE")
     }));
   };
+  const applyDefault = (pi, bi) => {
+    const block = phases[pi].blocks[bi];
+    const value = Number(block.defaultArea);
+    if (block.defaultArea === "" || !Number.isFinite(value) || value <= 0) {
+      setError("Enter a valid default area greater than zero."); return;
+    }
+    setError("");
+    updateBlock(pi, bi, b => ({ ...b, areasSqm: Array(b.lotCount).fill(String(value)) }));
+  };
 
-  const generate = async () => {
+  const updateDraft = (id, field, value) => setDrafts(old => ({
+    ...old, [id]: { ...old[id], [field]: value }
+  }));
+
+  const saveAll = async () => {
     setError(""); setMessage("");
-    const count = phases.reduce((sum, p) => sum + p.blocks.reduce((n, b) => n + b.lotCount, 0), 0);
-    if (count > 100) { setError("Generate at most 100 lots at a time."); return; }
-    const invalid = phases.some(p => p.blocks.some(b => b.areasSqm.some(a => a !== "" && (!Number.isFinite(Number(a)) || Number(a) <= 0))));
-    if (invalid) { setError("Lot areas must be positive numbers."); return; }
-    const payload = { phases: phases.map(p => ({
-      phaseNumber: p.phaseNumber,
-      blocks: p.blocks.map(b => ({
-        blockNumber: b.blockNumber,
-        lotCount: b.lotCount,
-        areasSqm: b.areasSqm.map(a => a === "" ? null : Number(a))
-      }))
-    })) };
+    const total = phases.reduce((n, p) => n + p.blocks.reduce((sum, b) => sum + b.lotCount, 0), 0);
+    const newLots = showGenerator && project.status !== "ARCHIVED" ? total : 0;
+    if (newLots > 100) { setError("Generate at most 100 new lots per save."); return; }
+
+    const invalidNew = newLots && phases.some(p => p.blocks.some(b =>
+      b.areasSqm.some(a => a !== "" && (!Number.isFinite(Number(a)) || Number(a) <= 0))));
+    const invalidExisting = properties.some(p => {
+      const a = drafts[p._id]?.areaSqm;
+      return a !== "" && a !== null && a !== undefined &&
+        (!Number.isFinite(Number(a)) || Number(a) <= 0);
+    });
+    if (invalidNew || invalidExisting) {
+      setError("Lot areas must be positive numbers or left blank."); return;
+    }
+    const changed = properties.filter(p =>
+      String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") ||
+      drafts[p._id]?.status !== p.status
+    );
+    if (!newLots && !changed.length) { setMessage("No changes to save."); return; }
+
+    setBusy(true);
+    let savedNew = false;
     try {
-      setBusy(true);
-      const { data } = await api.post(`/projects/${project._id}/properties/generate`, payload);
-      setMessage(data.message);
+      // Existing edits first, then new lots. A standalone MongoDB instance does
+      // not guarantee atomicity across these two separate requests.
+      if (changed.length) {
+        for (let i = 0; i < changed.length; i += 100) {
+          await api.patch(`/projects/${project._id}/properties/batch`, {
+            updates: changed.slice(i, i + 100).map(p => ({
+              _id: p._id,
+              areaSqm: areaValue(drafts[p._id].areaSqm),
+              status: drafts[p._id].status
+            }))
+          });
+        }
+      }
+      if (newLots) {
+        await api.post(`/projects/${project._id}/properties/generate`, {
+          phases: phases.map(p => ({
+            phaseNumber: p.phaseNumber,
+            blocks: p.blocks.map(b => ({
+              blockNumber: b.blockNumber, lotCount: b.lotCount,
+              areasSqm: b.areasSqm.map(areaValue), statuses: b.statuses
+            }))
+          }))
+        });
+        savedNew = true;
+        setShowGenerator(false);
+      }
       await load();
+      setMessage(`Saved successfully: ${changed.length} existing lots updated, ${savedNew ? newLots : 0} new lots created.`);
     } catch (e) {
-      setError(e.response?.data?.message || "Unable to generate lots. Refresh inventory before retrying.");
-      await load();
+      setError((e.response?.data?.message || "Unable to save all lots.") +
+        " Some changes may have been saved. Refresh and review inventory before retrying.");
+      // Avoid resetting user edits on a failed request.
     } finally { setBusy(false); }
   };
 
-  const saveArea = async (propertyId) => {
-    setError(""); setMessage("");
-    const areaSqm = Number(areas[propertyId]);
-    if (!Number.isFinite(areaSqm) || areaSqm <= 0) { setError("Enter an area greater than zero."); return; }
-    try {
-      setBusy(true);
-      await api.patch(`/projects/${project._id}/properties/${propertyId}/area`, { areaSqm });
-      setMessage("Lot area saved.");
-      await load();
-    } catch (e) { setError(e.response?.data?.message || "Unable to save lot area."); }
-    finally { setBusy(false); }
-  };
+  const totalDraft = phases.reduce((n, p) => n + p.blocks.reduce((sum, b) => sum + b.lotCount, 0), 0);
+  const changedCount = properties.filter(p =>
+    String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") ||
+    drafts[p._id]?.status !== p.status
+  ).length;
 
   return <section className="card border-0 shadow-sm mt-4">
     <div className="card-body">
       <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
-        <div><h2 className="h5 fw-bold mb-1">Property Inventory — {project.projectName}</h2>
-          <p className="text-secondary small mb-0">Create phases, blocks and lots; assign each lot its own area.</p></div>
-        <button className="btn btn-outline-secondary btn-sm" type="button" onClick={onClose}>Close</button>
+        <div>
+          <h2 className="h5 fw-bold mb-1">Property Inventory — {project.projectName}</h2>
+          <p className="text-secondary small mb-0">Apply a default lot area, adjust individual lots, then save together.</p>
+        </div>
+        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>
       </div>
       {error && <div className="alert alert-danger">{error}</div>}
       {message && <div className="alert alert-success">{message}</div>}
+
       {project.status !== "ARCHIVED" && <>
-        {phases.map((phase, pi) => <div className="border rounded p-3 mb-3" key={phase.phaseNumber}>
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <h3 className="h6 fw-bold mb-0">New lot configuration</h3>
+          <button type="button" className="btn btn-sm btn-outline-secondary"
+            onClick={() => setShowGenerator(v => !v)}>
+            {showGenerator ? "Hide new lot form" : "Add more lots"}
+          </button>
+        </div>
+        {showGenerator && phases.map((phase, pi) => <div className="border rounded p-3 mb-3" key={phase.phaseNumber}>
           <div className="d-flex justify-content-between align-items-center mb-2">
             <strong>Phase {phase.phaseNumber}</strong>
-            {phases.length > 1 && <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setPhases(old => old.filter((_, i) => i !== pi))}>Remove phase</button>}
+            {phases.length > 1 && <button type="button" className="btn btn-sm btn-outline-danger"
+              onClick={() => setPhases(old => old.filter((_, i) => i !== pi))}>Remove phase</button>}
           </div>
-          {phase.blocks.map((block, bi) => <div className="border rounded p-3 mb-2" key={block.blockNumber}>
-            <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+          {phase.blocks.map((block, bi) => <div className="border rounded p-3 mb-3" key={block.blockNumber}>
+            <div className="d-flex justify-content-between align-items-center mb-2">
               <strong>Block {block.blockNumber}</strong>
-              {phase.blocks.length > 1 && <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => updatePhase(pi, p => ({ ...p, blocks: p.blocks.filter((_, i) => i !== bi) }))}>Remove block</button>}
+              {phase.blocks.length > 1 && <button type="button" className="btn btn-sm btn-outline-danger"
+                onClick={() => updatePhase(pi, p => ({
+                  ...p, blocks: p.blocks.filter((_, i) => i !== bi)
+                }))}>Remove block</button>}
             </div>
             <label className="form-label">Number of lots (1–100)</label>
-            <input className="form-control mb-3" type="number" min="1" max="100" value={block.lotCount} onChange={e => changeLotCount(pi, bi, e.target.value)} />
+            <input className="form-control mb-3" type="number" min="1" max="100"
+              value={block.lotCount} onChange={e => setLotCount(pi, bi, e.target.value)} />
+            <label className="form-label">Default area (sqm) — optional</label>
+            <div className="d-flex gap-2 mb-3">
+              <input className="form-control" type="number" min="0.01" step="any"
+                placeholder="e.g. 120" value={block.defaultArea}
+                onChange={e => updateBlock(pi, bi, b => ({ ...b, defaultArea: e.target.value }))} />
+              <button type="button" className="btn btn-outline-primary flex-shrink-0"
+                onClick={() => applyDefault(pi, bi)}>Apply to all</button>
+            </div>
+            <p className="small text-secondary">Individual lot areas and statuses (editable before saving)</p>
             <div className="row g-2">
-              {block.areasSqm.map((area, li) => <div className="col-6 col-md-3 col-xl-2" key={li}>
-                <label className="form-label small">Lot {li + 1} (sqm)</label>
-                <input className="form-control form-control-sm" type="number" min="0.01" step="any" placeholder="Optional" value={area} onChange={e => updateBlock(pi, bi, b => ({
-                  ...b, areasSqm: b.areasSqm.map((v, i) => i === li ? e.target.value : v)
-                }))} />
+              {block.areasSqm.map((area, li) => <div className="col-12 col-md-6 col-xl-4" key={li}>
+                <div className="border rounded p-2">
+                  <label className="form-label small fw-semibold">Lot {li + 1}</label>
+                  <div className="d-flex gap-2">
+                    <input aria-label={`Lot ${li + 1} area in sqm`} className="form-control form-control-sm"
+                      type="number" min="0.01" step="any" placeholder="sqm" value={area}
+                      onChange={e => updateBlock(pi, bi, b => ({
+                        ...b, areasSqm: b.areasSqm.map((v, i) => i === li ? e.target.value : v)
+                      }))} />
+                    <select aria-label={`Lot ${li + 1} status`} className="form-select form-select-sm"
+                      value={block.statuses[li]}
+                      onChange={e => updateBlock(pi, bi, b => ({
+                        ...b, statuses: b.statuses.map((v, i) => i === li ? e.target.value : v)
+                      }))}>
+                      {STATUSES.map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
+                    </select>
+                  </div>
+                </div>
               </div>)}
             </div>
           </div>)}
-          <button className="btn btn-outline-primary btn-sm mt-2" type="button" onClick={() => updatePhase(pi, p => ({
-            ...p, blocks: [...p.blocks, newBlock(Math.max(...p.blocks.map(b => b.blockNumber)) + 1)]
-          }))}>+ Add block</button>
+          <button type="button" className="btn btn-outline-primary btn-sm"
+            onClick={() => updatePhase(pi, p => ({
+              ...p, blocks: [...p.blocks, newBlock(Math.max(...p.blocks.map(b => b.blockNumber)) + 1)]
+            }))}>+ Add block</button>
         </div>)}
-        <div className="d-flex flex-wrap gap-2 mb-4">
-          <button className="btn btn-outline-primary" type="button" onClick={() => setPhases(old => [...old, newPhase(Math.max(...old.map(p => p.phaseNumber)) + 1)])}>+ Add phase</button>
-          <button className="btn btn-primary" type="button" disabled={busy} onClick={generate}>{busy ? "Saving..." : "Generate lots"}</button>
-        </div>
+        {showGenerator && <button type="button" className="btn btn-outline-primary mb-4"
+          onClick={() => setPhases(old => [...old, newPhase(Math.max(...old.map(p => p.phaseNumber)) + 1)])}>
+          + Add phase
+        </button>}
       </>}
+
       <h3 className="h6 fw-bold">Existing lots ({properties.length})</h3>
-      <p className="small text-secondary">Generating an existing phase/block/lot combination is blocked. Add new blocks or phases to extend inventory.</p>
-      <div className="table-responsive"><table className="table table-sm align-middle">
-        <thead><tr><th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Status</th><th>Area (sqm)</th><th>Action</th></tr></thead>
-        <tbody>{properties.length === 0 ? <tr><td colSpan="7" className="text-secondary text-center py-3">No lots yet.</td></tr> :
-          properties.map(p => <tr key={p._id}><td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{p.lotNumber}</td><td>{p.status}</td>
-            <td><input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0.01" step="any" value={areas[p._id] ?? ""} onChange={e => setAreas(old => ({ ...old, [p._id]: e.target.value }))} /></td>
-            <td><button type="button" className="btn btn-sm btn-outline-primary" disabled={busy} onClick={() => saveArea(p._id)}>Save</button></td></tr>)}
-        </tbody>
-      </table></div>
+      <div className="table-responsive">
+        <table className="table table-sm align-middle">
+          <thead><tr><th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Status</th></tr></thead>
+          <tbody>{properties.length === 0 ?
+            <tr><td colSpan="6" className="text-center text-secondary py-3">No lots yet.</td></tr> :
+            properties.map(p => <tr key={p._id}>
+              <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{p.lotNumber}</td>
+              <td><input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm"
+                type="number" min="0.01" step="any" value={drafts[p._id]?.areaSqm ?? ""}
+                onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /></td>
+              <td><select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm"
+                value={drafts[p._id]?.status ?? p.status}
+                onChange={e => updateDraft(p._id, "status", e.target.value)}>
+                {STATUSES.map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
+              </select></td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+      {project.status !== "ARCHIVED" && <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+        <span className="text-secondary small">
+          {showGenerator ? totalDraft + " new lots" : "No new lots"} · {changedCount} existing lots edited
+        </span>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={saveAll}>
+          {busy ? "Saving..." : "Save All Lots"}
+        </button>
+      </div>}
+      <p className="text-secondary small mt-2 mb-0">
+        Changes are not saved until you click Save All Lots. Avoid re-submitting after a network error until you check the inventory.
+      </p>
     </div>
   </section>;
 }
