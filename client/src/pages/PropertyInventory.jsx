@@ -165,7 +165,7 @@ export default function PropertyInventory({ project, onClose }) {
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h3 className="h6 fw-bold mb-0">New lot configuration</h3>
           <button type="button" className="btn btn-sm btn-outline-secondary"
-            onClick={() => onClick={() => showGenerator ? setShowGenerator(false) : startAddingLots()}>
+            onClick={() => showGenerator ? setShowGenerator(false) : startAddingLots()}>
             {showGenerator ? "Hide new lot form" : "Add more lots"}
           </button>
         </div>
