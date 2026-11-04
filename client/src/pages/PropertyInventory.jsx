@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
+import StatusBadge from "../components/StatusBadge.jsx";
 
 const STATUSES = ["AVAILABLE", "RESERVED", "SOLD"];
 const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
@@ -15,6 +16,8 @@ export default function PropertyInventory({ project, onClose }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [filters, setFilters] = useState({ phase: "", block: "", lot: "", status: "" });
   const [showGenerator, setShowGenerator] = useState(true);
   const [selectedPhase, setSelectedPhase] = useState("1");
   const [selectedBlock, setSelectedBlock] = useState("1");
@@ -143,6 +146,16 @@ export default function PropertyInventory({ project, onClose }) {
     } finally { setBusy(false); }
   };
 
+  const visibleProperties = properties.filter(p =>
+    (!filters.phase || String(p.phaseNumber) === filters.phase) &&
+    (!filters.block || String(p.blockNumber) === filters.block) &&
+    (!filters.lot || String(p.lotNumber) === filters.lot) &&
+    (!filters.status || p.status === filters.status)
+  );
+  const optionsFor = key => [...new Set(properties
+    .filter(p => (key === "phase" || !filters.phase || String(p.phaseNumber) === filters.phase) &&
+      (key !== "lot" || !filters.block || String(p.blockNumber) === filters.block))
+    .map(p => String(p[key === "phase" ? "phaseNumber" : key === "block" ? "blockNumber" : "lotNumber"])))].sort((a,b) => Number(a)-Number(b));
   const totalDraft = phases.reduce((n, p) => n + p.blocks.reduce((sum, b) => sum + b.lotCount, 0), 0);
   const changedCount = properties.filter(p =>
     String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") ||
@@ -245,22 +258,38 @@ export default function PropertyInventory({ project, onClose }) {
         </button>}
       </>}
 
-      <h3 className="h6 fw-bold">Existing lots ({properties.length})</h3>
+      <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <h3 className="h6 fw-bold mb-0">Existing lots ({visibleProperties.length} of {properties.length})</h3>
+        <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setEditMode(v => !v)}>
+          {editMode ? "Finish editing" : "Edit lot information"}
+        </button>
+      </div>
+      <div className="row g-2 mb-3">
+        {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>
+          <label className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}</label>
+          <select className="form-select form-select-sm" value={filters[key]} onChange={e =>
+            setFilters(old => ({ ...old, [key]: e.target.value, ...(key === "phase" ? {block:"",lot:""} : key === "block" ? {lot:""} : {}) }))}>
+            <option value="">All {key === "status" ? "statuses" : key + "s"}</option>
+            {(key === "status" ? STATUSES : optionsFor(key)).map(value =>
+              <option key={value} value={value}>{key === "status" ? value : value}</option>)}
+          </select>
+        </div>)}
+      </div>
       <div className="table-responsive">
         <table className="table table-sm align-middle">
           <thead><tr><th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Status</th></tr></thead>
           <tbody>{properties.length === 0 ?
             <tr><td colSpan="6" className="text-center text-secondary py-3">No lots yet.</td></tr> :
-            properties.map(p => <tr key={p._id}>
+            visibleProperties.map(p => <tr key={p._id}>
               <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{p.lotNumber}</td>
               <td><input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm"
-                type="number" min="0.01" step="any" value={drafts[p._id]?.areaSqm ?? ""}
+                type="number" min="0.01" step="any" disabled={!editMode} value={drafts[p._id]?.areaSqm ?? ""}
                 onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /></td>
-              <td><select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm"
+              <td>{!editMode ? <StatusBadge status={p.status} /> : <select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm"
                 value={drafts[p._id]?.status ?? p.status}
                 onChange={e => updateDraft(p._id, "status", e.target.value)}>
                 {STATUSES.map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
-              </select></td>
+              </select>}</td>
             </tr>)}
           </tbody>
         </table>
@@ -269,7 +298,7 @@ export default function PropertyInventory({ project, onClose }) {
         <span className="text-secondary small">
           {showGenerator ? totalDraft + " new lots" : "No new lots"} · {changedCount} existing lots edited
         </span>
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={saveAll}>
+        <button type="button" className="btn btn-primary" disabled={busy || (!showGenerator && !editMode)} onClick={saveAll}>
           {busy ? "Saving..." : "Save All Lots"}
         </button>
       </div>}
