@@ -15,7 +15,7 @@ const propertySchema = new mongoose.Schema(
     client: { type: mongoose.Schema.Types.ObjectId, ref: "Client", default: null },
     status: {
       type: String,
-      enum: ["AVAILABLE", "RESERVED", "SOLD", "UNAVAILABLE"],
+      enum: ["AVAILABLE", "RESERVED", "SOLD", "FOR_ASSUME", "UNAVAILABLE"],
       default: "AVAILABLE"
     },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }

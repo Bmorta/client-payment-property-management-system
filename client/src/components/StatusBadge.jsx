@@ -1,6 +1,7 @@
 const STATUS_CLASSES = {
   AVAILABLE: "text-bg-success",
   SOLD: "text-bg-danger",
+  FOR_ASSUME: "text-bg-info",
   RESERVED: "text-bg-warning",
   ARCHIVED: "text-bg-danger",
   INACTIVE: "text-bg-danger",
@@ -12,6 +13,6 @@ const STATUS_CLASSES = {
 
 export default function StatusBadge({ status }) {
   return <span className={`badge ${STATUS_CLASSES[status] || "text-bg-secondary"}`}>
-    {status || "Unknown"}
+    {status === "FOR_ASSUME" ? "For Assume" : status || "Unknown"}
   </span>;
 }

@@ -18,6 +18,7 @@ const next = error => { throw error; };
 for (const [name, lots, code] of [
   ["linked client", [{ _id: ids[0], status: "AVAILABLE", client: projectId }, { _id: ids[1], status: "AVAILABLE" }], 409],
   ["reserved lot", [{ _id: ids[0], status: "RESERVED" }, { _id: ids[1], status: "AVAILABLE" }], 409],
+  ["for-assume lot", [{ _id: ids[0], status: "FOR_ASSUME" }, { _id: ids[1], status: "AVAILABLE" }], 409],
   ["sold lot", [{ _id: ids[0], status: "SOLD" }, { _id: ids[1], status: "AVAILABLE" }], 409],
   ["missing or cross-project lot", [{ _id: ids[0], status: "AVAILABLE" }], 404]
 ]) test(`bulk deletion rejects ${name} before any deletion`, async t => {
@@ -112,4 +113,60 @@ test("generated lots persist each rate and derive each lot total independently",
   assert.equal(res.code, 201);
   assert.deepEqual(insert.mock.calls[0].arguments[0].map(p => p.pricePerSqm), [2500, 1000]);
   assert.deepEqual(res.body.data.map(p => p.toJSON().pricePerLot), [300000, 100500]);
+});
+
+
+test("renumbering to an unused lot keeps identity, phase and block unchanged", async t => {
+  t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
+  t.mock.method(Property, "countDocuments", async () => 1);
+  t.mock.method(Property, "find", () => ({ lean: async () => [{ _id: ids[0], phaseNumber: 1, blockNumber: 3, lotNumber: 7 }] }));
+  t.mock.method(Property, "exists", async filter => {
+    assert.equal(filter.project, projectId);
+    assert.deepEqual(filter.$or[0], { phaseNumber: 1, blockNumber: 3, lotNumber: 12, _id: { $ne: ids[0] } });
+    return null;
+  });
+  const write = t.mock.method(Property, "bulkWrite", async () => ({ matchedCount: 1 }));
+  const res = response();
+  await updateProjectProperties(req({ updates: [{ _id: ids[0], lotNumber: 12, areaSqm: 120, status: "FOR_ASSUME" }] }), res, next);
+  assert.equal(res.code, 200);
+  const operation = write.mock.calls[0].arguments[0][0].updateOne;
+  assert.equal(operation.filter._id, ids[0]);
+  assert.equal(operation.update.$set.lotNumber, 12);assert.equal(operation.update.$set.status, "FOR_ASSUME");
+  for (const immutable of ["propertyId", "phaseNumber", "blockNumber", "client"]) assert.equal(Object.hasOwn(operation.update.$set, immutable), false);
+});
+
+test("duplicate and invalid lot numbers are blocked before batch updates", async t => {
+  t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
+  t.mock.method(Property, "countDocuments", async () => 1);
+  t.mock.method(Property, "find", () => ({ lean: async () => [{ _id: ids[0], phaseNumber: 1, blockNumber: 1, lotNumber: 1 }] }));
+  t.mock.method(Property, "exists", async () => ({ _id: ids[1] }));
+  const write = t.mock.method(Property, "bulkWrite", async () => { throw Error("Must not update"); });
+  for (const number of [0, -1, 1.5, "2", 2]) {
+    const res = response();
+    await updateProjectProperties(req({ updates: [{ _id: ids[0], lotNumber: number, areaSqm: 120, status: "AVAILABLE" }] }), res, next);
+    assert.equal(res.code, number === 2 ? 409 : 400);
+  }
+  assert.equal(write.mock.callCount(), 0);
+});
+
+test("custom starting lot numbers and For Assume are persisted when generating", async t => {
+  t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
+  t.mock.method(Property, "findOne", () => ({ lean: async () => null }));
+  let n = 0; t.mock.method(SequenceCounter, "findOneAndUpdate", async () => ({ value: ++n }));
+  const insert = t.mock.method(Property, "insertMany", async docs => docs);
+  const res = response();
+  await generateProjectProperties(req({ phases: [{ phaseNumber: 1, blocks: [{ blockNumber: 1, startLotNumber: 15, lotCount: 2, statuses: ["FOR_ASSUME", "AVAILABLE"] }] }] }), res, next);
+  assert.equal(res.code, 201);
+  assert.deepEqual(insert.mock.calls[0].arguments[0].map(p => [p.lotNumber, p.status]), [[15, "FOR_ASSUME"], [16, "AVAILABLE"]]);
+});
+
+test("unique-index race returns a recoverable duplicate response", async t => {
+  t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
+  t.mock.method(Property, "countDocuments", async () => 1);
+  t.mock.method(Property, "find", () => ({ lean: async () => [{ _id: ids[0], phaseNumber: 1, blockNumber: 1, lotNumber: 1 }] }));
+  t.mock.method(Property, "exists", async () => null);
+  t.mock.method(Property, "bulkWrite", async () => { throw { code: 11000 }; });
+  const res = response();
+  await updateProjectProperties(req({ updates: [{ _id: ids[0], lotNumber: 2, status: "AVAILABLE" }] }), res, next);
+  assert.equal(res.code, 409); assert.match(res.body.message, /refresh inventory/);
 });

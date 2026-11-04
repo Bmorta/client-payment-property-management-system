@@ -33,7 +33,7 @@ export async function createProjectProperty(req, res, next) {
       return res.status(409).json({ success: false, message: "Cannot add lots to an archived project." });
     }
 
-    const { phaseNumber, blockNumber, lotNumber, areaSqm, pricePerSqm } = req.body;
+    const { phaseNumber, blockNumber, lotNumber, areaSqm, pricePerSqm, status = "AVAILABLE" } = req.body;
     if (![phaseNumber, blockNumber, lotNumber].every(validPositiveInteger)) {
       return res.status(400).json({ success: false, message: "Phase, block and lot numbers must be positive integers." });
     }
@@ -45,6 +45,9 @@ export async function createProjectProperty(req, res, next) {
     if (!validPrice(pricePerSqm) || (areaSqm != null && pricePerSqm != null && lotPrice(areaSqm, pricePerSqm) === null)) {
       return res.status(400).json({ success: false, message: "Enter a valid price per sqm (up to two decimal places) and supported lot total." });
     }
+    if (!["AVAILABLE", "RESERVED", "SOLD", "FOR_ASSUME"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid lot status." });
+    }
     const location = { project: project._id, phaseNumber, blockNumber, lotNumber };
     if (await Property.exists(location)) {
       return res.status(409).json({ success: false, message: "This phase, block and lot already exists in the project." });
@@ -52,7 +55,7 @@ export async function createProjectProperty(req, res, next) {
 
     const propertyId = await generateRecordId("property");
     const property = await Property.create({
-      ...location, propertyId, areaSqm: areaSqm ?? null, pricePerSqm: pricePerSqm ?? null, createdBy: req.user._id
+      ...location, propertyId, status, areaSqm: areaSqm ?? null, pricePerSqm: pricePerSqm ?? null, createdBy: req.user._id
     });
     res.status(201).json({ success: true, data: property, message: "Property created." });
   } catch (error) {
@@ -125,7 +128,7 @@ export async function generateProjectProperties(req, res, next) {
         if (prices !== undefined && (!Array.isArray(prices) || prices.length !== block.lotCount || prices.some(p => !validPrice(p)))) {
           return res.status(400).json({ success: false, message: "Provide one valid price per sqm per lot (up to two decimal places), or leave blank." });
         }
-        if (statuses !== undefined && (!Array.isArray(statuses) || statuses.length !== block.lotCount || statuses.some(s => !["AVAILABLE", "RESERVED", "SOLD"].includes(s)))) {
+        if (statuses !== undefined && (!Array.isArray(statuses) || statuses.length !== block.lotCount || statuses.some(s => !["AVAILABLE", "RESERVED", "SOLD", "FOR_ASSUME"].includes(s)))) {
           return res.status(400).json({ success: false, message: "Each lot must have a valid status." });
         }
         if (areas !== undefined && (!Array.isArray(areas) || areas.length !== block.lotCount)) {
@@ -210,6 +213,9 @@ export async function updateProjectProperties(req, res, next) {
         return res.status(400).json({ success: false, message: "Invalid or repeated lot ID." });
       }
       ids.add(update._id);
+      if (update.lotNumber !== undefined && !validPositiveInteger(update.lotNumber)) {
+        return res.status(400).json({ success: false, message: "Lot numbers must be positive whole numbers." });
+      }
       if (!validPrice(update.pricePerSqm) || (update.areaSqm != null && update.pricePerSqm != null && lotPrice(update.areaSqm, update.pricePerSqm) === null)) {
         return res.status(400).json({ success: false, message: "Enter a valid price per sqm (up to two decimal places) and supported lot total." });
       }
@@ -217,7 +223,7 @@ export async function updateProjectProperties(req, res, next) {
         (typeof update.areaSqm !== "number" || !Number.isFinite(update.areaSqm) || update.areaSqm <= 0)) {
         return res.status(400).json({ success: false, message: "Each lot area must be positive or unspecified." });
       }
-      if (!["AVAILABLE", "RESERVED", "SOLD"].includes(update.status)) {
+      if (!["AVAILABLE", "RESERVED", "SOLD", "FOR_ASSUME"].includes(update.status)) {
         return res.status(400).json({ success: false, message: "Invalid lot status." });
       }
     }
@@ -225,14 +231,33 @@ export async function updateProjectProperties(req, res, next) {
     if (count !== updates.length) {
       return res.status(404).json({ success: false, message: "One or more lots were not found in this project." });
     }
+    const renumbered = updates.filter(update => update.lotNumber !== undefined);
+    if (renumbered.length) {
+      const lots = await Property.find({ project: project._id, _id: { $in: [...ids] } }).lean();
+      const byId = new Map(lots.map(lot => [String(lot._id), lot]));
+      const targets = new Set();
+      const conflicts = [];
+      for (const update of renumbered) {
+        const lot = byId.get(update._id);
+        if (!lot) return res.status(404).json({ success: false, message: "Lot not found. Refresh inventory." });
+        const key = `${lot.phaseNumber}/${lot.blockNumber}/${update.lotNumber}`;
+        if (targets.has(key)) return res.status(409).json({ success: false, message: "Duplicate lot number within the same phase and block. No changes saved." });
+        targets.add(key);
+        conflicts.push({ phaseNumber: lot.phaseNumber, blockNumber: lot.blockNumber, lotNumber: update.lotNumber, _id: { $ne: lot._id } });
+      }
+      if (await Property.exists({ project: project._id, $or: conflicts })) {
+        return res.status(409).json({ success: false, message: "That lot number already exists in this phase and block. Choose an unused number. No changes saved." });
+      }
+    }
     const result = await Property.bulkWrite(updates.map(update => ({
       updateOne: {
         filter: { _id: update._id, project: project._id },
-        update: { $set: { areaSqm: update.areaSqm ?? null, status: update.status, ...(update.pricePerSqm !== undefined ? { pricePerSqm: update.pricePerSqm } : {}) } }
+        update: { $set: { areaSqm: update.areaSqm ?? null, status: update.status, ...(update.lotNumber !== undefined ? { lotNumber: update.lotNumber } : {}), ...(update.pricePerSqm !== undefined ? { pricePerSqm: update.pricePerSqm } : {}) } }
       }
     })), { ordered: true });
     res.json({ success: true, message: `${result.matchedCount} lots saved.` });
   } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ success: false, message: "Lot number already exists. Some edits may have been saved; refresh inventory before retrying." });
     next(error);
   }
 }

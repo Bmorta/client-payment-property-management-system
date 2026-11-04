@@ -6,7 +6,8 @@ import StructureManager from "./StructureManager.jsx";
 import { validPrice, lotPrice, money, deletableLot } from "../utils/lotPricing.js";
 import { mergeStructure, nextNumber } from "../utils/propertyStructure.js";
 
-const STATUSES = ["AVAILABLE", "RESERVED", "SOLD"];
+const STATUSES = ["AVAILABLE", "RESERVED", "SOLD", "FOR_ASSUME"];
+const statusLabel = status => status === "FOR_ASSUME" ? "For Assume" : status;
 const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
   blockNumber, startLotNumber, lotCount: 1, defaultArea: "", areasSqm: [""], defaultPrice: "", pricesPerSqm: [""], statuses: ["AVAILABLE"]
 });
@@ -35,7 +36,7 @@ export default function PropertyInventory({ project, onClose }) {
   const structure = mergeStructure(savedStructure, properties);
   const blockOptions = structure.blocks.filter(b => String(b.phaseNumber) === selectedPhase);
   const changed = properties.filter(p =>
-    String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") || String(drafts[p._id]?.pricePerSqm ?? "") !== String(p.pricePerSqm ?? "") || drafts[p._id]?.status !== p.status
+    String(drafts[p._id]?.lotNumber ?? p.lotNumber) !== String(p.lotNumber) || String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") || String(drafts[p._id]?.pricePerSqm ?? "") !== String(p.pricePerSqm ?? "") || drafts[p._id]?.status !== p.status
   );
   const editMode = mode === "modify" && !archived;
   const notify = (text, isError = false) => {
@@ -43,7 +44,7 @@ export default function PropertyInventory({ project, onClose }) {
   };
   const applyData = (lots, saved) => {
     setProperties(lots); setSavedStructure(saved); setSelectedLots([]);
-    setDrafts(Object.fromEntries(lots.map(p => [p._id, { areaSqm: p.areaSqm ?? "", pricePerSqm: p.pricePerSqm ?? "", status: p.status }])));
+    setDrafts(Object.fromEntries(lots.map(p => [p._id, { lotNumber: p.lotNumber, areaSqm: p.areaSqm ?? "", pricePerSqm: p.pricePerSqm ?? "", status: p.status }])));
     const merged = mergeStructure(saved, lots);
     setSelectedPhase(old => merged.phases.some(p => String(p.phaseNumber) === old) ? old : String(merged.phases[0]?.phaseNumber ?? ""));
     setLoadFailed(false);
@@ -117,6 +118,8 @@ export default function PropertyInventory({ project, onClose }) {
     if (generator !== "lots" && phase.blocks.some(b => structure.blocks.some(saved => saved.phaseNumber === phase.phaseNumber && saved.blockNumber === b.blockNumber))) return notify("That block already exists. Choose Add lots to selected block instead.", true);
     if (phase.blocks.some(b => b.areasSqm.some(a => a !== "" && (!Number.isFinite(Number(a)) || Number(a) <= 0)))) return notify("Lot areas must be positive numbers or left blank.", true);
     if (phase.blocks.some(b => b.pricesPerSqm.some((price, i) => !validPrice(price) || (price !== "" && b.areasSqm[i] !== "" && lotPrice(b.areasSqm[i], price) === null)))) return notify("Enter valid prices per sqm (up to two decimal places) and supported lot totals.", true);
+    if (phase.blocks.some(b => !positiveInteger(b.startLotNumber) || !Number.isSafeInteger(b.startLotNumber + b.lotCount - 1))) return notify("Enter a valid positive starting lot number.", true);
+    if (phase.blocks.some(b => properties.some(p => p.phaseNumber === phase.phaseNumber && p.blockNumber === b.blockNumber && p.lotNumber >= b.startLotNumber && p.lotNumber < b.startLotNumber + b.lotCount))) return notify("One or more lot numbers already exist in this phase and block. Choose unused lot numbers.", true);
     setBusy(true); setError(""); setMessage("");
     try {
       await api.post(`${base}/properties/generate`, { phases: phases.map(p => ({ phaseNumber: p.phaseNumber, blocks: p.blocks.map(b => ({
@@ -134,18 +137,27 @@ export default function PropertyInventory({ project, onClose }) {
   };
   const saveEdits = async () => {
     if (busy || archived || !changed.length) return;
+    if (changed.some(p => !positiveInteger(Number(drafts[p._id].lotNumber)))) return notify("Lot numbers must be positive whole numbers.", true);
+    const locations = new Set();
+    for (const p of properties) {
+      const lotNumber = Number(drafts[p._id]?.lotNumber ?? p.lotNumber);
+      const key = `${p.phaseNumber}/${p.blockNumber}/${lotNumber}`;
+      if (locations.has(key)) return notify("Duplicate lot number within the same phase and block. Choose an unused number.", true);
+      locations.add(key);
+    }
+    if (changed.some(p => Number(drafts[p._id].lotNumber) !== p.lotNumber && properties.some(other => other._id !== p._id && other.phaseNumber === p.phaseNumber && other.blockNumber === p.blockNumber && other.lotNumber === Number(drafts[p._id].lotNumber)))) return notify("That lot number is already used. Choose an unused number; save moves one at a time when reorganizing lot numbers.", true);
     if (changed.some(p => { const a = drafts[p._id].areaSqm; return a !== "" && (!Number.isFinite(Number(a)) || Number(a) <= 0); })) return notify("Lot areas must be positive numbers or left blank.", true);
     if (changed.some(p => { const d = drafts[p._id]; return !validPrice(d.pricePerSqm) || (d.pricePerSqm !== "" && d.areaSqm !== "" && lotPrice(d.areaSqm, d.pricePerSqm) === null); })) return notify("Enter valid prices per sqm (up to two decimal places) and supported lot totals.", true);
     setBusy(true);
     try {
       for (let i = 0; i < changed.length; i += 100) await api.patch(`${base}/properties/batch`, {
-        updates: changed.slice(i, i + 100).map(p => ({ _id: p._id, areaSqm: areaValue(drafts[p._id].areaSqm), pricePerSqm: areaValue(drafts[p._id].pricePerSqm), status: drafts[p._id].status }))
+        updates: changed.slice(i, i + 100).map(p => ({ _id: p._id, lotNumber: Number(drafts[p._id].lotNumber), areaSqm: areaValue(drafts[p._id].areaSqm), pricePerSqm: areaValue(drafts[p._id].pricePerSqm), status: drafts[p._id].status }))
       });
-      await load(); notify(`${changed.length} lot edits saved.`);
+      await load(); changeFilters(old => ({ ...old, lot: "" })); notify(`${changed.length} lot edits saved.`);
     } catch (e) { notify((e.response?.data?.message || "Unable to save lot edits.") + " Some changes may have been saved. Refresh and review inventory before retrying.", true); }
     finally { setBusy(false); }
   };
-  const cancelEdits = () => setDrafts(Object.fromEntries(properties.map(p => [p._id, { areaSqm: p.areaSqm ?? "", pricePerSqm: p.pricePerSqm ?? "", status: p.status }])));
+  const cancelEdits = () => setDrafts(Object.fromEntries(properties.map(p => [p._id, { lotNumber: p.lotNumber, areaSqm: p.areaSqm ?? "", pricePerSqm: p.pricePerSqm ?? "", status: p.status }])));
   const updateDraft = (id, field, value) => setDrafts(old => ({ ...old, [id]: { ...old[id], [field]: value } }));
   const deleteLots = lots => {
     if (busy || generator || changed.length || !lots.length || lots.some(p => !deletableLot(p))) return;
@@ -189,7 +201,7 @@ export default function PropertyInventory({ project, onClose }) {
           <button type="button" className={`btn ${mode === "modify" ? "btn-primary" : "btn-outline-primary"}`} disabled={busy || !!generator || changed.length > 0} onClick={() => chooseMode("modify")}>Modify Lot Properties</button>
         </div>
         {mode === "modify" && <>
-          <p className="text-secondary small">Select a phase and block to add lots or manage empty structures. Edit lot areas and availability in the inventory below.</p>
+          <p className="text-secondary small">Select a phase and block to add lots or manage empty structures. Edit lot numbers, areas, prices and availability in the inventory below. Lot numbers must be unique within each phase and block.</p>
           <div className="row g-3 mb-3">
             <div className="col-12 col-md-6"><label className="form-label" htmlFor="manage-phase">Phase to modify</label>
               <select id="manage-phase" className="form-select" value={selectedPhase} disabled={busy || !!generator} onChange={e => { setSelectedPhase(e.target.value); setSelectedBlock(""); changeFilters({ phase: e.target.value, block: "", lot: "", status: "" }); }}>
@@ -236,6 +248,10 @@ export default function PropertyInventory({ project, onClose }) {
                   ...p, blocks: p.blocks.filter((_, i) => i !== bi)
                 }))}>Remove block</button>}
             </div>
+            <label className="form-label">Starting lot number
+              <input aria-label={`Starting lot number for block ${bi + 1}`} className="form-control" type="number" min="1" step="1" required value={block.startLotNumber}
+                onChange={e => updateBlock(pi, bi, b => ({ ...b, startLotNumber: Number(e.target.value) }))} />
+            </label>
             <p className="small text-secondary mb-2">New lots will be numbered starting at Lot {block.startLotNumber}.</p>
             <label className="form-label">Number of lots (1–100)</label>
             <input className="form-control mb-3" type="number" min="1" max="100"
@@ -270,7 +286,7 @@ export default function PropertyInventory({ project, onClose }) {
                       onChange={e => updateBlock(pi, bi, b => ({
                         ...b, statuses: b.statuses.map((v, i) => i === li ? e.target.value : v)
                       }))}>
-                      {STATUSES.map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
+                      {STATUSES.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
                     </select>
                   </div>
                   <label className="form-label small mt-2">Price per sqm (₱)
@@ -310,7 +326,7 @@ export default function PropertyInventory({ project, onClose }) {
             ...old, [key]: e.target.value, ...(key === "phase" ? { block: "", lot: "" } : key === "block" ? { lot: "" } : {})
           }))}>
             <option value="">All {key === "status" ? "statuses" : key + "s"}</option>
-            {(key === "status" ? STATUSES : optionsFor(key)).map(value => <option key={value} value={value}>{value}</option>)}
+            {(key === "status" ? STATUSES : optionsFor(key)).map(value => <option key={value} value={value}>{key === "status" ? statusLabel(value) : value}</option>)}
           </select>
         </div>)}
       </div>
@@ -328,7 +344,8 @@ export default function PropertyInventory({ project, onClose }) {
           {editMode && <td><input aria-label={`Select ${p.propertyId} for deletion`} className="form-check-input" type="checkbox"
             disabled={busy || !!generator || changed.length > 0 || !deletableLot(p) || (chosenLots.length >= 100 && !selectedLots.includes(p._id))}
             checked={selectedLots.includes(p._id)} onChange={() => toggleSelected(p._id)} /></td>}
-          <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{p.lotNumber}</td>
+          <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{editMode ? <input aria-label={`Lot number for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="1" step="1"
+            disabled={busy || !!generator} value={drafts[p._id]?.lotNumber ?? p.lotNumber} onChange={e => updateDraft(p._id, "lotNumber", e.target.value)} /> : p.lotNumber}</td>
           <td>{editMode ? <input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0.01" step="any"
             disabled={busy || !!generator} value={drafts[p._id]?.areaSqm ?? ""} onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /> : p.areaSqm ?? "—"}</td>
           <td>{editMode ? <input aria-label={`Price per sqm for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0" step="0.01"
@@ -336,7 +353,7 @@ export default function PropertyInventory({ project, onClose }) {
           <td><output aria-label={`Price per lot for ${p.propertyId}`}>{money(lotPrice(editMode ? drafts[p._id]?.areaSqm : p.areaSqm, editMode ? drafts[p._id]?.pricePerSqm : p.pricePerSqm))}</output></td>
           <td>{editMode ? <select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm" disabled={busy || !!generator}
             value={drafts[p._id]?.status ?? p.status} onChange={e => updateDraft(p._id, "status", e.target.value)}>
-            {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+            {STATUSES.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
           </select> : <StatusBadge status={p.status} />}</td>
           {editMode && <td><button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || !!generator || changed.length > 0 || !deletableLot(p)}
             onClick={() => deleteLots([p])}>Delete lot</button>
