@@ -20,6 +20,7 @@ export default function PropertyInventory({ project, onClose }) {
   const load = async () => {
     const { data } = await api.get(`/projects/${project._id}/properties`);
     setProperties(data.data);
+    setShowGenerator(data.data.length === 0);
     setDrafts(Object.fromEntries(data.data.map(p => [p._id, {
       areaSqm: p.areaSqm ?? "", status: p.status
     }])));
@@ -30,6 +31,7 @@ export default function PropertyInventory({ project, onClose }) {
       .then(({ data }) => {
         if (cancelled) return;
         setProperties(data.data);
+        setShowGenerator(data.data.length === 0);
         setDrafts(Object.fromEntries(data.data.map(p => [p._id, {
           areaSqm: p.areaSqm ?? "", status: p.status
         }])));
