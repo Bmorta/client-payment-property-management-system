@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { validPrice, lotPrice } from "../utils/lotPricing.js";
+import PropertyAssignment from "../models/PropertyAssignment.js";
 import Project from "../models/Project.js";
 import Property from "../models/Property.js";
 import { generateRecordId } from "../utils/generateRecordId.js";
@@ -16,7 +17,12 @@ export async function listProjectProperties(req, res, next) {
 
     const properties = await Property.find({ project: project._id })
       .sort({ phaseNumber: 1, blockNumber: 1, lotNumber: 1 });
-    res.json({ success: true, data: properties });
+    const assignments = await PropertyAssignment.find({ project: project._id }).select("property").lean();
+    const assigned = new Set(assignments.map(a => String(a.property)));
+    res.json({ success: true, data: properties.map(p => {
+      const lot = p.toJSON(); const hasAccount = assigned.has(String(p._id));
+      return { ...lot, hasAccount, canDelete: lot.canDelete && !hasAccount };
+    }) });
   } catch (error) {
     next(error);
   }

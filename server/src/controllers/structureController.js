@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Project from "../models/Project.js";
 import Phase from "../models/Phase.js";
 import Block from "../models/Block.js";
+import PropertyAssignment from "../models/PropertyAssignment.js";
 import Property from "../models/Property.js";
 import { generateRecordId } from "../utils/generateRecordId.js";
 
@@ -137,7 +138,7 @@ async function removeLots(req, res, next, ids) {
     }
     const lots = await Property.find({ _id: { $in: ids }, project: project._id }).lean();
     if (lots.length !== ids.length) return fail(res, 404, "One or more lots were not found in this project. No lots deleted.");
-    if (lots.some(lot => lot.status !== "AVAILABLE" || lot.client != null)) {
+    if (lots.some(lot => lot.status !== "AVAILABLE" || lot.client != null) || await PropertyAssignment.exists({ property: { $in: ids } })) {
       return fail(res, 409, "Only AVAILABLE lots with no connected client can be deleted. No lots deleted.");
     }
     const result = await Property.deleteMany({ _id: { $in: ids }, project: project._id, status: "AVAILABLE", client: null });

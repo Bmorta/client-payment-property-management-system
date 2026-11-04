@@ -6,7 +6,7 @@ export default function AppLayout() {
 
   return (
     <div className="app-shell min-vh-100">
-      <nav className="navbar navbar-expand-lg bg-white border-bottom">
+      <nav className="navbar navbar-expand-xxl bg-white border-bottom">
         <div className="container-fluid px-4">
           <NavLink className="navbar-brand fw-bold" to="/">
             Client Payment System
@@ -35,6 +35,7 @@ export default function AppLayout() {
               <NavLink className="nav-link" to="/projects">
                 Projects
               </NavLink>
+              {[["/payment-transactions", "Payment Transactions"], ["/payment", "Payment"], ["/expenses", "Expenses"], ["/reports", "Reports"]].map(([to, label]) => <NavLink key={to} className="nav-link" to={to}>{label}</NavLink>)}
               {user?.role === "ADMIN" && (
                 <NavLink className="nav-link" to="/users">
                   Users

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import SequenceCounter from "../src/models/SequenceCounter.js";
+import PropertyAssignment from "../src/models/PropertyAssignment.js";
 import Project from "../src/models/Project.js";
 import Property from "../src/models/Property.js";
 import { deleteLot, deleteLots } from "../src/controllers/structureController.js";
@@ -13,6 +14,7 @@ const ids = ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"];
 const response = () => ({ code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
 const req = (body = {}) => ({ params: { projectId }, body, user: { _id: projectId } });
 const next = error => { throw error; };
+test.beforeEach(t => { t.mock.method(PropertyAssignment, "exists", async () => null); });
 
 // No MongoDB connection: mock persistence and assert that unsafe requests never delete.
 for (const [name, lots, code] of [

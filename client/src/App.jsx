@@ -6,6 +6,10 @@ import LoginPage from "./pages/LoginPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
+import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
+import PaymentPage from "./pages/PaymentPage.jsx";
+import ExpensesPage from "./pages/ExpensesPage.jsx";
+import ReportsPage from "./pages/ReportsPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 
 const DashboardPage = () => (
@@ -57,6 +61,10 @@ export default function App() {
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId/lots" element={<ManageLotsPage />} />
               <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/payment-transactions" element={<PaymentTransactionsPage />} />
+              <Route path="/payment" element={<PaymentPage />} />
+              <Route path="/expenses" element={<ExpensesPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
               <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
             </Route>
           </Route>

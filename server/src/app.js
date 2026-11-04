@@ -3,6 +3,7 @@ import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
+import financeRoutes from "./routes/financeRoutes.js";
 import clientRoutes from "./routes/clientRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
@@ -26,6 +27,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/clients", clientRoutes);
+app.use("/api/finance", financeRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

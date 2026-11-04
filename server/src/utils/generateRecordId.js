@@ -8,6 +8,7 @@ const prefixes = Object.freeze({
   client: "CLT",
   contract: "CTR",
   payment: "PAY",
+  expense: "EXP",
   receipt: "RCP"
 });
 

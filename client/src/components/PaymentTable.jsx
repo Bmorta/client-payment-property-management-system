@@ -1,0 +1,4 @@
+import { pesos, clientName, lotName } from "../utils/finance.js";
+export default function PaymentTable({ rows }) {
+  return <div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Payment ID</th><th>Date</th><th>Client</th><th>Project / Lot</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead><tbody>{!rows.length ? <tr><td colSpan="7" className="text-center text-secondary py-4">No payment transactions found.</td></tr> : rows.map(p => <tr key={p.paymentId}><td>{p.paymentId}</td><td>{p.paymentDate}</td><td>{clientName(p.client)}<div className="small text-secondary">{p.client?.clientId}</div></td><td>{p.project?.projectName}<div className="small text-secondary">{lotName(p.property)}</div></td><td>{pesos(p.amountCents)}</td><td>{p.method.replaceAll("_", " ")}</td><td>{p.reference || "—"}</td></tr>)}</tbody></table></div>;
+}
