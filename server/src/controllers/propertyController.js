@@ -109,7 +109,7 @@ export async function generateProjectProperties(req, res, next) {
         return res.status(400).json({ success: false, message: "Each phase requires a positive phase number and at least one block." });
       }
       for (const block of phase.blocks) {
-        if (!validPositiveInteger(block?.blockNumber) || !validPositiveInteger(block?.lotCount)) {
+        if (!validPositiveInteger(block?.blockNumber) || !validPositiveInteger(block?.lotCount) || !validPositiveInteger(block?.startLotNumber ?? 1)) {
           return res.status(400).json({ success: false, message: "Each block needs a positive block number and lot count." });
         }
         if (block.lotCount > 100 || locations.length + block.lotCount > 100) {
@@ -128,7 +128,8 @@ export async function generateProjectProperties(req, res, next) {
           if (areaSqm !== null && (typeof areaSqm !== "number" || !Number.isFinite(areaSqm) || areaSqm <= 0)) {
             return res.status(400).json({ success: false, message: "Each supplied lot area must be a positive number." });
           }
-          const lotNumber = i + 1;
+          const lotNumber = (block.startLotNumber ?? 1) + i;
+          if (!Number.isSafeInteger(lotNumber)) return res.status(400).json({ success: false, message: "Lot number exceeds supported range." });
           const key = `${phase.phaseNumber}/${block.blockNumber}/${lotNumber}`;
           if (seen.has(key)) {
             return res.status(400).json({ success: false, message: "Duplicate phase/block/lot in request." });
