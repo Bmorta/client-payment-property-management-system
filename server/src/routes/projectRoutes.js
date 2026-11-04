@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { archiveProject, createProject, getProject, listProjects, updateProject } from "../controllers/projectController.js";
-import { listProjectProperties, createProjectProperty, updateProjectPropertyArea, generateProjectProperties } from "../controllers/propertyController.js";
+import { listProjectProperties, createProjectProperty, updateProjectPropertyArea, generateProjectProperties, updateProjectProperties } from "../controllers/propertyController.js";
 import { authenticate } from "../middleware/auth.js";
 import { authorize } from "../middleware/authorize.js";
 
@@ -9,6 +9,7 @@ const router = Router();
 router.use(authenticate);
 router.get("/", listProjects);
 router.get("/:projectId/properties", listProjectProperties);
+router.patch("/:projectId/properties/batch", authorize("ADMIN", "STAFF"), updateProjectProperties);
 router.post("/:projectId/properties/generate", authorize("ADMIN", "STAFF"), generateProjectProperties);
 router.post("/:projectId/properties", authorize("ADMIN", "STAFF"), createProjectProperty);
 router.patch("/:projectId/properties/:propertyId/area", authorize("ADMIN", "STAFF"), updateProjectPropertyArea);
