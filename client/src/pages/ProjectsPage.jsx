@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
 import StatusBadge from "../components/StatusBadge.jsx";
-import PropertyInventory from "./PropertyInventory.jsx";
+import { Link } from "react-router-dom";
 
 const initialForm = { projectId:"", projectName:"", projectCode:"", description:"", location:"", startDate:"", status:"PLANNING" };
 
 export default function ProjectsPage() {
   const [projects,setProjects]=useState([]), [form,setForm]=useState(initialForm);
-  const [inventoryProject,setInventoryProject]=useState(null);
   const [editingId,setEditingId]=useState(null), [message,setMessage]=useState(""), [error,setError]=useState(""), [loading,setLoading]=useState(true);
   const loadProjects=async()=>{try{setLoading(true);const {data}=await api.get("/projects");setProjects(data.data)}catch(e){setError(e.response?.data?.message||"Unable to load projects.")}finally{setLoading(false)}};
   useEffect(()=>{loadProjects()},[]);
@@ -25,8 +24,7 @@ export default function ProjectsPage() {
       <div className="d-flex gap-2"><button className="btn btn-primary" type="submit">{editingId?"Update Project":"Add Project"}</button>{editingId&&<button className="btn btn-outline-secondary" type="button" onClick={reset}>Cancel</button>}</div>
     </form></div></div></div>
     <div className="col-12 col-xl-8"><div className="card border-0 shadow-sm"><div className="card-body"><div className="d-flex justify-content-between align-items-center mb-3"><h2 className="h5 fw-bold mb-0">Project List</h2><span className="badge text-bg-light">{projects.length} project(s)</span></div>
-      {loading?<p className="text-secondary">Loading projects...</p>:<div className="table-responsive"><table className="table align-middle"><thead><tr><th>Project</th><th>Code</th><th>Location</th><th>Status</th><th className="text-end">Actions</th></tr></thead><tbody>{projects.length===0?<tr><td colSpan="5" className="text-center text-secondary py-4">No projects yet.</td></tr>:projects.map(p=><tr key={p._id}><td><div className="fw-semibold">{p.projectName}</div><div className="small text-secondary">{p.projectId}</div></td><td>{p.projectCode}</td><td>{p.location||"—"}</td><td><StatusBadge status={p.status} /></td><td className="text-end"><button className="btn btn-sm btn-outline-primary me-2" onClick={()=>edit(p)}>Edit</button><button className="btn btn-sm btn-outline-secondary me-2" onClick={()=>setInventoryProject(p)}>Lots</button>{p.status!=="ARCHIVED"&&<button className="btn btn-sm btn-outline-danger" onClick={()=>archive(p._id)}>Archive</button>}</td></tr>)}</tbody></table></div>}
+      {loading?<p className="text-secondary">Loading projects...</p>:<div className="table-responsive"><table className="table align-middle"><thead><tr><th>Project</th><th>Code</th><th>Location</th><th>Status</th><th className="text-end">Actions</th></tr></thead><tbody>{projects.length===0?<tr><td colSpan="5" className="text-center text-secondary py-4">No projects yet.</td></tr>:projects.map(p=><tr key={p._id}><td><div className="fw-semibold">{p.projectName}</div><div className="small text-secondary">{p.projectId}</div></td><td>{p.projectCode}</td><td>{p.location||"—"}</td><td><StatusBadge status={p.status} /></td><td className="text-end"><button className="btn btn-sm btn-outline-primary me-2" onClick={()=>edit(p)}>Edit</button><Link className="btn btn-sm btn-outline-secondary me-2" to={`/projects/${p._id}/lots`}>Manage Lots</Link>{p.status!=="ARCHIVED"&&<button className="btn btn-sm btn-outline-danger" onClick={()=>archive(p._id)}>Archive</button>}</td></tr>)}</tbody></table></div>}
     </div></div></div></div>
-    {inventoryProject && <PropertyInventory key={inventoryProject._id} project={inventoryProject} onClose={()=>setInventoryProject(null)} />}
   </main>;
 }

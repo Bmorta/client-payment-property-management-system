@@ -187,7 +187,7 @@ export default function PropertyInventory({ project, onClose }) {
           <h2 className="h5 fw-bold mb-1">Property Inventory — {project.projectName}</h2>
           <p className="text-secondary small mb-0">Apply a default lot area, adjust individual lots, then save together.</p>
         </div>
-        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>
+        {onClose && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>}
       </div>
       <CenterPopup message={message} error={error} confirm={confirmAction?.text}
         onClose={() => { setMessage(""); setError(""); setConfirmAction(null); }}

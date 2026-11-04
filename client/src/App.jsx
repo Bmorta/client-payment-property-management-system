@@ -5,6 +5,7 @@ import AppLayout from "./layouts/AppLayout.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
+import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 
 const DashboardPage = () => (
@@ -54,6 +55,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:projectId/lots" element={<ManageLotsPage />} />
               <Route path="/clients" element={<ClientsPage />} />
               <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
             </Route>
