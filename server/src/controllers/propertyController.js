@@ -116,6 +116,10 @@ export async function generateProjectProperties(req, res, next) {
           return res.status(400).json({ success: false, message: "Generate no more than 100 lots per request." });
         }
         const areas = block.areasSqm;
+        const statuses = block.statuses;
+        if (statuses !== undefined && (!Array.isArray(statuses) || statuses.length !== block.lotCount || statuses.some(s => !["AVAILABLE", "RESERVED", "SOLD"].includes(s)))) {
+          return res.status(400).json({ success: false, message: "Each lot must have a valid status." });
+        }
         if (areas !== undefined && (!Array.isArray(areas) || areas.length !== block.lotCount)) {
           return res.status(400).json({ success: false, message: "areasSqm must have one entry per lot." });
         }
@@ -130,7 +134,7 @@ export async function generateProjectProperties(req, res, next) {
             return res.status(400).json({ success: false, message: "Duplicate phase/block/lot in request." });
           }
           seen.add(key);
-          locations.push({ phaseNumber: phase.phaseNumber, blockNumber: block.blockNumber, lotNumber, areaSqm });
+          locations.push({ phaseNumber: phase.phaseNumber, blockNumber: block.blockNumber, lotNumber, areaSqm, status: statuses?.[i] ?? "AVAILABLE" });
         }
       }
     }
@@ -168,6 +172,51 @@ export async function generateProjectProperties(req, res, next) {
         message: "A property already exists. Some lots may have been saved; refresh inventory before retrying."
       });
     }
+    next(error);
+  }
+}
+
+/** Validate the entire edit batch before applying any changes. */
+export async function updateProjectProperties(req, res, next) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.projectId)) {
+      return res.status(400).json({ success: false, message: "Invalid project ID." });
+    }
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ success: false, message: "Project not found." });
+    if (project.status === "ARCHIVED") {
+      return res.status(409).json({ success: false, message: "Cannot edit lots in an archived project." });
+    }
+    const updates = req.body?.updates;
+    if (!Array.isArray(updates) || updates.length === 0 || updates.length > 100) {
+      return res.status(400).json({ success: false, message: "Provide 1 to 100 lots to update." });
+    }
+    const ids = new Set();
+    for (const update of updates) {
+      if (!mongoose.isValidObjectId(update?._id) || ids.has(update._id)) {
+        return res.status(400).json({ success: false, message: "Invalid or repeated lot ID." });
+      }
+      ids.add(update._id);
+      if (update.areaSqm !== null && update.areaSqm !== undefined &&
+        (typeof update.areaSqm !== "number" || !Number.isFinite(update.areaSqm) || update.areaSqm <= 0)) {
+        return res.status(400).json({ success: false, message: "Each lot area must be positive or unspecified." });
+      }
+      if (!["AVAILABLE", "RESERVED", "SOLD"].includes(update.status)) {
+        return res.status(400).json({ success: false, message: "Invalid lot status." });
+      }
+    }
+    const count = await Property.countDocuments({ project: project._id, _id: { $in: [...ids] } });
+    if (count !== updates.length) {
+      return res.status(404).json({ success: false, message: "One or more lots were not found in this project." });
+    }
+    const result = await Property.bulkWrite(updates.map(update => ({
+      updateOne: {
+        filter: { _id: update._id, project: project._id },
+        update: { $set: { areaSqm: update.areaSqm ?? null, status: update.status } }
+      }
+    })), { ordered: true });
+    res.json({ success: true, message: `${result.matchedCount} lots saved.` });
+  } catch (error) {
     next(error);
   }
 }
