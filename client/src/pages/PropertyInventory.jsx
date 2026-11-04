@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
 import StatusBadge from "../components/StatusBadge.jsx";
+import CenterPopup from "../components/CenterPopup.jsx";
+import StructureManager from "./StructureManager.jsx";
 
 const STATUSES = ["AVAILABLE", "RESERVED", "SOLD"];
 const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
@@ -16,6 +18,7 @@ export default function PropertyInventory({ project, onClose }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [filters, setFilters] = useState({ phase: "", block: "", lot: "", status: "" });
   const [showGenerator, setShowGenerator] = useState(true);
@@ -156,6 +159,21 @@ export default function PropertyInventory({ project, onClose }) {
     .filter(p => (key === "phase" || !filters.phase || String(p.phaseNumber) === filters.phase) &&
       (key !== "lot" || !filters.block || String(p.blockNumber) === filters.block))
     .map(p => String(p[key === "phase" ? "phaseNumber" : key === "block" ? "blockNumber" : "lotNumber"])))].sort((a,b) => Number(a)-Number(b));
+  const notify = (text, isError = false) => {
+    if (isError) { setMessage(""); setError(text); }
+    else { setError(""); setMessage(text); }
+  };
+  const deleteExistingLot = (lot) => setConfirmAction({
+    text: `Delete ${lot.propertyId} (Phase ${lot.phaseNumber}, Block ${lot.blockNumber}, Lot ${lot.lotNumber})? This cannot be undone.`,
+    action: async () => {
+      setConfirmAction(null);
+      try {
+        await api.delete(`/projects/${project._id}/properties/${lot._id}`);
+        await load();
+        notify("Lot deleted.");
+      } catch (e) { notify(e.response?.data?.message || "Unable to delete lot.", true); }
+    }
+  });
   const totalDraft = phases.reduce((n, p) => n + p.blocks.reduce((sum, b) => sum + b.lotCount, 0), 0);
   const changedCount = properties.filter(p =>
     String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") ||
@@ -171,8 +189,11 @@ export default function PropertyInventory({ project, onClose }) {
         </div>
         <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>
       </div>
-      {error && <div className="alert alert-danger">{error}</div>}
-      {message && <div className="alert alert-success">{message}</div>}
+      <CenterPopup message={message} error={error} confirm={confirmAction?.text}
+        onClose={() => { setMessage(""); setError(""); setConfirmAction(null); }}
+        onConfirm={() => confirmAction?.action()} />
+      <StructureManager project={project} onNotify={notify} onChanged={load}
+        onConfirm={(text, action) => setConfirmAction({ text, action: () => { setConfirmAction(null); action(); } })} />
 
       {project.status !== "ARCHIVED" && <>
         <div className="d-flex justify-content-between align-items-center mb-3">
@@ -277,9 +298,9 @@ export default function PropertyInventory({ project, onClose }) {
       </div>
       <div className="table-responsive">
         <table className="table table-sm align-middle">
-          <thead><tr><th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Status</th></tr></thead>
+          <thead><tr><th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>{properties.length === 0 ?
-            <tr><td colSpan="6" className="text-center text-secondary py-3">No lots yet.</td></tr> :
+            <tr><td colSpan="7" className="text-center text-secondary py-3">No lots yet.</td></tr> :
             visibleProperties.map(p => <tr key={p._id}>
               <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{p.lotNumber}</td>
               <td><input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm"
@@ -290,6 +311,7 @@ export default function PropertyInventory({ project, onClose }) {
                 onChange={e => updateDraft(p._id, "status", e.target.value)}>
                 {STATUSES.map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
               </select>}</td>
+              <td><button type="button" className="btn btn-sm btn-outline-danger" disabled={p.status !== "AVAILABLE"} onClick={() => deleteExistingLot(p)}>Delete</button></td>
             </tr>)}
           </tbody>
         </table>
