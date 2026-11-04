@@ -126,16 +126,29 @@ export async function deleteBlock(req, res, next) {
   } catch (e) { next(e); }
 }
 
-export async function deleteLot(req, res, next) {
+// Client links live on Property.client. Filter again at deletion time so a
+// concurrent status/assignment change cannot make an ineligible lot deletable.
+async function removeLots(req, res, next, ids) {
   try {
     const project = await projectFor(req, res); if (!project || !editable(project, res)) return;
-    if (!mongoose.isValidObjectId(req.params.id)) return fail(res, 400, "Invalid lot ID.");
-    const lot = await Property.findOne({ _id: req.params.id, project: project._id });
-    if (!lot) return fail(res, 404, "Lot not found.");
-    if (lot.status !== "AVAILABLE") return fail(res, 409, "Only available lots can be deleted.");
-    // Do not hard-delete after client/property assignment modules are connected.
-    // This operation is restricted to unassigned inventory in the current schema.
-    await lot.deleteOne();
-    res.json({ success: true, message: "Available lot deleted." });
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 ||
+        ids.some(id => typeof id !== "string" || !mongoose.isValidObjectId(id)) || new Set(ids).size !== ids.length) {
+      return fail(res, 400, "Select 1 to 100 different valid lot IDs.");
+    }
+    const lots = await Property.find({ _id: { $in: ids }, project: project._id }).lean();
+    if (lots.length !== ids.length) return fail(res, 404, "One or more lots were not found in this project. No lots deleted.");
+    if (lots.some(lot => lot.status !== "AVAILABLE" || lot.client != null)) {
+      return fail(res, 409, "Only AVAILABLE lots with no connected client can be deleted. No lots deleted.");
+    }
+    const result = await Property.deleteMany({ _id: { $in: ids }, project: project._id, status: "AVAILABLE", client: null });
+    res.json({ success: true, deletedCount: result.deletedCount,
+      message: result.deletedCount === ids.length ? `${result.deletedCount} lot(s) deleted.` :
+        `${result.deletedCount} of ${ids.length} lots deleted. Some lots changed status or client connection and were kept. Review inventory.` });
   } catch (e) { next(e); }
+}
+export async function deleteLot(req, res, next) {
+  return removeLots(req, res, next, [req.params.id]);
+}
+export async function deleteLots(req, res, next) {
+  return removeLots(req, res, next, req.body?.ids);
 }

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { validPrice, lotPrice } from "../utils/lotPricing.js";
 
 // One document represents one physical lot in a project.
 // Phase and block numbers describe location; propertyId is the immutable ID.
@@ -10,6 +11,8 @@ const propertySchema = new mongoose.Schema(
     blockNumber: { type: Number, required: true, min: 1 },
     lotNumber: { type: Number, required: true, min: 1 },
     areaSqm: { type: Number, default: null, min: 0 },
+    pricePerSqm: { type: Number, default: null, validate: { validator: validPrice, message: "Price per sqm must be non-negative with at most two decimal places." } },
+    client: { type: mongoose.Schema.Types.ObjectId, ref: "Client", default: null },
     status: {
       type: String,
       enum: ["AVAILABLE", "RESERVED", "SOLD", "UNAVAILABLE"],
@@ -27,5 +30,9 @@ propertySchema.index(
   { unique: true }
 );
 propertySchema.index({ project: 1, status: 1 });
+
+propertySchema.virtual("pricePerLot").get(function () { return lotPrice(this.areaSqm, this.pricePerSqm); });
+propertySchema.virtual("canDelete").get(function () { return this.status === "AVAILABLE" && !this.client; });
+propertySchema.set("toJSON", { virtuals: true });
 
 export default mongoose.model("Property", propertySchema);

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { archiveProject, createProject, getProject, listProjects, updateProject } from "../controllers/projectController.js";
 import { listProjectProperties, createProjectProperty, updateProjectPropertyArea, generateProjectProperties, updateProjectProperties } from "../controllers/propertyController.js";
-import { listStructure, savePhase, saveBlock, changePhase, changeBlock, deletePhase, deleteBlock, deleteLot } from "../controllers/structureController.js";
+import { listStructure, savePhase, saveBlock, changePhase, changeBlock, deletePhase, deleteBlock, deleteLot, deleteLots } from "../controllers/structureController.js";
 import { authenticate } from "../middleware/auth.js";
 import { authorize } from "../middleware/authorize.js";
 
@@ -16,6 +16,7 @@ router.delete("/:projectId/phases/:id", authorize("ADMIN", "STAFF"), deletePhase
 router.post("/:projectId/blocks", authorize("ADMIN", "STAFF"), saveBlock);
 router.put("/:projectId/blocks/:id", authorize("ADMIN", "STAFF"), changeBlock);
 router.delete("/:projectId/blocks/:id", authorize("ADMIN", "STAFF"), deleteBlock);
+router.post("/:projectId/properties/bulk-delete", authorize("ADMIN", "STAFF"), deleteLots);
 router.delete("/:projectId/properties/:id", authorize("ADMIN", "STAFF"), deleteLot);
 router.get("/:projectId/properties", listProjectProperties);
 router.patch("/:projectId/properties/batch", authorize("ADMIN", "STAFF"), updateProjectProperties);

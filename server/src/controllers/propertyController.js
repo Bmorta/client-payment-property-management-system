@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { validPrice, lotPrice } from "../utils/lotPricing.js";
 import Project from "../models/Project.js";
 import Property from "../models/Property.js";
 import { generateRecordId } from "../utils/generateRecordId.js";
@@ -32,7 +33,7 @@ export async function createProjectProperty(req, res, next) {
       return res.status(409).json({ success: false, message: "Cannot add lots to an archived project." });
     }
 
-    const { phaseNumber, blockNumber, lotNumber, areaSqm } = req.body;
+    const { phaseNumber, blockNumber, lotNumber, areaSqm, pricePerSqm } = req.body;
     if (![phaseNumber, blockNumber, lotNumber].every(validPositiveInteger)) {
       return res.status(400).json({ success: false, message: "Phase, block and lot numbers must be positive integers." });
     }
@@ -41,6 +42,9 @@ export async function createProjectProperty(req, res, next) {
       return res.status(400).json({ success: false, message: "Lot area must be a positive number, or left unspecified." });
     }
 
+    if (!validPrice(pricePerSqm) || (areaSqm != null && pricePerSqm != null && lotPrice(areaSqm, pricePerSqm) === null)) {
+      return res.status(400).json({ success: false, message: "Enter a valid price per sqm (up to two decimal places) and supported lot total." });
+    }
     const location = { project: project._id, phaseNumber, blockNumber, lotNumber };
     if (await Property.exists(location)) {
       return res.status(409).json({ success: false, message: "This phase, block and lot already exists in the project." });
@@ -48,7 +52,7 @@ export async function createProjectProperty(req, res, next) {
 
     const propertyId = await generateRecordId("property");
     const property = await Property.create({
-      ...location, propertyId, areaSqm: areaSqm ?? null, createdBy: req.user._id
+      ...location, propertyId, areaSqm: areaSqm ?? null, pricePerSqm: pricePerSqm ?? null, createdBy: req.user._id
     });
     res.status(201).json({ success: true, data: property, message: "Property created." });
   } catch (error) {
@@ -117,6 +121,10 @@ export async function generateProjectProperties(req, res, next) {
         }
         const areas = block.areasSqm;
         const statuses = block.statuses;
+        const prices = block.pricesPerSqm;
+        if (prices !== undefined && (!Array.isArray(prices) || prices.length !== block.lotCount || prices.some(p => !validPrice(p)))) {
+          return res.status(400).json({ success: false, message: "Provide one valid price per sqm per lot (up to two decimal places), or leave blank." });
+        }
         if (statuses !== undefined && (!Array.isArray(statuses) || statuses.length !== block.lotCount || statuses.some(s => !["AVAILABLE", "RESERVED", "SOLD"].includes(s)))) {
           return res.status(400).json({ success: false, message: "Each lot must have a valid status." });
         }
@@ -128,6 +136,10 @@ export async function generateProjectProperties(req, res, next) {
           if (areaSqm !== null && (typeof areaSqm !== "number" || !Number.isFinite(areaSqm) || areaSqm <= 0)) {
             return res.status(400).json({ success: false, message: "Each supplied lot area must be a positive number." });
           }
+          const pricePerSqm = prices?.[i] ?? null;
+          if (pricePerSqm !== null && areaSqm !== null && lotPrice(areaSqm, pricePerSqm) === null) {
+            return res.status(400).json({ success: false, message: "Lot price exceeds supported range." });
+          }
           const lotNumber = (block.startLotNumber ?? 1) + i;
           if (!Number.isSafeInteger(lotNumber)) return res.status(400).json({ success: false, message: "Lot number exceeds supported range." });
           const key = `${phase.phaseNumber}/${block.blockNumber}/${lotNumber}`;
@@ -135,7 +147,7 @@ export async function generateProjectProperties(req, res, next) {
             return res.status(400).json({ success: false, message: "Duplicate phase/block/lot in request." });
           }
           seen.add(key);
-          locations.push({ phaseNumber: phase.phaseNumber, blockNumber: block.blockNumber, lotNumber, areaSqm, status: statuses?.[i] ?? "AVAILABLE" });
+          locations.push({ phaseNumber: phase.phaseNumber, blockNumber: block.blockNumber, lotNumber, areaSqm, pricePerSqm, status: statuses?.[i] ?? "AVAILABLE" });
         }
       }
     }
@@ -198,6 +210,9 @@ export async function updateProjectProperties(req, res, next) {
         return res.status(400).json({ success: false, message: "Invalid or repeated lot ID." });
       }
       ids.add(update._id);
+      if (!validPrice(update.pricePerSqm) || (update.areaSqm != null && update.pricePerSqm != null && lotPrice(update.areaSqm, update.pricePerSqm) === null)) {
+        return res.status(400).json({ success: false, message: "Enter a valid price per sqm (up to two decimal places) and supported lot total." });
+      }
       if (update.areaSqm !== null && update.areaSqm !== undefined &&
         (typeof update.areaSqm !== "number" || !Number.isFinite(update.areaSqm) || update.areaSqm <= 0)) {
         return res.status(400).json({ success: false, message: "Each lot area must be positive or unspecified." });
@@ -213,7 +228,7 @@ export async function updateProjectProperties(req, res, next) {
     const result = await Property.bulkWrite(updates.map(update => ({
       updateOne: {
         filter: { _id: update._id, project: project._id },
-        update: { $set: { areaSqm: update.areaSqm ?? null, status: update.status } }
+        update: { $set: { areaSqm: update.areaSqm ?? null, status: update.status, ...(update.pricePerSqm !== undefined ? { pricePerSqm: update.pricePerSqm } : {}) } }
       }
     })), { ordered: true });
     res.json({ success: true, message: `${result.matchedCount} lots saved.` });

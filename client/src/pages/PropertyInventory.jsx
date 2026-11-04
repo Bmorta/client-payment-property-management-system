@@ -3,11 +3,12 @@ import api from "../services/api.js";
 import StatusBadge from "../components/StatusBadge.jsx";
 import CenterPopup from "../components/CenterPopup.jsx";
 import StructureManager from "./StructureManager.jsx";
+import { validPrice, lotPrice, money, deletableLot } from "../utils/lotPricing.js";
 import { mergeStructure, nextNumber } from "../utils/propertyStructure.js";
 
 const STATUSES = ["AVAILABLE", "RESERVED", "SOLD"];
 const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
-  blockNumber, startLotNumber, lotCount: 1, defaultArea: "", areasSqm: [""], statuses: ["AVAILABLE"]
+  blockNumber, startLotNumber, lotCount: 1, defaultArea: "", areasSqm: [""], defaultPrice: "", pricesPerSqm: [""], statuses: ["AVAILABLE"]
 });
 const areaValue = value => value === "" || value === null ? null : Number(value);
 const positiveInteger = value => Number.isSafeInteger(value) && value > 0;
@@ -16,6 +17,7 @@ export default function PropertyInventory({ project, onClose }) {
   const [properties, setProperties] = useState([]);
   const [savedStructure, setSavedStructure] = useState({ phases: [], blocks: [] });
   const [drafts, setDrafts] = useState({});
+  const [selectedLots, setSelectedLots] = useState([]);
   const [phases, setPhases] = useState([]);
   const [mode, setMode] = useState("");
   const [generator, setGenerator] = useState("");
@@ -33,15 +35,15 @@ export default function PropertyInventory({ project, onClose }) {
   const structure = mergeStructure(savedStructure, properties);
   const blockOptions = structure.blocks.filter(b => String(b.phaseNumber) === selectedPhase);
   const changed = properties.filter(p =>
-    String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") || drafts[p._id]?.status !== p.status
+    String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") || String(drafts[p._id]?.pricePerSqm ?? "") !== String(p.pricePerSqm ?? "") || drafts[p._id]?.status !== p.status
   );
   const editMode = mode === "modify" && !archived;
   const notify = (text, isError = false) => {
     setError(isError ? text : ""); setMessage(isError ? "" : text);
   };
   const applyData = (lots, saved) => {
-    setProperties(lots); setSavedStructure(saved);
-    setDrafts(Object.fromEntries(lots.map(p => [p._id, { areaSqm: p.areaSqm ?? "", status: p.status }])));
+    setProperties(lots); setSavedStructure(saved); setSelectedLots([]);
+    setDrafts(Object.fromEntries(lots.map(p => [p._id, { areaSqm: p.areaSqm ?? "", pricePerSqm: p.pricePerSqm ?? "", status: p.status }])));
     const merged = mergeStructure(saved, lots);
     setSelectedPhase(old => merged.phases.some(p => String(p.phaseNumber) === old) ? old : String(merged.phases[0]?.phaseNumber ?? ""));
     setLoadFailed(false);
@@ -66,8 +68,8 @@ export default function PropertyInventory({ project, onClose }) {
 
   const chooseMode = next => {
     if (busy || generator || changed.length) return notify("Save or cancel the current changes before switching options.", true);
-    setMode(next);
-    if (next === "modify") setFilters({ phase: selectedPhase, block: selectedBlock, lot: "", status: "" });
+    setMode(next); setSelectedLots([]);
+    if (next === "modify") changeFilters({ phase: selectedPhase, block: selectedBlock, lot: "", status: "" });
     if (next === "add") {
       setGenerator("phase");
       setPhases([{ phaseNumber: nextNumber(structure.phases.map(p => p.phaseNumber)), blocks: [newBlock()] }]);
@@ -88,6 +90,7 @@ export default function PropertyInventory({ project, onClose }) {
     const count = Number(raw);
     if (!positiveInteger(count) || count > 100) return;
     updateBlock(pi, bi, b => ({ ...b, lotCount: count,
+      pricesPerSqm: Array.from({ length: count }, (_, i) => b.pricesPerSqm[i] ?? ""),
       areasSqm: Array.from({ length: count }, (_, i) => b.areasSqm[i] ?? ""),
       statuses: Array.from({ length: count }, (_, i) => b.statuses[i] ?? "AVAILABLE") }));
   };
@@ -95,6 +98,11 @@ export default function PropertyInventory({ project, onClose }) {
     const block = phases[pi].blocks[bi];
     if (!Number.isFinite(Number(block.defaultArea)) || Number(block.defaultArea) <= 0) return notify("Enter a valid default area greater than zero.", true);
     updateBlock(pi, bi, b => ({ ...b, areasSqm: Array(b.lotCount).fill(block.defaultArea) }));
+  };
+  const applyDefaultPrice = (pi, bi) => {
+    const block = phases[pi].blocks[bi];
+    if (!validPrice(block.defaultPrice) || block.defaultPrice === "") return notify("Enter a non-negative price per sqm with up to two decimal places.", true);
+    updateBlock(pi, bi, b => ({ ...b, pricesPerSqm: Array(b.lotCount).fill(block.defaultPrice) }));
   };
   const cancelNew = () => { setGenerator(""); setPhases([]); if (mode === "add") setMode(""); };
   const totalDraft = phases.reduce((n, p) => n + p.blocks.reduce((sum, b) => sum + b.lotCount, 0), 0);
@@ -108,17 +116,18 @@ export default function PropertyInventory({ project, onClose }) {
     if (new Set(phase.blocks.map(b => b.blockNumber)).size !== phase.blocks.length) return notify("Each block in this form must have a different number.", true);
     if (generator !== "lots" && phase.blocks.some(b => structure.blocks.some(saved => saved.phaseNumber === phase.phaseNumber && saved.blockNumber === b.blockNumber))) return notify("That block already exists. Choose Add lots to selected block instead.", true);
     if (phase.blocks.some(b => b.areasSqm.some(a => a !== "" && (!Number.isFinite(Number(a)) || Number(a) <= 0)))) return notify("Lot areas must be positive numbers or left blank.", true);
+    if (phase.blocks.some(b => b.pricesPerSqm.some((price, i) => !validPrice(price) || (price !== "" && b.areasSqm[i] !== "" && lotPrice(b.areasSqm[i], price) === null)))) return notify("Enter valid prices per sqm (up to two decimal places) and supported lot totals.", true);
     setBusy(true); setError(""); setMessage("");
     try {
       await api.post(`${base}/properties/generate`, { phases: phases.map(p => ({ phaseNumber: p.phaseNumber, blocks: p.blocks.map(b => ({
         blockNumber: b.blockNumber, startLotNumber: b.startLotNumber, lotCount: b.lotCount,
-        areasSqm: b.areasSqm.map(areaValue), statuses: b.statuses
+        areasSqm: b.areasSqm.map(areaValue), pricesPerSqm: b.pricesPerSqm.map(areaValue), statuses: b.statuses
       })) })) });
       cancelNew();
       await load();
       setSelectedPhase(String(phase.phaseNumber));
       setSelectedBlock(String(phase.blocks[0].blockNumber));
-      setFilters({ phase: String(phase.phaseNumber), block: "", lot: "", status: "" });
+      changeFilters({ phase: String(phase.phaseNumber), block: "", lot: "", status: "" });
       notify(`${totalDraft} new lots saved. The inventory now shows Phase ${phase.phaseNumber}.`);
     } catch (e) { notify((e.response?.data?.message || "Unable to save new lots.") + " Refresh and review inventory before retrying; some lots may have been saved.", true); }
     finally { setBusy(false); }
@@ -126,26 +135,39 @@ export default function PropertyInventory({ project, onClose }) {
   const saveEdits = async () => {
     if (busy || archived || !changed.length) return;
     if (changed.some(p => { const a = drafts[p._id].areaSqm; return a !== "" && (!Number.isFinite(Number(a)) || Number(a) <= 0); })) return notify("Lot areas must be positive numbers or left blank.", true);
+    if (changed.some(p => { const d = drafts[p._id]; return !validPrice(d.pricePerSqm) || (d.pricePerSqm !== "" && d.areaSqm !== "" && lotPrice(d.areaSqm, d.pricePerSqm) === null); })) return notify("Enter valid prices per sqm (up to two decimal places) and supported lot totals.", true);
     setBusy(true);
     try {
       for (let i = 0; i < changed.length; i += 100) await api.patch(`${base}/properties/batch`, {
-        updates: changed.slice(i, i + 100).map(p => ({ _id: p._id, areaSqm: areaValue(drafts[p._id].areaSqm), status: drafts[p._id].status }))
+        updates: changed.slice(i, i + 100).map(p => ({ _id: p._id, areaSqm: areaValue(drafts[p._id].areaSqm), pricePerSqm: areaValue(drafts[p._id].pricePerSqm), status: drafts[p._id].status }))
       });
       await load(); notify(`${changed.length} lot edits saved.`);
     } catch (e) { notify((e.response?.data?.message || "Unable to save lot edits.") + " Some changes may have been saved. Refresh and review inventory before retrying.", true); }
     finally { setBusy(false); }
   };
-  const cancelEdits = () => setDrafts(Object.fromEntries(properties.map(p => [p._id, { areaSqm: p.areaSqm ?? "", status: p.status }])));
+  const cancelEdits = () => setDrafts(Object.fromEntries(properties.map(p => [p._id, { areaSqm: p.areaSqm ?? "", pricePerSqm: p.pricePerSqm ?? "", status: p.status }])));
   const updateDraft = (id, field, value) => setDrafts(old => ({ ...old, [id]: { ...old[id], [field]: value } }));
-  const deleteLot = lot => setConfirmAction({ text: `Delete ${lot.propertyId} (Phase ${lot.phaseNumber}, Block ${lot.blockNumber}, Lot ${lot.lotNumber})? This cannot be undone.`, action: async () => {
-    setConfirmAction(null); setBusy(true);
-    try { await api.delete(`${base}/properties/${lot._id}`); await load(); notify("Lot deleted."); }
-    catch (e) { notify(e.response?.data?.message || "Unable to delete lot. Refresh inventory before retrying.", true); }
-    finally { setBusy(false); }
-  } });
+  const deleteLots = lots => {
+    if (busy || generator || changed.length || !lots.length || lots.some(p => !deletableLot(p))) return;
+    setConfirmAction({ text: `Delete ${lots.length} selected lot(s): ${lots.slice(0, 5).map(p => p.propertyId).join(", ")}${lots.length > 5 ? ` and ${lots.length - 5} more` : ""}? Only available lots with no connected client can be deleted. This cannot be undone.`, action: async () => {
+      setConfirmAction(null); setBusy(true);
+      try {
+        const { data } = await api.post(`${base}/properties/bulk-delete`, { ids: lots.map(p => p._id) });
+        await load(); notify(data.message || "Lots deleted.");
+      } catch (e) {
+        const message = e.response?.data?.message || "Unable to delete lots. Refresh inventory before retrying.";
+        try { await load(); } catch { /* Keep the last loaded inventory if refresh fails. */ }
+        notify(message, true);
+      } finally { setBusy(false); }
+    } });
+  };
   const visibleProperties = properties.filter(p =>
     (!filters.phase || String(p.phaseNumber) === filters.phase) && (!filters.block || String(p.blockNumber) === filters.block) &&
     (!filters.lot || String(p.lotNumber) === filters.lot) && (!filters.status || p.status === filters.status));
+  const eligibleVisible = visibleProperties.filter(deletableLot);
+  const chosenLots = eligibleVisible.filter(p => selectedLots.includes(p._id));
+  const toggleSelected = id => setSelectedLots(old => old.includes(id) ? old.filter(value => value !== id) : [...old, id]);
+  const changeFilters = update => { setSelectedLots([]); setFilters(update); };
   const optionsFor = key => [...new Set(properties.filter(p =>
     (key === "phase" || !filters.phase || String(p.phaseNumber) === filters.phase) &&
     (key !== "lot" || !filters.block || String(p.blockNumber) === filters.block))
@@ -170,13 +192,13 @@ export default function PropertyInventory({ project, onClose }) {
           <p className="text-secondary small">Select a phase and block to add lots or manage empty structures. Edit lot areas and availability in the inventory below.</p>
           <div className="row g-3 mb-3">
             <div className="col-12 col-md-6"><label className="form-label" htmlFor="manage-phase">Phase to modify</label>
-              <select id="manage-phase" className="form-select" value={selectedPhase} disabled={busy || !!generator} onChange={e => { setSelectedPhase(e.target.value); setSelectedBlock(""); setFilters({ phase: e.target.value, block: "", lot: "", status: "" }); }}>
+              <select id="manage-phase" className="form-select" value={selectedPhase} disabled={busy || !!generator} onChange={e => { setSelectedPhase(e.target.value); setSelectedBlock(""); changeFilters({ phase: e.target.value, block: "", lot: "", status: "" }); }}>
                 {!structure.phases.length && <option value="">No phases yet</option>}
                 {structure.phases.map(p => <option key={p.phaseNumber} value={p.phaseNumber}>Phase {p.phaseNumber}</option>)}
               </select>
             </div>
             <div className="col-12 col-md-6"><label className="form-label" htmlFor="manage-block">Block to modify</label>
-              <select id="manage-block" className="form-select" value={selectedBlock} disabled={busy || !!generator || !blockOptions.length} onChange={e => { setSelectedBlock(e.target.value); setFilters({ phase: selectedPhase, block: e.target.value, lot: "", status: "" }); }}>
+              <select id="manage-block" className="form-select" value={selectedBlock} disabled={busy || !!generator || !blockOptions.length} onChange={e => { setSelectedBlock(e.target.value); changeFilters({ phase: selectedPhase, block: e.target.value, lot: "", status: "" }); }}>
                 {!blockOptions.length && <option value="">No blocks yet</option>}
                 {blockOptions.map(b => <option key={b.blockNumber} value={b.blockNumber}>Block {b.blockNumber}</option>)}
               </select>
@@ -226,7 +248,13 @@ export default function PropertyInventory({ project, onClose }) {
               <button type="button" className="btn btn-outline-primary flex-shrink-0"
                 onClick={() => applyDefault(pi, bi)}>Apply to all</button>
             </div>
-            <p className="small text-secondary">Individual lot areas and statuses (editable before saving)</p>
+            <label className="form-label">Default price per sqm (₱) — optional</label>
+            <div className="d-flex gap-2 mb-3">
+              <input aria-label={`Default price per sqm for block ${bi + 1}`} className="form-control" type="number" min="0" step="0.01" value={block.defaultPrice}
+                onChange={e => updateBlock(pi, bi, b => ({ ...b, defaultPrice: e.target.value }))} />
+              <button type="button" className="btn btn-outline-primary flex-shrink-0" onClick={() => applyDefaultPrice(pi, bi)}>Apply price to all</button>
+            </div>
+            <p className="small text-secondary">Individual lot areas, prices and availability (editable before saving)</p>
             <div className="row g-2">
               {block.areasSqm.map((area, li) => <div className="col-12 col-md-6 col-xl-4" key={li}>
                 <div className="border rounded p-2">
@@ -245,6 +273,11 @@ export default function PropertyInventory({ project, onClose }) {
                       {STATUSES.map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
                     </select>
                   </div>
+                  <label className="form-label small mt-2">Price per sqm (₱)
+                    <input aria-label={`Lot ${block.startLotNumber + li} price per sqm`} className="form-control form-control-sm" type="number" min="0" step="0.01" value={block.pricesPerSqm[li]}
+                      onChange={e => updateBlock(pi, bi, b => ({ ...b, pricesPerSqm: b.pricesPerSqm.map((v, i) => i === li ? e.target.value : v) }))} />
+                  </label>
+                  <div className="small">Price per lot: <output aria-label={`Lot ${block.startLotNumber + li} price per lot`}>{money(lotPrice(area, block.pricesPerSqm[li]))}</output></div>
                 </div>
               </div>)}
             </div>
@@ -273,7 +306,7 @@ export default function PropertyInventory({ project, onClose }) {
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>
           <label htmlFor={`filter-${key}`} className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}</label>
-          <select id={`filter-${key}`} className="form-select form-select-sm" value={filters[key]} onChange={e => setFilters(old => ({
+          <select id={`filter-${key}`} className="form-select form-select-sm" value={filters[key]} onChange={e => changeFilters(old => ({
             ...old, [key]: e.target.value, ...(key === "phase" ? { block: "", lot: "" } : key === "block" ? { lot: "" } : {})
           }))}>
             <option value="">All {key === "status" ? "statuses" : key + "s"}</option>
@@ -281,18 +314,33 @@ export default function PropertyInventory({ project, onClose }) {
           </select>
         </div>)}
       </div>
+      {editMode && <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <button type="button" className="btn btn-outline-danger btn-sm" disabled={busy || !!generator || changed.length > 0 || !chosenLots.length || chosenLots.length > 100}
+          onClick={() => deleteLots(chosenLots)}>Delete selected lots ({chosenLots.length})</button>
+        <span className="small text-secondary">Select up to 100 available lots with no connected client. Selection clears when filters change.</span>
+      </div>}
       <div className="table-responsive"><table className="table table-sm align-middle">
-        <thead><tr><th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Status</th>{editMode && <th>Actions</th>}</tr></thead>
-        <tbody>{!visibleProperties.length ? <tr><td colSpan={editMode ? 7 : 6} className="text-center text-secondary py-3">{properties.length ? "No lots match these filters." : "No lots yet. Add a phase to get started."}</td></tr> : visibleProperties.map(p => <tr key={p._id}>
+        <thead><tr>{editMode && <th><input aria-label="Select all eligible visible lots" type="checkbox" className="form-check-input"
+          disabled={busy || !!generator || changed.length > 0 || !eligibleVisible.length}
+          checked={eligibleVisible.length > 0 && chosenLots.length === Math.min(eligibleVisible.length, 100)}
+          onChange={e => setSelectedLots(e.target.checked ? eligibleVisible.slice(0, 100).map(p => p._id) : [])} /></th>}<th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Price per sqm</th><th>Price per lot</th><th>Status</th>{editMode && <th>Actions</th>}</tr></thead>
+        <tbody>{!visibleProperties.length ? <tr><td colSpan={editMode ? 10 : 8} className="text-center text-secondary py-3">{properties.length ? "No lots match these filters." : "No lots yet. Add a phase to get started."}</td></tr> : visibleProperties.map(p => <tr key={p._id}>
+          {editMode && <td><input aria-label={`Select ${p.propertyId} for deletion`} className="form-check-input" type="checkbox"
+            disabled={busy || !!generator || changed.length > 0 || !deletableLot(p) || (chosenLots.length >= 100 && !selectedLots.includes(p._id))}
+            checked={selectedLots.includes(p._id)} onChange={() => toggleSelected(p._id)} /></td>}
           <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{p.lotNumber}</td>
           <td>{editMode ? <input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0.01" step="any"
             disabled={busy || !!generator} value={drafts[p._id]?.areaSqm ?? ""} onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /> : p.areaSqm ?? "—"}</td>
+          <td>{editMode ? <input aria-label={`Price per sqm for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0" step="0.01"
+            disabled={busy || !!generator} value={drafts[p._id]?.pricePerSqm ?? ""} onChange={e => updateDraft(p._id, "pricePerSqm", e.target.value)} /> : money(p.pricePerSqm)}</td>
+          <td><output aria-label={`Price per lot for ${p.propertyId}`}>{money(lotPrice(editMode ? drafts[p._id]?.areaSqm : p.areaSqm, editMode ? drafts[p._id]?.pricePerSqm : p.pricePerSqm))}</output></td>
           <td>{editMode ? <select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm" disabled={busy || !!generator}
             value={drafts[p._id]?.status ?? p.status} onChange={e => updateDraft(p._id, "status", e.target.value)}>
             {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
           </select> : <StatusBadge status={p.status} />}</td>
-          {editMode && <td><button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || !!generator || changed.length > 0 || p.status !== "AVAILABLE"}
-            onClick={() => deleteLot(p)}>Delete lot</button></td>}
+          {editMode && <td><button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || !!generator || changed.length > 0 || !deletableLot(p)}
+            onClick={() => deleteLots([p])}>Delete lot</button>
+            {!deletableLot(p) && <div className="small text-secondary">{p.client ? "Connected to a client" : "Not available for deletion"}</div>}</td>}
         </tr>)}</tbody>
       </table></div>
     </>}
