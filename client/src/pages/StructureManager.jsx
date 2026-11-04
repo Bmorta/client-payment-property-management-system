@@ -1,85 +1,55 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import api from "../services/api.js";
 
-export default function StructureManager({ project, onNotify, onChanged, onConfirm }) {
-  const [phases, setPhases] = useState([]);
-  const [blocks, setBlocks] = useState([]);
-  const [phaseNumber, setPhaseNumber] = useState(1);
-  const [blockPhase, setBlockPhase] = useState(1);
-  const [blockNumber, setBlockNumber] = useState(1);
+export default function StructureManager({ project, structure, phaseNumber, blockNumber, properties, disabled, onBusy, onNotify, onChanged, onConfirm }) {
+  const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
+  const phase = structure.phases.find(p => p.phaseNumber === Number(phaseNumber));
+  const block = structure.blocks.find(b => b.phaseNumber === Number(phaseNumber) && b.blockNumber === Number(blockNumber));
+  const phaseHasChildren = structure.blocks.some(b => b.phaseNumber === Number(phaseNumber));
+  const blockHasChildren = properties.some(p => p.phaseNumber === Number(phaseNumber) && p.blockNumber === Number(blockNumber));
   const base = `/projects/${project._id}`;
-  const refresh = async () => {
-    const { data } = await api.get(`${base}/structure`);
-    setPhases(data.data.phases); setBlocks(data.data.blocks);
-  };
-  useEffect(() => { refresh().catch(e => onNotify(e.response?.data?.message || "Could not load phases and blocks.", true)); }, [project._id]);
-  const run = async (fn) => {
-    setBusy(true);
+
+  const run = async fn => {
+    setBusy(true); onBusy(true);
     try {
       const result = await fn();
-      await refresh(); await onChanged();
+      setEditing(null);
+      await onChanged();
       onNotify(result.data.message || "Saved.");
-    } catch (e) { onNotify(e.response?.data?.message || "Operation failed.", true); }
-    finally { setBusy(false); }
+    } catch (e) { onNotify(e.response?.data?.message || "Operation failed. Refresh inventory before retrying.", true); }
+    finally { setBusy(false); onBusy(false); }
   };
-  const edit = (type, item, field) => {
-    const value = window.prompt(`New ${type} number`, String(item[field]));
-    if (value === null) return;
-    const number = Number(value);
+  const save = e => {
+    e.preventDefault();
+    const number = Number(editing.number);
     if (!Number.isSafeInteger(number) || number < 1) return onNotify("Enter a positive whole number.", true);
-    run(() => api.put(`${base}/${type}s/${item._id}`, { [field]: number }));
+    run(() => api.put(`${base}/${editing.type}s/${editing.id}`, { [`${editing.type}Number`]: number }));
   };
   const remove = (type, item) => onConfirm(
-    `Delete ${type} ${type === "phase" ? item.phaseNumber : item.blockNumber}? Only empty phases and blocks can be deleted.`,
+    `Delete empty ${type} ${item[`${type}Number`]}?`,
     () => run(() => api.delete(`${base}/${type}s/${item._id}`))
   );
-  if (project.status === "ARCHIVED") return null;
-  return <div className="card border-0 shadow-sm mb-3"><div className="card-body">
-    <h3 className="h6 fw-bold">Manage phases and blocks</h3>
-    <div className="row g-3 mb-3">
-      <div className="col-md-6">
-        <label className="form-label">New phase number</label>
-        <div className="d-flex gap-2">
-          <input type="number" min="1" className="form-control" value={phaseNumber} onChange={e => setPhaseNumber(Number(e.target.value))}/>
-          <button type="button" className="btn btn-primary flex-shrink-0" disabled={busy}
-            onClick={() => run(() => api.post(`${base}/phases`, { phaseNumber }))}>Save Phase</button>
-        </div>
-      </div>
-      <div className="col-md-6">
-        <label className="form-label">New block (phase / block number)</label>
-        <div className="d-flex gap-2">
-          <select className="form-select" aria-label="Phase for new block" value={blockPhase}
-            onChange={e => setBlockPhase(Number(e.target.value))}>
-            <option value={1}>Phase 1</option>
-            {[...new Set([...phases.map(p=>p.phaseNumber),...blocks.map(b=>b.phaseNumber)])].filter(n=>n!==1).sort((a,b)=>a-b).map(n=><option key={n} value={n}>Phase {n}</option>)}
-          </select>
-          <input aria-label="New block number" type="number" min="1" className="form-control" value={blockNumber} onChange={e => setBlockNumber(Number(e.target.value))}/>
-          <button type="button" className="btn btn-primary flex-shrink-0" disabled={busy}
-            onClick={() => run(() => api.post(`${base}/blocks`, { phaseNumber: blockPhase, blockNumber }))}>Save Block</button>
-        </div>
-      </div>
-    </div>
+  return <div className="border rounded p-3 mb-3">
+    <h4 className="h6 fw-bold">Selected phase and block</h4>
     <div className="row g-3">
-      <div className="col-md-6"><h4 className="h6">Saved phases</h4>
-        {phases.length === 0 && <p className="text-secondary small">No independently saved phases yet.</p>}
-        {phases.map(p=><div key={p._id} className="d-flex align-items-center justify-content-between border rounded p-2 mb-1">
-          <span>Phase {p.phaseNumber}</span><div className="d-flex gap-1">
-            <button className="btn btn-sm btn-outline-primary" onClick={()=>edit("phase",p,"phaseNumber")}>Edit</button>
-            <button className="btn btn-sm btn-outline-danger" onClick={()=>remove("phase",p)}>Delete</button>
-          </div>
-        </div>)}
-      </div>
-      <div className="col-md-6"><h4 className="h6">Saved blocks</h4>
-        {blocks.length === 0 && <p className="text-secondary small">No independently saved blocks yet.</p>}
-        {blocks.map(b=><div key={b._id} className="d-flex align-items-center justify-content-between border rounded p-2 mb-1">
-          <span>Phase {b.phaseNumber} / Block {b.blockNumber}</span><div className="d-flex gap-1">
-            <button className="btn btn-sm btn-outline-primary" onClick={()=>edit("block",b,"blockNumber")}>Edit</button>
-            <button className="btn btn-sm btn-outline-danger" onClick={()=>remove("block",b)}>Delete</button>
-          </div>
-        </div>)}
-      </div>
+      {[["phase", phase, phaseHasChildren], ["block", block, blockHasChildren]].map(([type, item, hasChildren]) => item && <div className="col-12 col-lg-6" key={type}>
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <strong>{type === "phase" ? "Phase" : "Block"} {item[`${type}Number`]}</strong>
+          <button type="button" className="btn btn-sm btn-outline-primary" disabled={busy || disabled || hasChildren || !item._id}
+            onClick={() => setEditing({ type, id: item._id, number: item[`${type}Number`] })}>Edit {type}</button>
+          <button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || disabled || hasChildren || !item._id}
+            onClick={() => remove(type, item)}>Delete {type}</button>
+        </div>
+        {hasChildren && <p className="text-secondary small mb-0 mt-1">Remove its {type === "phase" ? "blocks and lots" : "lots"} before renumbering or deleting.</p>}
+      </div>)}
     </div>
-    <p className="text-secondary small mt-2 mb-0">Previously generated phases and blocks are represented by their lots; new structure records are managed separately. Number changes are blocked when children exist.</p>
-  </div></div>;
+    {editing && <form className="d-flex flex-wrap gap-2 mt-3" onSubmit={save}>
+      <label className="form-label align-self-center mb-0" htmlFor="structure-number">New {editing.type} number</label>
+      <input id="structure-number" type="number" min="1" required className="form-control w-auto" value={editing.number}
+        disabled={busy || disabled} onChange={e => setEditing({ ...editing, number: e.target.value })} />
+      <button className="btn btn-primary" disabled={busy || disabled}>Save {editing.type}</button>
+      <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => setEditing(null)}>Cancel</button>
+    </form>}
+  </div>;
 }
