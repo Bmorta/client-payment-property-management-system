@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
+import StatusBadge from "../components/StatusBadge.jsx";
 
 const blank={clientId:"",firstName:"",middleName:"",lastName:"",suffix:"",contactNumber:"",email:"",address:"",notes:"",status:"ACTIVE"};
 
@@ -22,7 +23,7 @@ export default function ClientsPage(){
     <div className="d-flex gap-2"><button className="btn btn-primary" type="submit">{editing?"Update Client":"Add Client"}</button>{editing&&<button className="btn btn-outline-secondary" type="button" onClick={reset}>Cancel</button>}</div>
    </form></div></div></div>
    <div className="col-12 col-xl-8"><div className="card border-0 shadow-sm"><div className="card-body"><div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h2 className="h5 fw-bold mb-0">Client List</h2><input className="form-control" style={{maxWidth:320}} placeholder="Search clients..." value={query} onChange={e=>setQuery(e.target.value)}/></div>
-   {loading?<p className="text-secondary">Loading clients...</p>:<div className="table-responsive"><table className="table align-middle"><thead><tr><th>Client</th><th>Contact</th><th>Email</th><th>Status</th><th className="text-end">Action</th></tr></thead><tbody>{filtered.length===0?<tr><td colSpan="5" className="text-center text-secondary py-4">No clients found.</td></tr>:filtered.map(c=><tr key={c._id}><td><div className="fw-semibold">{c.fullName}</div><div className="small text-secondary">{c.clientId}</div></td><td>{c.contactNumber||"—"}</td><td>{c.email||"—"}</td><td><span className={`badge ${c.status==="ACTIVE"?"text-bg-success":"text-bg-secondary"}`}>{c.status}</span></td><td className="text-end"><button className="btn btn-sm btn-outline-primary" onClick={()=>edit(c)}>Edit</button></td></tr>)}</tbody></table></div>}
+   {loading?<p className="text-secondary">Loading clients...</p>:<div className="table-responsive"><table className="table align-middle"><thead><tr><th>Client</th><th>Contact</th><th>Email</th><th>Status</th><th className="text-end">Action</th></tr></thead><tbody>{filtered.length===0?<tr><td colSpan="5" className="text-center text-secondary py-4">No clients found.</td></tr>:filtered.map(c=><tr key={c._id}><td><div className="fw-semibold">{c.fullName}</div><div className="small text-secondary">{c.clientId}</div></td><td>{c.contactNumber||"—"}</td><td>{c.email||"—"}</td><td><StatusBadge status={c.status} /></td><td className="text-end"><button className="btn btn-sm btn-outline-primary" onClick={()=>edit(c)}>Edit</button></td></tr>)}</tbody></table></div>}
    </div></div></div>
   </div>
  </main>;
