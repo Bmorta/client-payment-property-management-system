@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import api from "../services/api.js";
 
 const STATUSES = ["AVAILABLE", "RESERVED", "SOLD"];
-const newBlock = (blockNumber = 1) => ({
-  blockNumber, lotCount: 1, defaultArea: "", areasSqm: [""], statuses: ["AVAILABLE"]
+const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
+  blockNumber, startLotNumber, lotCount: 1, defaultArea: "", areasSqm: [""], statuses: ["AVAILABLE"]
 });
 const newPhase = (phaseNumber = 1) => ({ phaseNumber, blocks: [newBlock()] });
 const areaValue = value => value === "" || value === null ? null : Number(value);
@@ -16,10 +16,14 @@ export default function PropertyInventory({ project, onClose }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [showGenerator, setShowGenerator] = useState(true);
+  const [selectedPhase, setSelectedPhase] = useState("1");
+  const [selectedBlock, setSelectedBlock] = useState("1");
 
   const load = async () => {
     const { data } = await api.get(`/projects/${project._id}/properties`);
     setProperties(data.data);
+    setSelectedPhase(String(data.data[0]?.phaseNumber ?? 1));
+    setSelectedBlock(String(data.data[0]?.blockNumber ?? 1));
     setShowGenerator(data.data.length === 0);
     setDrafts(Object.fromEntries(data.data.map(p => [p._id, {
       areaSqm: p.areaSqm ?? "", status: p.status
@@ -31,6 +35,8 @@ export default function PropertyInventory({ project, onClose }) {
       .then(({ data }) => {
         if (cancelled) return;
         setProperties(data.data);
+        setSelectedPhase(String(data.data[0]?.phaseNumber ?? 1));
+        setSelectedBlock(String(data.data[0]?.blockNumber ?? 1));
         setShowGenerator(data.data.length === 0);
         setDrafts(Object.fromEntries(data.data.map(p => [p._id, {
           areaSqm: p.areaSqm ?? "", status: p.status
@@ -39,6 +45,16 @@ export default function PropertyInventory({ project, onClose }) {
       .catch(e => { if (!cancelled) setError(e.response?.data?.message || "Unable to load lots."); });
     return () => { cancelled = true; };
   }, [project._id]);
+
+  const startAddingLots = () => {
+    const phaseNumber = Number(selectedPhase);
+    const blockNumber = Number(selectedBlock);
+    const existingInBlock = properties.filter(p => p.phaseNumber === phaseNumber && p.blockNumber === blockNumber);
+    const start = existingInBlock.length ? Math.max(...existingInBlock.map(p => p.lotNumber)) + 1 : 1;
+    setPhases([{ phaseNumber, blocks: [newBlock(blockNumber, start)] }]);
+    setError(""); setMessage("");
+    setShowGenerator(true);
+  };
 
   const updatePhase = (pi, fn) => setPhases(old => old.map((p, i) => i === pi ? fn(p) : p));
   const updateBlock = (pi, bi, fn) => updatePhase(pi, p => ({
@@ -110,7 +126,7 @@ export default function PropertyInventory({ project, onClose }) {
           phases: phases.map(p => ({
             phaseNumber: p.phaseNumber,
             blocks: p.blocks.map(b => ({
-              blockNumber: b.blockNumber, lotCount: b.lotCount,
+              blockNumber: b.blockNumber, startLotNumber: b.startLotNumber, lotCount: b.lotCount,
               areasSqm: b.areasSqm.map(areaValue), statuses: b.statuses
             }))
           }))
@@ -149,10 +165,26 @@ export default function PropertyInventory({ project, onClose }) {
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h3 className="h6 fw-bold mb-0">New lot configuration</h3>
           <button type="button" className="btn btn-sm btn-outline-secondary"
-            onClick={() => setShowGenerator(v => !v)}>
+            onClick={() => onClick={() => showGenerator ? setShowGenerator(false) : startAddingLots()}>
             {showGenerator ? "Hide new lot form" : "Add more lots"}
           </button>
         </div>
+        {!showGenerator && properties.length > 0 && <div className="row g-2 mb-3">
+          <div className="col-sm-4"><label className="form-label">Phase to extend</label>
+            <select className="form-select" value={selectedPhase} onChange={e => {
+              setSelectedPhase(e.target.value); setSelectedBlock("1");
+            }}>
+              {[...new Set(properties.map(p => p.phaseNumber))].sort((a,b) => a-b).map(n =>
+                <option key={n} value={n}>Phase {n}</option>)}
+            </select>
+          </div>
+          <div className="col-sm-4"><label className="form-label">Block to extend</label>
+            <select className="form-select" value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)}>
+              {[...new Set(properties.filter(p => p.phaseNumber === Number(selectedPhase)).map(p => p.blockNumber))]
+                .sort((a,b) => a-b).map(n => <option key={n} value={n}>Block {n}</option>)}
+            </select>
+          </div>
+        </div>}
         {showGenerator && phases.map((phase, pi) => <div className="border rounded p-3 mb-3" key={phase.phaseNumber}>
           <div className="d-flex justify-content-between align-items-center mb-2">
             <strong>Phase {phase.phaseNumber}</strong>
@@ -167,6 +199,7 @@ export default function PropertyInventory({ project, onClose }) {
                   ...p, blocks: p.blocks.filter((_, i) => i !== bi)
                 }))}>Remove block</button>}
             </div>
+            <p className="small text-secondary mb-2">New lots will be numbered starting at Lot {block.startLotNumber}.</p>
             <label className="form-label">Number of lots (1–100)</label>
             <input className="form-control mb-3" type="number" min="1" max="100"
               value={block.lotCount} onChange={e => setLotCount(pi, bi, e.target.value)} />
@@ -182,7 +215,7 @@ export default function PropertyInventory({ project, onClose }) {
             <div className="row g-2">
               {block.areasSqm.map((area, li) => <div className="col-12 col-md-6 col-xl-4" key={li}>
                 <div className="border rounded p-2">
-                  <label className="form-label small fw-semibold">Lot {li + 1}</label>
+                  <label className="form-label small fw-semibold">Lot {block.startLotNumber + li}</label>
                   <div className="d-flex gap-2">
                     <input aria-label={`Lot ${li + 1} area in sqm`} className="form-control form-control-sm"
                       type="number" min="0.01" step="any" placeholder="sqm" value={area}
