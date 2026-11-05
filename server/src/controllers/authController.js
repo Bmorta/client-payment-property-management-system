@@ -40,6 +40,7 @@ export const login = async (req, res, next) => {
       });
     }
 
+    req.user = user;
     user.lastLoginAt = new Date();
     await user.save();
 

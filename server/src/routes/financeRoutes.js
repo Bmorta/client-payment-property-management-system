@@ -1,10 +1,12 @@
+import { auditMutation } from "../middleware/auditMutation.js";
 import { Router } from "express";
 import { authenticate } from "../middleware/auth.js";
 import { authorize } from "../middleware/authorize.js";
-import { listAccounts, acceptPayment, listPayments, listExpenses, createExpense, report } from "../controllers/financeController.js";
+import { listAccounts, acceptPayment, listPayments, listExpenses, createExpense, report, updateAgreement } from "../controllers/financeController.js";
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, auditMutation);
 router.get("/accounts", listAccounts);
+router.patch("/accounts/:id/agreement", authorize("ADMIN"), updateAgreement);
 router.get("/payments", listPayments);
 router.post("/payments", authorize("ADMIN", "STAFF"), acceptPayment);
 router.get("/expenses", listExpenses);

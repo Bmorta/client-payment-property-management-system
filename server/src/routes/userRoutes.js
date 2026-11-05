@@ -1,3 +1,4 @@
+import { auditMutation } from "../middleware/auditMutation.js";
 import { Router } from "express";
 import {
   createUser,
@@ -9,7 +10,7 @@ import { authorize } from "../middleware/authorize.js";
 
 const router = Router();
 
-router.use(authenticate, authorize("ADMIN"));
+router.use(authenticate, authorize("ADMIN"), auditMutation);
 
 router.get("/", listUsers);
 router.post("/", createUser);

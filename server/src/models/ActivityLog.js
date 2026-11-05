@@ -2,6 +2,14 @@ import mongoose from "mongoose";
 
 const activityLogSchema = new mongoose.Schema(
   {
+    module: { type: String, default: "" },
+    username: { type: String, default: "" },
+    userRole: { type: String, default: "" },
+    description: { type: String, default: "" },
+    outcome: { type: String, enum: ["PENDING", "SUCCEEDED", "FAILED"], default: "SUCCEEDED" },
+    previousValues: { type: mongoose.Schema.Types.Mixed, default: null },
+    updatedValues: { type: mongoose.Schema.Types.Mixed, default: null },
+    completedAt: { type: Date, default: null },
     action: {
       type: String,
       required: true,
@@ -40,5 +48,6 @@ const activityLogSchema = new mongoose.Schema(
 
 activityLogSchema.index({ userId: 1, createdAt: -1 });
 activityLogSchema.index({ action: 1, createdAt: -1 });
+activityLogSchema.index({ module: 1, createdAt: -1 });
 
 export default mongoose.model("ActivityLog", activityLogSchema);

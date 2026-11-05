@@ -5,7 +5,7 @@ import Client from "../models/Client.js";
 import Project from "../models/Project.js";
 import Expense from "../models/Expense.js";
 import { lotPrice } from "../utils/lotPricing.js";
-import { moneyCents, buildSchedule, summarizeAccount, validDate, dateRange, today, METHODS } from "../utils/accounting.js";
+import { moneyCents, buildSchedule, summarizeAccount, validDate, dateRange, today, METHODS, TERMS } from "../utils/accounting.js";
 import { generateRecordId } from "../utils/generateRecordId.js";
 import { logActivity } from "../utils/activityLogger.js";
 const fail = (code, message) => { throw Object.assign(new Error(message), { statusCode: code }); };
@@ -44,7 +44,7 @@ export async function assignProperty(req, res, next) {
     claimed = await Property.findOneAndUpdate({ _id: propertyId, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
     if (!claimed) fail(409, "This lot is no longer available or is already linked to a client.");
     created = await PropertyAssignment.create({ assignmentId: await generateRecordId("contract"), client: clientId, project: property.project, property: propertyId,
-      contract: { totalCents, months, firstDueDate, contractDate, downPaymentCents, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, schedule }, createdBy: req.user._id });
+      contract: { totalCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", firstDueDate, contractDate, downPaymentCents, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, schedule }, createdBy: req.user._id, auditEvents: [{ eventId: req.auditEvent?._id, action: "AGREEMENT_CREATED", username: req.user.username, role: req.user.role, userId: req.user._id, timestamp: new Date() }] });
     await logActivity({ action: "PROPERTY_ASSIGNED", req, userId: req.user._id, entityType: "PropertyAssignment", entityId: created._id, metadata: { client: clientId, property: propertyId } });
     res.status(201).json({ success: true, message: "Lot assigned and payment schedule created.", data: created });
   } catch (e) {
@@ -72,10 +72,10 @@ export async function acceptPayment(req, res, next) {
     }
     const [client, project] = await Promise.all([Client.findById(account.client), Project.findById(account.project)]);
     if (!client || client.status !== "ACTIVE" || !project || project.status === "ARCHIVED") fail(409, "Payments require an active client and a project that is not archived.");
-    const payment = { ...input, requestId, paymentId: await generateRecordId("payment"), createdBy: req.user._id, createdAt: new Date() };
-    account = await PropertyAssignment.findOneAndUpdate({ _id: accountId, "payments.requestId": { $ne: requestId },
+    const payment = { ...input, agreementVersion: (account.agreementHistory?.length || 0) + 1, actorUsername: req.user.username, actorRole: req.user.role, requestId, paymentId: await generateRecordId("payment"), createdBy: req.user._id, createdAt: new Date() };
+    account = await PropertyAssignment.findOneAndUpdate({ _id: accountId, __v: account.__v ?? 0, "payments.requestId": { $ne: requestId },
       $expr: { $lte: [{ $add: [{ $sum: "$payments.amountCents" }, amountCents] }, "$contract.totalCents"] }
-    }, { $push: { payments: payment } }, { new: true, runValidators: true }).lean();
+    }, { $push: { payments: payment, auditEvents: { eventId: req.auditEvent?._id, action: "PAYMENT_RECORDED", userId: req.user._id, username: req.user.username, role: req.user.role, timestamp: new Date(), updatedValues: payment } }, $inc: { __v: 1 } }, { new: true, runValidators: true }).lean();
     if (!account) {
       const latest = await PropertyAssignment.findById(accountId).lean();
       const previous = latest?.payments.find(p => p.requestId === requestId);
@@ -130,5 +130,26 @@ export async function report(req, res, next) {
     const asOf = to < today() ? to : today();
     const balances = accounts.filter(a => a.contract.contractDate <= asOf).map(a => ({ ...a, summary: summarizeAccount(a, asOf) }));
     res.json({ success: true, data: { from, to, asOf, collectedCents, expenseCents, netCents: collectedCents - expenseCents, payments, expenses, accounts: balances } });
+  } catch (e) { next(e); }
+}
+
+export async function updateAgreement(req, res, next) {
+  try {
+    const accountId = id(req.params.id);
+    if (req.body.confirmScheduleReplacement !== true || !Number.isSafeInteger(req.body.expectedVersion) || req.body.expectedVersion < 0) fail(400, "Review and explicitly confirm the replacement schedule before saving.");
+    const account = await PropertyAssignment.findById(accountId).lean();
+    if (!account) fail(404, "Account not found.");
+    const project = await Project.findById(account.project);
+    if (!project || project.status === "ARCHIVED") fail(409, "Archived project agreements cannot be changed.");
+    const months = Number(req.body.months), downPaymentCents = moneyCents(req.body.downPayment);
+    const schedule = buildSchedule(account.contract.totalCents, months, req.body.firstDueDate, downPaymentCents, account.contract.contractDate);
+    const contract = { ...account.contract, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", downPaymentCents, firstDueDate: req.body.firstDueDate, schedule };
+    const event = { eventId: req.auditEvent?._id, action: "AGREEMENT_UPDATED", userId: req.user._id, username: req.user.username, role: req.user.role, timestamp: new Date(), previousValues: account.contract, updatedValues: contract };
+    const updated = await PropertyAssignment.findOneAndUpdate({ _id: accountId, __v: req.body.expectedVersion }, {
+      $set: { contract }, $push: { agreementHistory: { contract: account.contract, replacedAt: event.timestamp, replacedBy: req.user._id }, auditEvents: event }, $inc: { __v: 1 }
+    }, { new: true, runValidators: true }).lean();
+    if (!updated) fail(409, "This account or its payments changed. Reload and review the agreement before retrying.");
+    await logActivity({ action: "AGREEMENT_UPDATED", req, userId: req.user._id, entityType: "PropertyAssignment", entityId: accountId });
+    res.json({ success: true, message: "Agreement updated. Previous schedule preserved; recorded payments are unchanged.", data: accountData(updated) });
   } catch (e) { next(e); }
 }

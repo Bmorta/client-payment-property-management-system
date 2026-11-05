@@ -56,3 +56,32 @@ Delinquency uses unpaid scheduled installments: 2 overdue installments show a
 warning; 3 show FORFEITURE REVIEW. This does not automatically cancel a contract
 or release a lot. Penalty review appears after 10 days overdue; automatic
 percentage charges and admin overrides are pending the exact rate and basis.
+
+## Audit and agreement update
+
+Admin Users has a read-only User Activity Logs tab. Requests are journaled to
+ActivityLog with authenticated username/role snapshots, previous values, and
+server UTC timestamps before business writes start. Failure to persist the
+intent blocks the write. Completion stores sanitized updated values/outcome.
+A crash can leave PENDING; it must be reviewed, and is never shown as a confirmed
+success. FAILED is a failed request, not a guarantee that a multi-document
+operation rolled back. Bulk generation also snapshots requested blocks after
+failure so partial inserts remain inspectable. There is no audit edit/delete API.
+Passwords, hashes, tokens and other secret keys are recursively removed.
+
+Payment appends and agreement replacements also embed audit details in the
+same atomic PropertyAssignment write. Each agreement replacement appends its
+previous contract/schedule and requires ADMIN authorization, explicit schedule
+replacement confirmation and an optimistic version check. Payment appends
+increment the same version so concurrent agreement changes must be reviewed.
+The immutable payment ledger is not rewritten by rescheduling. Historical
+reports select the agreement version active at the report cutoff.
+
+Client and server share shared/paymentSchedule.js. Existing predefined terms
+remain; custom whole-month terms are allowed from 1 to 1,200 months. The upper
+bound is a technical schedule-size limit, not a new financing policy. Existing
+centavo rounding/date conventions are preserved. Preview creates no payments
+and applies no interest/penalties. Inventory prices remain read-only in the
+agreement editor; changing the selected lot or agreed selling price requires
+a separate authorized workflow. The shared module is explicitly allowed by
+the Vite development server so it also works when running from client/.

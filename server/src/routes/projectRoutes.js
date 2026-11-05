@@ -1,3 +1,4 @@
+import { auditMutation } from "../middleware/auditMutation.js";
 import { Router } from "express";
 import { archiveProject, createProject, getProject, listProjects, updateProject } from "../controllers/projectController.js";
 import { listProjectProperties, createProjectProperty, updateProjectPropertyArea, generateProjectProperties, updateProjectProperties } from "../controllers/propertyController.js";
@@ -7,7 +8,7 @@ import { authorize } from "../middleware/authorize.js";
 
 const router = Router();
 
-router.use(authenticate);
+router.use(authenticate, auditMutation);
 router.get("/", listProjects);
 router.get("/:projectId/structure", listStructure);
 router.post("/:projectId/phases", authorize("ADMIN", "STAFF"), savePhase);

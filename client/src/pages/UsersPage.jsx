@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
+const ActivityLogs = lazy(() => import("../components/ActivityLogs.jsx"));
+import { manilaTimestamp } from "../utils/manilaTime.js";
 import api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -216,6 +218,7 @@ const UserModal = ({ open, editingUser, onClose, onSaved }) => {
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
+  const [tab, setTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
@@ -279,9 +282,14 @@ export default function UsersPage() {
           <h1 className="h3 fw-bold mb-1">Users</h1>
           <p className="text-secondary mb-0">Manage system accounts, roles and account status.</p>
         </div>
-        <button className="btn btn-primary" onClick={openCreate}>Add User</button>
+        {tab === "users" && <button className="btn btn-primary" onClick={openCreate}>Add User</button>}
       </div>
 
+      <div className="nav nav-tabs mb-4" role="tablist" aria-label="User management tabs">
+        <button className={`nav-link ${tab === "users" ? "active" : ""}`} role="tab" aria-selected={tab === "users"} onClick={() => setTab("users")}>Users</button>
+        <button className={`nav-link ${tab === "activity" ? "active" : ""}`} role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}>User Activity Logs</button>
+      </div>
+      {tab === "activity" ? <Suspense fallback={<p role="status">Loading activity logs...</p>}><ActivityLogs users={users} /></Suspense> : <>
       {pageError && <div className="alert alert-danger">{pageError}</div>}
       {success && <div className="alert alert-success">{success}</div>}
 
@@ -329,7 +337,7 @@ export default function UsersPage() {
                           {item.isActive ? "Active" : "Inactive"}
                         </span>
                       </td>
-                      <td>{item.lastLoginAt ? new Date(item.lastLoginAt).toLocaleString() : "Never"}</td>
+                      <td>{item.lastLoginAt ? manilaTimestamp(item.lastLoginAt) : "Never"}</td>
                       <td className="text-end">
                         <button className="btn btn-sm btn-outline-secondary" onClick={() => openEdit(item)}>
                           Edit
@@ -354,6 +362,7 @@ export default function UsersPage() {
         onClose={() => setModalOpen(false)}
         onSaved={handleSaved}
       />
+      </>}
     </main>
   );
 }

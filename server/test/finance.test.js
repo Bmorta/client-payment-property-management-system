@@ -26,7 +26,7 @@ test("schedule totals equal contract including down payment, rounding and month 
  const schedule=buildSchedule(100001,12,"2028-01-31",10000,"2028-01-01");
  assert.equal(schedule.reduce((n,r)=>n+r.amountCents,0),100001);
  assert.equal(schedule[0].installment,0);assert.equal(schedule[2].dueDate,"2028-02-29");assert.equal(schedule[3].dueDate,"2028-03-31");
- assert.throws(()=>buildSchedule(100,13,"2026-01-01"));
+ assert.throws(()=>buildSchedule(100,0,"2026-01-01"));
  assert.throws(()=>buildSchedule(100,12,"2026-01-01",101));
  assert.equal(validDate("2026-02-30"),false);
  assert.throws(()=>dateRange({from:"2026-03-01",to:"2026-01-01"}));

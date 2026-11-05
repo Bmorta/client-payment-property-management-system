@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import HeaderClock from "../components/HeaderClock.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function AppLayout() {
@@ -46,6 +47,7 @@ export default function AppLayout() {
             <div className="d-flex align-items-center gap-3">
               <div className="text-end">
                 <div className="fw-semibold">{user?.fullName}</div>
+                <HeaderClock />
                 <div className="small text-secondary">
                   {user?.role} · {user?.username}
                 </div>
