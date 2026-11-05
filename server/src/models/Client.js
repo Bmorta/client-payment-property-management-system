@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const clientSchema = new mongoose.Schema(
   {
-    clientId: { type: String, trim: true, uppercase: true, unique: true, required: true },
+    clientId: { immutable: true, type: String, trim: true, uppercase: true, unique: true, required: true },
     firstName: { type: String, trim: true, required: true },
     middleName: { type: String, trim: true, default: "" },
     lastName: { type: String, trim: true, required: true },

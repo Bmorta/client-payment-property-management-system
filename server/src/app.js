@@ -1,3 +1,5 @@
+import agentRoutes from "./routes/agentRoutes.js";
+import commissionRoutes from "./routes/commissionRoutes.js";
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
@@ -28,6 +30,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/clients", clientRoutes);
+app.use("/api/agents",agentRoutes);
+app.use("/api/commissions",commissionRoutes);
 app.use("/api/finance", financeRoutes);
 app.use("/api/activity-logs", activityRoutes);
 

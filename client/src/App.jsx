@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
@@ -7,33 +8,16 @@ import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
-import PaymentPage from "./pages/PaymentPage.jsx";
+const PaymentPage=lazy(()=>import("./pages/PaymentPage.jsx"));
+const ApprovalRequestsPage=lazy(()=>import("./pages/ApprovalRequestsPage.jsx"));
 import ExpensesPage from "./pages/ExpensesPage.jsx";
-import ReportsPage from "./pages/ReportsPage.jsx";
-import ClientsPage from "./pages/ClientsPage.jsx";
+const ReportsPage=lazy(()=>import("./pages/ReportsPage.jsx"));
+const AgentsPage=lazy(()=>import("./pages/AgentsPage.jsx"));
+const CommissionsPage=lazy(()=>import("./pages/CommissionsPage.jsx"));
+const ClientsPage=lazy(()=>import("./pages/ClientsPage.jsx"));
 
-const DashboardPage = () => (
-  <main className="container-fluid py-4 px-4">
-    <div className="mb-4">
-      <p className="text-uppercase small fw-semibold text-secondary mb-1">Overview</p>
-      <h1 className="h3 fw-bold mb-1">Dashboard</h1>
-      <p className="text-secondary mb-0">Core financial and property modules will be added phase by phase.</p>
-    </div>
-    <div className="row g-3">
-      {["Projects", "Clients", "Properties", "Collections"].map((item) => (
-        <div className="col-12 col-sm-6 col-xl-3" key={item}>
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-body">
-              <div className="small text-secondary">{item}</div>
-              <div className="fs-3 fw-bold mt-2">—</div>
-              <div className="small text-secondary mt-1">Coming in a later phase</div>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </main>
-);
+const PaymentMonitoringPage=lazy(()=>import("./pages/PaymentMonitoringPage.jsx"));
+const DashboardPage=PaymentMonitoringPage;
 
 const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -51,7 +35,7 @@ const AdminRoute = ({ children }) => {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter><Suspense fallback={<p className="p-4">Loading...</p>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
@@ -60,8 +44,12 @@ export default function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId/lots" element={<ManageLotsPage />} />
+              <Route path="/agents" element={<AgentsPage/>}/>
+              <Route path="/commissions" element={<CommissionsPage/>}/>
               <Route path="/clients" element={<ClientsPage />} />
               <Route path="/payment-transactions" element={<PaymentTransactionsPage />} />
+              <Route path="/payment-monitoring" element={<PaymentMonitoringPage />} />
+              <Route path="/approval-requests" element={<AdminRoute><ApprovalRequestsPage /></AdminRoute>} />
               <Route path="/payment" element={<PaymentPage />} />
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
@@ -71,7 +59,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
+      </Suspense></BrowserRouter>
     </AuthProvider>
   );
 }

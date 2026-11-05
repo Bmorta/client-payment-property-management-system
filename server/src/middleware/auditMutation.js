@@ -1,3 +1,4 @@
+import Agent from "../models/Agent.js";
 import ActivityLog from "../models/ActivityLog.js";
 import Project from "../models/Project.js";
 import Phase from "../models/Phase.js";
@@ -13,6 +14,8 @@ function target(req) {
   const parts = req.path.split("/").filter(Boolean), base = req.baseUrl;
   let model, module, filter = {};
   const one = id => /^[a-fA-F0-9]{24}$/.test(String(id || "")) ? { _id: id } : { _id: null };
+  if (base.endsWith("/agents")){model=Agent;module="Agents";filter=one(parts[0]);}
+  if (base.endsWith("/commissions")){model=PropertyAssignment;module="Commissions";filter=one(parts[1]);}
   if (base.endsWith("/users")) { model = User; module = "Users"; filter = one(parts[0]); }
   if (base.endsWith("/clients")) {
     model = parts.includes("assignments") ? Property : Client; module = parts.includes("assignments") ? "Payment Agreements" : "Clients";
@@ -32,7 +35,7 @@ function target(req) {
   }
   if (base.endsWith("/finance")) {
     model = parts[0] === "expenses" ? Expense : PropertyAssignment;
-    module = parts[0] === "expenses" ? "Expenses" : parts[0] === "accounts" ? "Payment Agreements" : "Payment Transactions";
+    module = parts.includes("corrections") || parts.includes("requests") ? "Payment Corrections" : parts[0] === "notifications" ? "Notifications" : parts[0] === "expenses" ? "Expenses" : parts[0] === "accounts" ? "Payment Agreements" : "Payment Transactions";
     filter = one(parts[0] === "accounts" ? parts[1] : req.body?.accountId);
   }
   const action = req.path.endsWith("/archive") ? "ARCHIVED" : req.method === "DELETE" || req.path.endsWith("/bulk-delete") ? "DELETED" : req.method === "POST" ? "CREATED" : "UPDATED";

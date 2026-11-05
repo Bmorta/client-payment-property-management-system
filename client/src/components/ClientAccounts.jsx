@@ -4,6 +4,8 @@ import api from "../services/api.js";
 import AssignmentFields, { blankAssignment } from "./AssignmentFields.jsx";
 import AgreementEditor from "./AgreementEditor.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import AccountMonitoringDetails from "./AccountMonitoringDetails.jsx";
+import PropertyPaymentHistory from "./PropertyPaymentHistory.jsx";
 import CenterPopup from "./CenterPopup.jsx";
 import { pesos, clientName, lotName } from "../utils/finance.js";
 export default function ClientAccounts({ client, refreshKey = 0 }) {
@@ -26,9 +28,9 @@ export default function ClientAccounts({ client, refreshKey = 0 }) {
       <div className="d-flex flex-wrap gap-3 my-3"><span>Contract: {pesos(a.contract.totalCents)}</span><span>Paid: {pesos(a.summary.paidCents)}</span><span>Overdue: {pesos(a.summary.overdueCents)}</span><Link to={`/payment?account=${a._id}`} className="btn btn-sm btn-primary">Accept Payment</Link></div>
       {user?.role === "ADMIN" && <button type="button" className="btn btn-sm btn-outline-primary my-2" onClick={() => setEditingAgreement(a._id)}>Edit Payment Agreement</button>}
       {editingAgreement === a._id && <AgreementEditor key={`${a._id}/${a.__v}`} account={a} onClose={() => setEditingAgreement(null)} onSaved={() => {setEditingAgreement(null);setVersion(v=>v+1);setMessage("Agreement updated. Recorded payments are unchanged.")}} />}
-      <p className="text-secondary small">Payments go to the oldest scheduled balance first. Penalty charges are pending the percentage rule. Warnings start at 2 overdue installments; 3 require forfeiture review.</p>
+      <AccountMonitoringDetails account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
       <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Installment</th><th>Due date</th><th>Scheduled</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{a.summary.schedule.map(s => <tr key={s.installment}><td>{s.installment === 0 ? "Down payment" : s.installment}</td><td>{s.dueDate}</td><td>{pesos(s.amountCents)}</td><td>{pesos(s.paidCents)}</td><td>{pesos(s.balanceCents)}</td><td>{!s.balanceCents ? "Paid" : s.penaltyReview ? "Overdue >10 days" : s.overdue ? "Overdue" : "Scheduled"}</td></tr>)}</tbody></table></div>
-      <h3 className="h6">Payment history</h3>{!a.payments.length ? <p className="text-secondary small">No payments recorded.</p> : <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Payment ID</th><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead><tbody>{a.payments.map(p => <tr key={p.paymentId}><td>{p.paymentId}</td><td>{p.paymentDate}</td><td>{pesos(p.amountCents)}</td><td>{p.method.replaceAll("_", " ")}</td><td>{p.reference || "—"}</td></tr>)}</tbody></table></div>}
+      <PropertyPaymentHistory account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
     </details>)}
     {client.status === "ACTIVE" && <details className="border rounded p-3"><summary className="fw-semibold">Assign another property</summary><form onSubmit={assign} className="mt-3"><fieldset disabled={busy}><AssignmentFields clientId={client._id} value={form} onChange={setForm} refreshKey={version} /><button className="btn btn-primary mt-2" disabled={!form.propertyId || busy}>{busy ? "Assigning..." : "Assign Lot & Create Schedule"}</button></fieldset></form></details>}
   </div></section>;

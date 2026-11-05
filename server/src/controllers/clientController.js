@@ -1,3 +1,4 @@
+import { generateRecordId } from "../utils/generateRecordId.js";
 import Client from "../models/Client.js";
 import { logActivity } from "../utils/activityLogger.js";
 
@@ -28,13 +29,13 @@ export const getClient = async (req, res, next) => {
 
 export const createClient = async (req, res, next) => {
   try {
-    const { clientId, firstName, middleName, lastName, suffix, contactNumber, email, address, notes, status } = req.body;
-    if (!clientId || !firstName || !lastName) {
-      return res.status(400).json({ success: false, message: "Client ID, first name, and last name are required." });
+    const { firstName, middleName, lastName, suffix, contactNumber, email, address, notes, status } = req.body;
+    if (!firstName || !lastName) {
+      return res.status(400).json({ success: false, message: "First name and last name are required." });
     }
     if (await possibleDuplicate(req.body)) return res.status(409).json({ success: false, message: "A client with this name and contact/email already exists. Use the existing client and assign another property." });
     const client = await Client.create({
-      clientId: normalize(clientId), firstName: normalize(firstName), middleName: normalize(middleName || ""),
+      clientId: await generateRecordId("client"), firstName: normalize(firstName), middleName: normalize(middleName || ""),
       lastName: normalize(lastName), suffix: normalize(suffix || ""), contactNumber: normalize(contactNumber || ""),
       email: normalize(email || "").toLowerCase(), address: normalize(address || ""), notes: normalize(notes || ""),
       status: status || "ACTIVE", createdBy: req.user._id
@@ -51,7 +52,8 @@ export const updateClient = async (req, res, next) => {
   try {
     const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ success: false, message: "Client not found." });
-    const fields = ["clientId","firstName","middleName","lastName","suffix","contactNumber","email","address","notes","status"];
+    if (req.body.clientId !== undefined && req.body.clientId !== client.clientId) return res.status(400).json({ success: false, message: "Client ID cannot be changed." });
+    const fields = ["firstName","middleName","lastName","suffix","contactNumber","email","address","notes","status"];
     for (const field of fields) {
       if (req.body[field] !== undefined) client[field] = field === "email" ? normalize(req.body[field] || "").toLowerCase() : normalize(req.body[field]);
     }

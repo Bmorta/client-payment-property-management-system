@@ -15,6 +15,8 @@ const req = body => ({ params: { id }, get: () => "test", user: { _id: id }, bod
 const next = e => { throw e; };
 const account = () => ({ _id: id, client: id, project: id, property: propertyId, contract: { totalCents: 120000, months: 12, contractDate: "2026-01-01", firstDueDate: "2026-01-31", schedule: buildSchedule(120000,12,"2026-01-31") }, payments: [] });
 test.beforeEach(t => {
+ t.mock.method(Client, "aggregate", async () => []);
+ t.mock.method(PropertyAssignment, "aggregate", async () => []);
  t.mock.method(ActivityLog, "create", async () => ({}));
  t.mock.method(SequenceCounter, "findOneAndUpdate", async () => ({ value: 1 }));
 });
@@ -46,8 +48,8 @@ test("payment posting atomically protects balance and submission ID",async t=>{
  const a=account();active(t);t.mock.method(PropertyAssignment,"findById",()=>({lean:async()=>a}));
  t.mock.method(PropertyAssignment,"findOneAndUpdate",(filter,update)=>{
   assert.deepEqual(filter["payments.requestId"],{$ne:"request-payment-1234"});
-  assert.deepEqual(filter.$expr,{$lte:[{$add:[{$sum:"$payments.amountCents"},10000]},"$contract.totalCents"]});
-  assert.equal(update.$push.payments.amountCents,10000);a.payments.push(update.$push.payments);return {lean:async()=>a};
+  assert.equal(filter.__v,0); // version guards the validated effective ledger
+  assert.equal(update.$push.payments.amountCents,10000);assert.match(update.$push.payments.receiptNumber,/^RCT-/);a.payments.push(update.$push.payments);return {lean:async()=>a};
  });
  const res=response();await acceptPayment(req(paymentBody()),res,next);assert.equal(res.code,201);assert.equal(res.body.summary.balanceCents,110000);
 });

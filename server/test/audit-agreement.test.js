@@ -58,10 +58,10 @@ test("audit access is denied to staff and viewers",()=>{
 });
 test("agreement changes atomically preserve old version and audit without touching payments",async t=>{
  const a=account(),paymentCopy=JSON.stringify(a.payments);t.mock.method(PropertyAssignment,"findById",()=>({lean:async()=>a}));t.mock.method(Project,"findById",async()=>({status:"ACTIVE"}));t.mock.method(ActivityLog,"create",async()=>({}));
- let write;t.mock.method(PropertyAssignment,"findOneAndUpdate",(filter,update)=>{assert.equal(filter.__v,2);write=update;return {lean:async()=>({...a,contract:update.$set.contract})}});
+ let write;t.mock.method(PropertyAssignment,"findOneAndUpdate",(filter,update)=>{assert.equal(filter.__v,2);write=update;return {lean:async()=>({...a,contract:{...a.contract,...Object.fromEntries(Object.entries(update.$set).filter(([k])=>k.startsWith("contract.")).map(([k,v])=>[k.slice(9),v]))}})}});
  const res=response();await updateAgreement(req(),res,next);
- assert.equal(write.$set.contract.months,18);assert.equal(write.$set.contract.termType,"CUSTOM");assert.equal(write.$set.contract.totalCents,60000000);
- assert.equal(write.$push.agreementHistory.contract.months,36);assert.equal(write.$push.auditEvents.previousValues.months,36);assert.equal(write.$push.auditEvents.updatedValues.months,18);
+ assert.equal(write.$set["contract.months"],18);assert.equal(write.$set["contract.termType"],"CUSTOM");assert.equal(write.$set["contract.totalCents"],undefined); // price and unrelated contract metadata are never rewritten
+ assert.equal(write.$push.agreementHistory.contract.months,36);assert.equal(write.$push.auditEvents.$each.find(e=>e.action==="AGREEMENT_UPDATED").previousValues.months,36);assert.equal(write.$push.auditEvents.$each.find(e=>e.action==="AGREEMENT_UPDATED").updatedValues.months,18);
  assert.equal(Object.hasOwn(write.$set,"payments"),false);assert.equal(JSON.stringify(a.payments),paymentCopy);
 });
 test("agreement confirmation and concurrency are enforced",async t=>{

@@ -38,7 +38,8 @@ export default function PropertyInventory({ project, onClose }) {
   const changed = properties.filter(p =>
     String(drafts[p._id]?.lotNumber ?? p.lotNumber) !== String(p.lotNumber) || String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") || String(drafts[p._id]?.pricePerSqm ?? "") !== String(p.pricePerSqm ?? "") || drafts[p._id]?.status !== p.status
   );
-  const editMode = mode === "modify" && !archived;
+  const [lotEditing, setLotEditing] = useState(false);
+  const editMode = mode === "modify" && lotEditing && !archived;
   const notify = (text, isError = false) => {
     setError(isError ? text : ""); setMessage(isError ? "" : text);
   };
@@ -69,7 +70,7 @@ export default function PropertyInventory({ project, onClose }) {
 
   const chooseMode = next => {
     if (busy || generator || changed.length) return notify("Save or cancel the current changes before switching options.", true);
-    setMode(next); setSelectedLots([]);
+    setMode(next); setLotEditing(next === "modify"); setSelectedLots([]);
     if (next === "modify") changeFilters({ phase: selectedPhase, block: selectedBlock, lot: "", status: "" });
     if (next === "add") {
       setGenerator("phase");
@@ -192,6 +193,7 @@ export default function PropertyInventory({ project, onClose }) {
       {onClose && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>}
     </div>
     <CenterPopup message={message} error={error} confirm={confirmAction?.text}
+      confirmTitle={confirmAction?.discard ? "Discard changes" : "Confirm deletion"} confirmLabel={confirmAction?.discard ? "Discard Changes" : "Delete"} cancelLabel={confirmAction?.discard ? "Keep Editing" : "Cancel"}
       onClose={() => { setMessage(""); setError(""); setConfirmAction(null); }} onConfirm={() => confirmAction?.action()} />
     {loading ? <p role="status">Loading inventory...</p> : loadFailed ? <p className="text-danger" role="alert">Inventory could not be loaded. Reload this page to retry.</p> : <>
       {archived ? <p className="alert alert-secondary">This project is archived. Inventory is read-only.</p> : <div className="border rounded p-3 mb-4">
@@ -313,10 +315,11 @@ export default function PropertyInventory({ project, onClose }) {
       </div>}
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h3 className="h6 fw-bold mb-0">Existing lots ({visibleProperties.length} of {properties.length})</h3>
+        {mode === "modify" && !lotEditing && !archived && <button className="btn btn-outline-primary btn-sm" disabled={busy} onClick={() => setLotEditing(true)}>Edit lot information</button>}
         {editMode && <div className="d-flex flex-wrap gap-2 align-items-center">
           <span className="small text-secondary">{changed.length} unsaved lot edits</span>
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!generator || !changed.length} onClick={saveEdits}>Save Lot Changes</button>
-          <button type="button" className="btn btn-outline-secondary btn-sm" disabled={busy || !changed.length} onClick={cancelEdits}>Cancel lot edits</button>
+          <button type="button" className="btn btn-outline-secondary btn-sm" disabled={busy} onClick={() => { const discard = () => {cancelEdits();setSelectedLots([]);setLotEditing(false);setConfirmAction(null)}; if(changed.length) setConfirmAction({discard:true,text:"Discard unsaved lot changes?",action:discard}); else discard(); }}>Cancel Editing / Go Back</button>
         </div>}
       </div>
       <div className="row g-2 mb-3">

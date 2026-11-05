@@ -1,4 +1,5 @@
 import "dotenv/config";
+import {startMonitoring} from "./services/monitoringService.js";
 import mongoose from "mongoose";
 import app from "./app.js";
 
@@ -13,6 +14,7 @@ const startServer = async () => {
   try {
     await mongoose.connect(MONGODB_URI);
     console.log("MongoDB connected.");
+    startMonitoring();
 
     app.listen(PORT, () => {
       console.log("API listening on port " + PORT);

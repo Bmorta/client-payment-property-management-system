@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import ContractTerms from "./ContractTerms.jsx";
 import TermSelector from "./TermSelector.jsx";
 import PaymentEstimate from "./PaymentEstimate.jsx";
 import { moneyCents } from "../../../shared/paymentSchedule.js";
 import api from "../services/api.js";
 import { money, lotPrice } from "../utils/lotPricing.js";
 import { localDate } from "../utils/finance.js";
-export const blankAssignment = () => ({ projectId: "", phase: "", block: "", propertyId: "", months: "12", termType: "PREDEFINED", contractDate: localDate(), firstDueDate: "", downPayment: "0" });
+export const blankAssignment = () => ({ projectId: "", phase: "", block: "", propertyId: "", months: "12", termType: "PREDEFINED", contractDate: localDate(), firstDueDate: "", downPayment: "0", monitoringTerms:null });
 export default function AssignmentFields({ value, onChange, refreshKey = 0, clientId = "" }) {
   const [projects, setProjects] = useState([]), [lots, setLots] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false);
   useEffect(() => { let cancelled = false; api.get("/projects").then(({ data }) => { if (!cancelled) setProjects(data.data.filter(p => p.status !== "ARCHIVED")); }).catch(() => { if (!cancelled) setError("Unable to load projects. Reload the page."); }); return () => { cancelled = true; }; }, []);
@@ -36,7 +37,8 @@ export default function AssignmentFields({ value, onChange, refreshKey = 0, clie
     <div className="col-sm-6"><label className="form-label w-100">Planned down payment (₱)<input className="form-control" type="number" min="0" step="0.01" required value={value.downPayment} onChange={e => set("downPayment", e.target.value)} /></label></div>
     <div className="col-sm-6"><label className="form-label w-100">Contract date<input className="form-control" type="date" required max={localDate()} value={value.contractDate} onChange={e => set("contractDate", e.target.value)} /></label></div>
     <div className="col-sm-6"><label className="form-label w-100">First installment due<input className="form-control" type="date" required min={value.contractDate} value={value.firstDueDate} onChange={e => set("firstDueDate", e.target.value)} /></label></div>
-    <div className="col-12"><PaymentEstimate totalCents={totalCents} months={value.months} termType={value.termType} downPayment={value.downPayment} firstDueDate={value.firstDueDate} contractDate={value.contractDate} propertyLabel={lot ? `Phase ${lot.phaseNumber} / Block ${lot.blockNumber} / Lot ${lot.lotNumber}` : ""} /></div>
+    <ContractTerms value={value} onChange={onChange}/>
+    <div className="col-12"><PaymentEstimate monitoringTerms={value.monitoringTerms} monthlyInstallment={value.monthlyInstallment} totalCents={totalCents} months={value.months} termType={value.termType} downPayment={value.downPayment} firstDueDate={value.firstDueDate} contractDate={value.contractDate} propertyLabel={lot ? `Phase ${lot.phaseNumber} / Block ${lot.blockNumber} / Lot ${lot.lotNumber}` : ""} /></div>
     <p className="small text-secondary">The down payment is scheduled, not marked paid. Record actual money received through Payment.</p>
   </div>;
 }

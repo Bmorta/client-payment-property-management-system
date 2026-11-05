@@ -85,3 +85,28 @@ and applies no interest/penalties. Inventory prices remain read-only in the
 agreement editor; changing the selected lot or agreed selling price requires
 a separate authorized workflow. The shared module is explicitly allowed by
 the Vite development server so it also works when running from client/.
+
+## Payment controls working checkpoint — 2026-11-05
+
+- New client IDs are server-generated (`CL-000001`); old IDs are never renumbered. New payment IDs (`PAY`) and internal receipt numbers (`RCT`) are independent. Existing references remain visible/exportable. Internal receipts are application identifiers, not a regulated invoice/receipt series.
+- Before allocating, numeric historical CL/CLT, PAY and RCT/RCP IDs raise (never lower) atomic counters. Numbers can have gaps after retries or failed requests; gaps are not reused.
+- Client search is paginated in MongoDB (20/page). Search results include client/project/lot identity, without account ledgers. The Payment page retrieves accounts for the selected client only, or a specific account from a deep link.
+- Payment allocations support AUTO (oldest outstanding balance), DOWN_PAYMENT and INSTALLMENT. Paid-month progress counts fully covered, positive installment rows; down payment is excluded. Partial/advance amounts are allocated in payment date/creation order.
+- Staff submit pending corrections. Original payment fields remain unchanged. Admin direct edits require confirmation; approved edits append immutable-history revisions. Voids retain the original transaction, with zero effective collection. All account financial updates use optimistic document versions. Stale source values or invalid current allocations prevent approval. Replayed submission IDs do not create duplicate corrections.
+- Correction requests, revisions, audit events and notification outboxes are saved atomically in the same account document. This supports standalone MongoDB without multi-document transactions. Main audit logging remains the existing durable write-ahead journal.
+- Notifications use authenticated fetch/SSE with a 3-second database check, reconnect, persisted per-user reads, and admin-role/staff recipient checks. Expired tokens, inactive users and changed roles terminate streams. The bell shows the latest 100 events; unread count covers all retained events. Notification reads increment account version to prevent concurrent full-array updates from losing read state.
+- Phase/block/lot cancel actions discard local drafts only. Dirty cancellation requires Keep Editing or Discard Changes; the selected phase/block is retained.
+- No office data migration runs at startup. `cd server` then `node src/scripts/reconcileClientIds.js` is a read-only missing-ID inventory. `--apply` is an explicit, separately invoked maintenance operation with an audit journal; it fills missing/null/empty IDs only. Do not run it merely to start the app.
+- Penalty amounts remain unconfigured. No automatic penalty or forfeiture mutation was added. The percentage and calculation basis still require a decision.
+
+Validation: `npm test --prefix server` covers prior behavior and new numbering/ledger/correction/search/notification cases. The optional `server/integration/payment-flow.test.js` requires `CPM_TEST_MONGO_URI`; it creates and drops only a randomly named `cpm_test_*` database. It does not use the configured office database name. UI interaction checks use DOM rendering and mocked APIs; a final Windows office acceptance test is still needed.
+
+To run this working source, keep the existing `server/.env` and MongoDB service. From the repository root, run `npm run dev --prefix server` in one terminal and `npm run dev --prefix client` in another. Install each folder's dependencies first if absent. Open the Vite address (normally http://localhost:5173). Do not reseed/reset the database. Uncommitted working files cannot be obtained by `git pull` until an explicitly authorized push.
+
+## Contract-based monitoring implementation
+
+The subsequent [contract monitoring update](contract-monitoring.md) implements explicit per-property penalty terms, persistent allocation versions, monthly penalty history, reminders and administrator forfeiture reviews. It supersedes the earlier checkpoint's "penalties pending" statement for explicitly configured contracts. Unconfigured contracts still receive no automatic penalty rate.
+
+## Agent and commission ledger
+
+See [Agent/Commission implementation and verification](agent-commissions.md). Commission eligibility now follows effective buyer principal allocations, with separate immutable payout history and recovery balances. The account recalculation hook persists commission changes atomically with financial updates. Agent/Commission modules and PDF/Excel reports were added without altering client/property/payment identities.

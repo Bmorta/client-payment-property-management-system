@@ -1,11 +1,12 @@
+import {configureSchedule,validateTerms} from "../../../shared/contractTerms.js";
 import { buildSchedule, moneyCents, validDate } from "../../../shared/paymentSchedule.js";
 import { pesos } from "../utils/finance.js";
-export default function PaymentEstimate({ totalCents, months, downPayment, firstDueDate, contractDate, propertyLabel = "", termType = "PREDEFINED" }) {
+export default function PaymentEstimate({ totalCents, months, downPayment, firstDueDate, contractDate, propertyLabel = "", termType = "PREDEFINED", monitoringTerms=null, monthlyInstallment }) {
   let schedule = [], down = 0, error = "";
   if (totalCents != null) {
     try {
       down = moneyCents(downPayment);
-      schedule = buildSchedule(totalCents, Number(months), firstDueDate || contractDate, down, contractDate);
+      schedule = configureSchedule(buildSchedule(totalCents, Number(months), firstDueDate || contractDate, down, contractDate),validateTerms(monitoringTerms,contractDate),monthlyInstallment);
     } catch (e) { error = e.message; }
   }
   const installments = schedule.filter(row => row.installment > 0);

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import CenterPopup from "../components/CenterPopup.jsx";
 import api from "../services/api.js";
 
 export default function StructureManager({ project, structure, phaseNumber, blockNumber, properties, disabled, onBusy, onNotify, onChanged, onConfirm }) {
   const [editing, setEditing] = useState(null);
+  const [discard, setDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
   const phase = structure.phases.find(p => p.phaseNumber === Number(phaseNumber));
   const block = structure.blocks.find(b => b.phaseNumber === Number(phaseNumber) && b.blockNumber === Number(blockNumber));
@@ -31,13 +33,14 @@ export default function StructureManager({ project, structure, phaseNumber, bloc
     () => run(() => api.delete(`${base}/${type}s/${item._id}`))
   );
   return <div className="border rounded p-3 mb-3">
+    <CenterPopup confirm={discard ? "Discard changes to this phase or block?" : ""} confirmTitle="Discard changes" confirmLabel="Discard Changes" cancelLabel="Keep Editing" onClose={() => setDiscard(false)} onConfirm={() => {setEditing(null);setDiscard(false)}} />
     <h4 className="h6 fw-bold">Selected phase and block</h4>
     <div className="row g-3">
       {[["phase", phase, phaseHasChildren], ["block", block, blockHasChildren]].map(([type, item, hasChildren]) => item && <div className="col-12 col-lg-6" key={type}>
         <div className="d-flex flex-wrap align-items-center gap-2">
           <strong>{type === "phase" ? "Phase" : "Block"} {item[`${type}Number`]}</strong>
           <button type="button" className="btn btn-sm btn-outline-primary" disabled={busy || disabled || hasChildren || !item._id}
-            onClick={() => setEditing({ type, id: item._id, number: item[`${type}Number`] })}>Edit {type}</button>
+            onClick={() => setEditing({ type, id: item._id, original: item[`${type}Number`], number: item[`${type}Number`] })}>Edit {type}</button>
           <button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || disabled || hasChildren || !item._id}
             onClick={() => remove(type, item)}>Delete {type}</button>
         </div>
@@ -49,7 +52,7 @@ export default function StructureManager({ project, structure, phaseNumber, bloc
       <input id="structure-number" type="number" min="1" required className="form-control w-auto" value={editing.number}
         disabled={busy || disabled} onChange={e => setEditing({ ...editing, number: e.target.value })} />
       <button className="btn btn-primary" disabled={busy || disabled}>Save {editing.type}</button>
-      <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => setEditing(null)}>Cancel</button>
+      <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => String(editing.number) === String(editing.original) ? setEditing(null) : setDiscard(true)}>Cancel Editing / Go Back</button>
     </form>}
   </div>;
 }

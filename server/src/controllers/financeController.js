@@ -1,3 +1,8 @@
+import {monitoringReports,reportColumns,reportRow} from "../utils/monitoringReports.js";
+import {validateTerms,configureSchedule} from "../utils/contractMonitoring.js";
+import {attachMonitoringUpdate,reconcileAccount} from "../services/monitoringService.js";
+import {allocationPreview} from "../utils/allocationPreview.js";
+import { allocatePayments, effectivePayment } from "../utils/paymentLedger.js";
 import mongoose from "mongoose";
 import PropertyAssignment from "../models/PropertyAssignment.js";
 import Property from "../models/Property.js";
@@ -13,12 +18,20 @@ const id = value => { if (typeof value !== "string" || !mongoose.isValidObjectId
 const text = (value, max = 500) => { if (value != null && typeof value !== "string") fail(400, "Invalid text field."); return (value || "").trim().slice(0, max); };
 const requestKey = value => { if (typeof value !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(value)) fail(400, "Invalid submission ID. Reload the form."); return value; };
 const populate = query => query.populate("client", "clientId firstName middleName lastName suffix").populate("project", "projectName projectCode").populate("property", "propertyId phaseNumber blockNumber lotNumber areaSqm");
-const accountData = account => ({ ...account, summary: summarizeAccount(account) });
+const accountData = (account, user) => {
+  const { auditEvents, notifications, correctionRequests, ...safe } = account;
+  const { allocations } = allocatePayments(account);
+  return { ...safe, payments: (account.payments||[]).map(p=>({...effectivePayment(p),allocations:allocations[p.paymentId]||[]})),
+    correctionRequests:(correctionRequests||[]).filter(r=>user?.role==="ADMIN"||String(r.requestedBy)===String(user?._id)),summary:summarizeAccount(account) };
+};
+export async function getAccount(req,res,next) {
+ try {const account=await populate(PropertyAssignment.findById(id(req.params.id))).lean();if(!account)fail(404,"Account not found.");res.json({success:true,data:accountData(account,req.user)})}catch(e){next(e)}
+}
 export async function listAccounts(req, res, next) {
   try {
     const filter = req.query.client ? { client: id(req.query.client) } : {};
     const accounts = await populate(PropertyAssignment.find(filter)).sort({ createdAt: -1 }).lean();
-    res.json({ success: true, data: accounts.map(accountData) });
+    res.json({ success: true, data: accounts.map(a=>accountData(a,req.user)) });
   } catch (e) { next(e); }
 }
 export async function assignProperty(req, res, next) {
@@ -38,13 +51,17 @@ export async function assignProperty(req, res, next) {
     const firstDueDate = req.body.firstDueDate, contractDate = req.body.contractDate;
     const downPaymentCents = moneyCents(req.body.downPayment || 0);
     if (contractDate > today()) fail(400, "Contract date cannot be in the future.");
-    const schedule = buildSchedule(totalCents, months, firstDueDate, downPaymentCents, contractDate);
+    const monitoringTerms=validateTerms(req.body.monitoringTerms,contractDate);
+    if(monitoringTerms&&req.body.monthlyInstallment===undefined)fail(400,"Configure the monthly installment amount.");
+    const schedule=configureSchedule(buildSchedule(totalCents,months,firstDueDate,downPaymentCents,contractDate),monitoringTerms,req.body.monthlyInstallment);
+    if(schedule.some(s=>s.dueDate<contractDate))fail(400,"Due day cannot move an installment before the contract date.");
     if (await PropertyAssignment.exists({ property: propertyId })) fail(409, "This lot already has an account. Use that account instead.");
     await PropertyAssignment.init();
     claimed = await Property.findOneAndUpdate({ _id: propertyId, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
     if (!claimed) fail(409, "This lot is no longer available or is already linked to a client.");
     created = await PropertyAssignment.create({ assignmentId: await generateRecordId("contract"), client: clientId, project: property.project, property: propertyId,
-      contract: { totalCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", firstDueDate, contractDate, downPaymentCents, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, schedule }, createdBy: req.user._id, auditEvents: [{ eventId: req.auditEvent?._id, action: "AGREEMENT_CREATED", username: req.user.username, role: req.user.role, userId: req.user._id, timestamp: new Date() }] });
+      contract: { monitoringTerms, monthlyInstallmentCents:schedule.find(s=>s.installment>0)?.amountCents, totalCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", firstDueDate:schedule.find(s=>s.installment>0)?.dueDate||firstDueDate, contractDate, downPaymentCents, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, schedule }, createdBy: req.user._id, auditEvents: [{ eventId: req.auditEvent?._id, action: "AGREEMENT_CREATED", username: req.user.username, role: req.user.role, userId: req.user._id, timestamp: new Date() }] });
+    if(monitoringTerms)await reconcileAccount(created._id,{userId:req.user._id,username:req.user.username,role:req.user.role},"Contract created");
     await logActivity({ action: "PROPERTY_ASSIGNED", req, userId: req.user._id, entityType: "PropertyAssignment", entityId: created._id, metadata: { client: clientId, property: propertyId } });
     res.status(201).json({ success: true, message: "Lot assigned and payment schedule created.", data: created });
   } catch (e) {
@@ -55,13 +72,14 @@ export async function assignProperty(req, res, next) {
     next(e);
   }
 }
-const samePayment = (p, input) => p.amountCents === input.amountCents && p.paymentDate === input.paymentDate && p.method === input.method && p.reference === input.reference && p.notes === input.notes;
+const samePayment = (p, input) => p.amountCents === input.amountCents && p.paymentDate === input.paymentDate && p.method === input.method && p.reference === input.reference && p.notes === input.notes && (p.type || "AUTO") === (input.type || "AUTO");
 export async function acceptPayment(req, res, next) {
   try {
     const accountId = id(req.body.accountId), requestId = requestKey(req.body.requestId);
     const amountCents = moneyCents(req.body.amount), paymentDate = req.body.paymentDate;
     if (!amountCents || !validDate(paymentDate) || paymentDate > today() || !METHODS.includes(req.body.method)) fail(400, "Enter a positive payment, valid date and payment method.");
-    const input = { amountCents, paymentDate, method: req.body.method, reference: text(req.body.reference, 120), notes: text(req.body.notes) };
+    if (req.body.type && !["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY"].includes(req.body.type)) fail(400,"Invalid payment type.");
+    const input = { type: req.body.type || "AUTO", amountCents, paymentDate, method: req.body.method, reference: text(req.body.reference, 120), notes: text(req.body.notes) };
     let account = await PropertyAssignment.findById(accountId).lean();
     if (!account) fail(404, "Client account not found.");
     if (paymentDate < account.contract.contractDate) fail(400, "Payment date cannot be before the contract date.");
@@ -72,10 +90,16 @@ export async function acceptPayment(req, res, next) {
     }
     const [client, project] = await Promise.all([Client.findById(account.client), Project.findById(account.project)]);
     if (!client || client.status !== "ACTIVE" || !project || project.status === "ARCHIVED") fail(409, "Payments require an active client and a project that is not archived.");
-    const payment = { ...input, agreementVersion: (account.agreementHistory?.length || 0) + 1, actorUsername: req.user.username, actorRole: req.user.role, requestId, paymentId: await generateRecordId("payment"), createdBy: req.user._id, createdAt: new Date() };
-    account = await PropertyAssignment.findOneAndUpdate({ _id: accountId, __v: account.__v ?? 0, "payments.requestId": { $ne: requestId },
-      $expr: { $lte: [{ $add: [{ $sum: "$payments.amountCents" }, amountCents] }, "$contract.totalCents"] }
-    }, { $push: { payments: payment, auditEvents: { eventId: req.auditEvent?._id, action: "PAYMENT_RECORDED", userId: req.user._id, username: req.user.username, role: req.user.role, timestamp: new Date(), updatedValues: payment } }, $inc: { __v: 1 } }, { new: true, runValidators: true }).lean();
+    const payment = { ...input, agreementVersion: (account.agreementHistory?.length || 0) + 1, actorUsername: req.user.username, actorRole: req.user.role, requestId, paymentId: await generateRecordId("payment"), receiptNumber: await generateRecordId("receipt"), createdBy: req.user._id, createdAt: new Date() };
+    const proposed={...account,payments:[...account.payments,payment]};
+    const preview=allocationPreview(account,proposed,payment.paymentId);
+    // Generated IDs are normalized for preview/confirm comparison.
+    const normalized=allocationPreview(account,{...account,payments:[...account.payments,{...payment,paymentId:"PREVIEW"}]},"PREVIEW");
+    if(account.contract.monitoringTerms && req.body.previewToken!==normalized.token)fail(409,"Review the allocation preview again; the account or contractual date changed.");
+    payment.allocations=preview.allocations;
+    const update=attachMonitoringUpdate(proposed,{ $push: {payments:payment,auditEvents:{eventId:req.auditEvent?._id,action:"PAYMENT_RECORDED",userId:req.user._id,username:req.user.username,role:req.user.role,timestamp:new Date(),updatedValues:payment}},$inc:{__v:1}}, {userId:req.user._id,username:req.user.username,role:req.user.role},"Payment posted");
+    account = await PropertyAssignment.findOneAndUpdate({ _id: accountId, __v: account.__v ?? 0, "payments.requestId": { $ne: requestId }
+    }, update, { new: true, runValidators: true }).lean();
     if (!account) {
       const latest = await PropertyAssignment.findById(accountId).lean();
       const previous = latest?.payments.find(p => p.requestId === requestId);
@@ -88,7 +112,7 @@ export async function acceptPayment(req, res, next) {
 }
 async function paymentRows() {
   const accounts = await populate(PropertyAssignment.find({ "payments.0": { $exists: true } })).lean();
-  return accounts.flatMap(account => account.payments.map(payment => ({ ...payment, accountId: account._id, assignmentId: account.assignmentId, client: account.client, project: account.project, property: account.property })))
+  return accounts.flatMap(account => account.payments.map(raw => {const payment=effectivePayment(raw);return ({ ...payment, accountId: account._id, assignmentId: account.assignmentId, client: account.client, project: account.project, property: account.property })}))
     .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 export async function listPayments(req, res, next) {
@@ -128,8 +152,8 @@ export async function report(req, res, next) {
     const expenses = allExpenses.filter(e => e.expenseDate >= from && e.expenseDate <= to && (!project || String(e.project?._id) === project));
     const collectedCents = payments.reduce((n, p) => n + p.amountCents, 0), expenseCents = expenses.reduce((n, e) => n + e.amountCents, 0);
     const asOf = to < today() ? to : today();
-    const balances = accounts.filter(a => a.contract.contractDate <= asOf).map(a => ({ ...a, summary: summarizeAccount(a, asOf) }));
-    res.json({ success: true, data: { from, to, asOf, collectedCents, expenseCents, netCents: collectedCents - expenseCents, payments, expenses, accounts: balances } });
+    const balances = accounts.filter(a => a.contract.contractDate <= asOf).map(a => ({ ...accountData(a, req.user), summary: summarizeAccount(a, asOf) }));
+    res.json({ success: true, data: { from, to, asOf, collectedCents, expenseCents, netCents: collectedCents - expenseCents, payments, expenses, accounts: balances, monitoringReports:monitoringReports(accounts.filter(a=>a.contract.contractDate<=asOf),from,to,asOf) } });
   } catch (e) { next(e); }
 }
 
@@ -142,14 +166,41 @@ export async function updateAgreement(req, res, next) {
     const project = await Project.findById(account.project);
     if (!project || project.status === "ARCHIVED") fail(409, "Archived project agreements cannot be changed.");
     const months = Number(req.body.months), downPaymentCents = moneyCents(req.body.downPayment);
-    const schedule = buildSchedule(account.contract.totalCents, months, req.body.firstDueDate, downPaymentCents, account.contract.contractDate);
-    const contract = { ...account.contract, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", downPaymentCents, firstDueDate: req.body.firstDueDate, schedule };
+    const monitoringTerms=req.body.monitoringTerms===undefined?account.contract.monitoringTerms:validateTerms(req.body.monitoringTerms,account.contract.contractDate);
+    if(account.contract.monitoringTerms && !monitoringTerms)fail(400,"Disable penalties through a preserved terms revision rather than removing configured terms.");
+    if(monitoringTerms&&String(req.body.reason||"").trim().length<5)fail(400,"Enter a reason for changing contractual terms.");
+    const schedule=configureSchedule(buildSchedule(account.contract.totalCents,months,req.body.firstDueDate,downPaymentCents,account.contract.contractDate),monitoringTerms,req.body.monthlyInstallment??(account.contract.monthlyInstallmentCents/100));
+    if(schedule.some(s=>s.dueDate<account.contract.contractDate))fail(400,"Due day cannot move an installment before the contract date.");
+    const contract = { ...account.contract, monitoringTerms, monthlyInstallmentCents:schedule.find(s=>s.installment>0)?.amountCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", downPaymentCents, firstDueDate:schedule.find(s=>s.installment>0)?.dueDate||req.body.firstDueDate, schedule };
+    allocatePayments({...account,contract});
     const event = { eventId: req.auditEvent?._id, action: "AGREEMENT_UPDATED", userId: req.user._id, username: req.user.username, role: req.user.role, timestamp: new Date(), previousValues: account.contract, updatedValues: contract };
-    const updated = await PropertyAssignment.findOneAndUpdate({ _id: accountId, __v: req.body.expectedVersion }, {
-      $set: { contract }, $push: { agreementHistory: { contract: account.contract, replacedAt: event.timestamp, replacedBy: req.user._id }, auditEvents: event }, $inc: { __v: 1 }
-    }, { new: true, runValidators: true }).lean();
+    const update=attachMonitoringUpdate({...account,contract,agreementHistory:[...(account.agreementHistory||[]),{contract:account.contract,replacedAt:event.timestamp}]}, {
+      $set: Object.fromEntries(["months","termType","downPaymentCents","firstDueDate","schedule","monitoringTerms","monthlyInstallmentCents"].map(k=>[`contract.${k}`,contract[k]])), $push: { agreementHistory: { contract: account.contract, replacedAt: event.timestamp, replacedBy: req.user._id }, auditEvents: event }, $inc: { __v: 1 }
+    },{userId:req.user._id,username:req.user.username,role:req.user.role},String(req.body.reason||"Agreement updated"));
+    const updated=await PropertyAssignment.findOneAndUpdate({_id:accountId,__v:req.body.expectedVersion},update,{new:true,runValidators:true}).lean();
     if (!updated) fail(409, "This account or its payments changed. Reload and review the agreement before retrying.");
     await logActivity({ action: "AGREEMENT_UPDATED", req, userId: req.user._id, entityType: "PropertyAssignment", entityId: accountId });
-    res.json({ success: true, message: "Agreement updated. Previous schedule preserved; recorded payments are unchanged.", data: accountData(updated) });
+    res.json({ success: true, message: "Agreement updated. Previous schedule preserved; recorded payments are unchanged.", data: accountData(updated,req.user) });
   } catch (e) { next(e); }
+}
+
+export async function previewPayment(req,res,next){
+ try{
+  const account=await PropertyAssignment.findById(id(req.body.accountId)).lean();if(!account)fail(404,"Account not found.");
+  const amountCents=moneyCents(req.body.amount),paymentDate=req.body.paymentDate,type=req.body.type||"AUTO";
+  if(!amountCents||!validDate(paymentDate)||paymentDate<account.contract.contractDate||paymentDate>today()||!["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY"].includes(type))fail(400,"Check the payment amount, date and type.");
+  const proposed={...account,payments:[...account.payments,{paymentId:"PREVIEW",amountCents,paymentDate,type,createdAt:new Date()}]};
+  res.json({success:true,data:allocationPreview(account,proposed,"PREVIEW")});
+ }catch(e){next(e)}
+}
+
+export async function exportMonitoringReport(req,res,next){
+ try{
+  const {from,to}=dateRange(req.query),filter=req.query.project?{project:id(req.query.project)}:{};
+  const accounts=await populate(PropertyAssignment.find(filter)).lean(),asOf=to<today()?to:today();
+  const rows=monitoringReports(accounts.filter(a=>a.contract.contractDate<=asOf),from,to,asOf);
+  const {default:ExcelJS}=await import("exceljs");const workbook=new ExcelJS.Workbook();
+  for(const [name,entries]of Object.entries(rows)){const sheet=workbook.addWorksheet(name);sheet.addRow(reportColumns);for(const row of entries)sheet.addRow(reportRow(row));sheet.getRow(1).font={bold:true};sheet.columns.forEach(c=>c.width=24)}
+  res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");res.setHeader("Content-Disposition",`attachment; filename="payment-monitoring-${from}-${to}.xlsx"`);res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
+ }catch(e){next(e)}
 }

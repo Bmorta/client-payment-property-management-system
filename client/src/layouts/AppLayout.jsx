@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import NotificationBell from "../components/NotificationBell.jsx";
 import HeaderClock from "../components/HeaderClock.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -36,7 +37,8 @@ export default function AppLayout() {
               <NavLink className="nav-link" to="/projects">
                 Projects
               </NavLink>
-              {[["/payment-transactions", "Payment Transactions"], ["/payment", "Payment"], ["/expenses", "Expenses"], ["/reports", "Reports"]].map(([to, label]) => <NavLink key={to} className="nav-link" to={to}>{label}</NavLink>)}
+              {[["/agents","Agents"],["/commissions","Commissions"],["/payment-monitoring","Payment Reminders"],["/payment-transactions", "Payment Transactions"], ["/payment", "Payment"], ["/expenses", "Expenses"], ["/reports", "Reports"]].map(([to, label]) => <NavLink key={to} className="nav-link" to={to}>{label}</NavLink>)}
+              {user?.role === "ADMIN" && <NavLink className="nav-link" to="/approval-requests">Approval Requests</NavLink>}
               {user?.role === "ADMIN" && (
                 <NavLink className="nav-link" to="/users">
                   Users
@@ -45,6 +47,7 @@ export default function AppLayout() {
             </div>
 
             <div className="d-flex align-items-center gap-3">
+              <NotificationBell />
               <div className="text-end">
                 <div className="fw-semibold">{user?.fullName}</div>
                 <HeaderClock />
