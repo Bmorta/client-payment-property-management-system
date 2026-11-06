@@ -1,3 +1,4 @@
+import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -59,7 +60,7 @@ export default function LoginPage() {
                   </p>
                 </div>
 
-                <form onSubmit={handleSubmit} noValidate>
+                <form onSubmit={handleSubmit} noValidate><RequiredNote/>
                   {error && (
                     <div className="alert alert-danger" role="alert">
                       {error}
@@ -67,11 +68,11 @@ export default function LoginPage() {
                   )}
 
                   <div className="mb-3">
-                    <label className="form-label" htmlFor="identifier">
+                    <FieldLabel className="form-label" htmlFor="identifier">
                       Username or Email
-                    </label>
+
                     <input
-                      id="identifier"
+                      id="identifier" required
                       type="text"
                       className="form-control form-control-lg"
                       value={form.identifier}
@@ -82,15 +83,15 @@ export default function LoginPage() {
                         }))
                       }
                       autoComplete="username"
-                    />
+                    /></FieldLabel>
                   </div>
 
                   <div className="mb-4">
-                    <label className="form-label" htmlFor="password">
+                    <FieldLabel className="form-label" htmlFor="password">
                       Password
-                    </label>
+
                     <input
-                      id="password"
+                      id="password" required
                       type="password"
                       className="form-control form-control-lg"
                       value={form.password}
@@ -101,7 +102,7 @@ export default function LoginPage() {
                         }))
                       }
                       autoComplete="current-password"
-                    />
+                    /></FieldLabel>
                   </div>
 
                   <button

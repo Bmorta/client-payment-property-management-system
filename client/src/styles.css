@@ -150,3 +150,14 @@ button, input, select, textarea { font: inherit; }
 .field-help-tooltip { position: fixed; z-index: 3100; width: min(340px, calc(100vw - 24px)); max-height: min(340px, calc(100dvh - 24px)); overflow-y: auto; padding: 15px 17px; background: #17263d; color: #f4f7fd; border: 1px solid #344964; border-radius: 9px; box-shadow: 0 8px 28px #14213730; font-size: .8rem; line-height: 1.6; font-weight: 400; }
 .field-help-tooltip > strong { display: block; margin-bottom: 6px; font-weight: 650; font-size: .83rem; }
 .field-help-tooltip > span { display: block; color: #dce5f3; white-space: pre-line; }
+
+/* Shared field guidance and dashboard charts. */
+.field-label-row { gap: .4rem; }
+.field-label-row > label { margin-bottom: 0; }
+.required-fields-note { margin: .5rem 0 1rem; }
+.dashboard-chart { width: 100%; height: 290px; min-width: 0; margin: .75rem 0; }
+.chart-dot { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; margin-right: .5rem; }
+@media (max-width: 575px) { .dashboard-chart { height: 240px; } }
+.guided-control { min-width: 0; }
+.guided-control > .field-label-row { justify-content: flex-end; margin-bottom: .15rem; }
+.guided-control:has(input[type="checkbox"]) > .field-label-row { justify-content: flex-start; }

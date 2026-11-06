@@ -1,3 +1,4 @@
+import {dashboardCharts} from "../utils/dashboardCharts.js";
 import {paymentRegisterWorkbook} from "../utils/paymentRegister.js";
 import {monitoringReports,reportColumns,reportRow} from "../utils/monitoringReports.js";
 import {validateTerms,configureSchedule} from "../utils/contractMonitoring.js";
@@ -214,5 +215,13 @@ export async function exportPaymentRegister(req,res,next){
   res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition",`attachment; filename="payment-commission-register-${from}-${to}.xlsx"`);
   res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
+ }catch(e){next(e)}
+}
+
+export async function dashboardAnalytics(req,res,next){
+ try{
+  const {from,to}=dateRange(req.query),filter=req.query.project?{project:id(req.query.project)}:{};
+  const [accounts,expenses]=await Promise.all([PropertyAssignment.find(filter).select("payments").lean(),Expense.find({...filter,expenseDate:{$gte:from,$lte:to}}).select("amountCents expenseDate").lean()]);
+  res.json({success:true,data:{from,to,months:dashboardCharts(accounts,expenses,from,to)}});
  }catch(e){next(e)}
 }

@@ -1,3 +1,4 @@
+import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 const ActivityLogs = lazy(() => import("../components/ActivityLogs.jsx"));
 import { manilaTimestamp } from "../utils/manilaTime.js";
@@ -100,7 +101,7 @@ const UserModal = ({ open, editingUser, onClose, onSaved }) => {
       <div className="modal fade show d-block" tabIndex="-1" role="dialog">
         <div className="modal-dialog modal-dialog-centered modal-lg">
           <div className="modal-content border-0 shadow">
-            <form onSubmit={handleSubmit} noValidate>
+            <form onSubmit={handleSubmit} noValidate><RequiredNote/>
               <div className="modal-header">
                 <h2 className="modal-title fs-5">
                   {editingUser ? "Edit User" : "Add User"}
@@ -113,73 +114,73 @@ const UserModal = ({ open, editingUser, onClose, onSaved }) => {
 
                 <div className="row g-3">
                   <div className="col-md-6">
-                    <label className="form-label" htmlFor="username">Username</label>
+                    <FieldLabel className="form-label" htmlFor="username">Username
                     <input
-                      id="username"
+                      id="username" required={!editingUser}
                       name="username"
                       className="form-control"
                       value={form.username}
                       onChange={handleChange}
                       disabled={Boolean(editingUser)}
-                    />
+                    /></FieldLabel>
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label" htmlFor="email">Email</label>
+                    <FieldLabel className="form-label" htmlFor="email">Email
                     <input
-                      id="email"
+                      id="email" required
                       name="email"
                       type="email"
                       className="form-control"
                       value={form.email}
                       onChange={handleChange}
-                    />
+                    /></FieldLabel>
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label" htmlFor="firstName">First Name</label>
+                    <FieldLabel className="form-label" htmlFor="firstName">First Name
                     <input
-                      id="firstName"
+                      id="firstName" required
                       name="firstName"
                       className="form-control"
                       value={form.firstName}
                       onChange={handleChange}
-                    />
+                    /></FieldLabel>
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label" htmlFor="lastName">Last Name</label>
+                    <FieldLabel className="form-label" htmlFor="lastName">Last Name
                     <input
-                      id="lastName"
+                      id="lastName" required
                       name="lastName"
                       className="form-control"
                       value={form.lastName}
                       onChange={handleChange}
-                    />
+                    /></FieldLabel>
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label" htmlFor="password">
+                    <FieldLabel className="form-label" htmlFor="password">
                       Password {editingUser && <span className="text-secondary">(leave blank to keep)</span>}
-                    </label>
+
                     <input
-                      id="password"
+                      id="password" required={!editingUser}
                       name="password"
                       type="password"
                       className="form-control"
                       value={form.password}
                       onChange={handleChange}
                       autoComplete="new-password"
-                    />
+                    /></FieldLabel>
                   </div>
 
                   <div className="col-md-3">
-                    <label className="form-label" htmlFor="role">Role</label>
+                    <FieldLabel className="form-label" htmlFor="role">Role
                     <select id="role" name="role" className="form-select" value={form.role} onChange={handleChange}>
                       <option value="ADMIN">ADMIN</option>
                       <option value="STAFF">STAFF</option>
                       <option value="VIEWER">VIEWER</option>
-                    </select>
+                    </select></FieldLabel>
                   </div>
 
                   <div className="col-md-3 d-flex align-items-end">
@@ -192,9 +193,9 @@ const UserModal = ({ open, editingUser, onClose, onSaved }) => {
                         checked={form.isActive}
                         onChange={handleChange}
                       />
-                      <label className="form-check-label" htmlFor="isActive">
+                      <FieldLabel className="form-check-label" htmlFor="isActive">
                         Active
-                      </label>
+                      </FieldLabel>
                     </div>
                   </div>
                 </div>
@@ -296,14 +297,14 @@ export default function UsersPage() {
       <div className="card border-0 shadow-sm">
         <div className="card-body">
           <div className="mb-3">
-            <label className="form-label" htmlFor="userSearch">Search users</label>
+            <FieldLabel className="form-label" htmlFor="userSearch">Search users
             <input
               id="userSearch"
               className="form-control"
               placeholder="Search username, name, email or role"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-            />
+            /></FieldLabel>
           </div>
 
           <div className="table-responsive">

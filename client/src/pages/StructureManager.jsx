@@ -1,3 +1,4 @@
+import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useState } from "react";
 import CenterPopup from "../components/CenterPopup.jsx";
 import api from "../services/api.js";
@@ -47,10 +48,10 @@ export default function StructureManager({ project, structure, phaseNumber, bloc
         {hasChildren && <p className="text-secondary small mb-0 mt-1">Remove its {type === "phase" ? "blocks and lots" : "lots"} before renumbering or deleting.</p>}
       </div>)}
     </div>
-    {editing && <form className="d-flex flex-wrap gap-2 mt-3" onSubmit={save}>
-      <label className="form-label align-self-center mb-0" htmlFor="structure-number">New {editing.type} number</label>
+    {editing && <form className="d-flex flex-wrap gap-2 mt-3" onSubmit={save}><RequiredNote/>
+      <FieldLabel className="form-label align-self-center mb-0" htmlFor="structure-number">New {editing.type} number
       <input id="structure-number" type="number" min="1" required className="form-control w-auto" value={editing.number}
-        disabled={busy || disabled} onChange={e => setEditing({ ...editing, number: e.target.value })} />
+        disabled={busy || disabled} onChange={e => setEditing({ ...editing, number: e.target.value })} /></FieldLabel>
       <button className="btn btn-primary" disabled={busy || disabled}>Save {editing.type}</button>
       <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => String(editing.number) === String(editing.original) ? setEditing(null) : setDiscard(true)}>Cancel Editing / Go Back</button>
     </form>}

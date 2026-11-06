@@ -1,3 +1,4 @@
+import {RequiredNote} from "./FieldLabel.jsx";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api.js";
@@ -32,6 +33,6 @@ export default function ClientAccounts({ client, refreshKey = 0 }) {
       <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Installment</th><th>Due date</th><th>Scheduled</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{a.summary.schedule.map(s => <tr key={s.installment}><td>{s.installment === 0 ? "Down payment" : s.installment}</td><td>{s.dueDate}</td><td>{pesos(s.amountCents)}</td><td>{pesos(s.paidCents)}</td><td>{pesos(s.balanceCents)}</td><td>{!s.balanceCents ? "Paid" : s.penaltyReview ? "Overdue >10 days" : s.overdue ? "Overdue" : "Scheduled"}</td></tr>)}</tbody></table></div>
       <PropertyPaymentHistory account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
     </details>)}
-    {client.status === "ACTIVE" && <details className="border rounded p-3"><summary className="fw-semibold">Assign another property</summary><form onSubmit={assign} className="mt-3"><fieldset disabled={busy}><AssignmentFields clientId={client._id} value={form} onChange={setForm} refreshKey={version} /><button className="btn btn-primary mt-2" disabled={!form.propertyId || busy}>{busy ? "Assigning..." : "Assign Lot & Create Schedule"}</button></fieldset></form></details>}
+    {client.status === "ACTIVE" && <details className="border rounded p-3"><summary className="fw-semibold">Assign another property</summary><form onSubmit={assign} className="mt-3"><RequiredNote/><fieldset disabled={busy}><AssignmentFields clientId={client._id} value={form} onChange={setForm} refreshKey={version} /><button className="btn btn-primary mt-2" disabled={!form.propertyId || busy}>{busy ? "Assigning..." : "Assign Lot & Create Schedule"}</button></fieldset></form></details>}
   </div></section>;
 }

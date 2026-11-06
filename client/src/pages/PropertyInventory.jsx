@@ -1,3 +1,4 @@
+import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -205,17 +206,17 @@ export default function PropertyInventory({ project, onClose }) {
         {mode === "modify" && <>
           <p className="text-secondary small">Select a phase and block to add lots or manage empty structures. Edit lot numbers, areas, prices and availability in the inventory below. Lot numbers must be unique within each phase and block.</p>
           <div className="row g-3 mb-3">
-            <div className="col-12 col-md-6"><label className="form-label" htmlFor="manage-phase">Phase to modify</label>
+            <div className="col-12 col-md-6"><FieldLabel className="form-label" htmlFor="manage-phase">Phase to modify
               <select id="manage-phase" className="form-select" value={selectedPhase} disabled={busy || !!generator} onChange={e => { setSelectedPhase(e.target.value); setSelectedBlock(""); changeFilters({ phase: e.target.value, block: "", lot: "", status: "" }); }}>
                 {!structure.phases.length && <option value="">No phases yet</option>}
                 {structure.phases.map(p => <option key={p.phaseNumber} value={p.phaseNumber}>Phase {p.phaseNumber}</option>)}
-              </select>
+              </select></FieldLabel>
             </div>
-            <div className="col-12 col-md-6"><label className="form-label" htmlFor="manage-block">Block to modify</label>
+            <div className="col-12 col-md-6"><FieldLabel className="form-label" htmlFor="manage-block">Block to modify
               <select id="manage-block" className="form-select" value={selectedBlock} disabled={busy || !!generator || !blockOptions.length} onChange={e => { setSelectedBlock(e.target.value); changeFilters({ phase: selectedPhase, block: e.target.value, lot: "", status: "" }); }}>
                 {!blockOptions.length && <option value="">No blocks yet</option>}
                 {blockOptions.map(b => <option key={b.blockNumber} value={b.blockNumber}>Block {b.blockNumber}</option>)}
-              </select>
+              </select></FieldLabel>
             </div>
           </div>
           <StructureManager key={`${selectedPhase}/${selectedBlock}`} project={project} structure={structure} properties={properties}
@@ -227,74 +228,74 @@ export default function PropertyInventory({ project, onClose }) {
           </div>
           {!structure.phases.length && <p className="text-secondary">Choose Add a Phase to create your first phase with blocks and lots.</p>}
         </>}
-        {generator && <form onSubmit={saveNew}>
+        {generator && <form onSubmit={saveNew}><RequiredNote/>
           <fieldset disabled={busy}>
           <legend className="h6 fw-bold">{generator === "phase" ? "Configure new phase" : generator === "block" ? "Configure new blocks and lots" : "Configure additional lots"}</legend>
         {generator && phases.map((phase, pi) => <div className="border rounded p-3 mb-3" key={pi}>
           <div className="d-flex justify-content-between align-items-center mb-2">
-            <label className="form-label fw-bold mb-0">Phase number
+            <FieldLabel className="form-label fw-bold mb-0">Phase number
               <input aria-label="Phase number" className="form-control mt-1" type="number" min="1" required disabled={generator !== "phase" || busy}
                 value={phase.phaseNumber} onChange={e => updatePhase(pi, p => ({ ...p, phaseNumber: Number(e.target.value) }))} />
-            </label>
+            </FieldLabel>
             {phases.length > 1 && <button type="button" className="btn btn-sm btn-outline-danger"
               onClick={() => setPhases(old => old.filter((_, i) => i !== pi))}>Remove phase</button>}
           </div>
           {phase.blocks.map((block, bi) => <div className="border rounded p-3 mb-3" key={bi}>
             <div className="d-flex justify-content-between align-items-center mb-2">
-              <label className="form-label fw-bold mb-0">Block number
+              <FieldLabel className="form-label fw-bold mb-0">Block number
                 <input aria-label={`Block number ${bi + 1}`} className="form-control mt-1" type="number" min="1" required disabled={generator === "lots" || busy}
                   value={block.blockNumber} onChange={e => updateBlock(pi, bi, b => ({ ...b, blockNumber: Number(e.target.value) }))} />
-              </label>
+              </FieldLabel>
               {phase.blocks.length > 1 && <button type="button" className="btn btn-sm btn-outline-danger"
                 onClick={() => updatePhase(pi, p => ({
                   ...p, blocks: p.blocks.filter((_, i) => i !== bi)
                 }))}>Remove block</button>}
             </div>
-            <label className="form-label">Starting lot number
+            <FieldLabel className="form-label">Starting lot number
               <input aria-label={`Starting lot number for block ${bi + 1}`} className="form-control" type="number" min="1" step="1" required value={block.startLotNumber}
                 onChange={e => updateBlock(pi, bi, b => ({ ...b, startLotNumber: Number(e.target.value) }))} />
-            </label>
+            </FieldLabel>
             <p className="small text-secondary mb-2">New lots will be numbered starting at Lot {block.startLotNumber}.</p>
-            <label className="form-label">Number of lots (1–100)</label>
-            <input className="form-control mb-3" type="number" min="1" max="100"
-              value={block.lotCount} onChange={e => setLotCount(pi, bi, e.target.value)} />
-            <label className="form-label">Default area (sqm) — optional</label>
+            <FieldLabel className="form-label">Number of lots (1–100)
+            <input className="form-control mb-3" type="number" required min="1" max="100"
+              value={block.lotCount} onChange={e => setLotCount(pi, bi, e.target.value)} /></FieldLabel>
+            <FieldLabel className="form-label">Default area (sqm) — optional</FieldLabel>
             <div className="d-flex gap-2 mb-3">
-              <input className="form-control" type="number" min="0.01" step="any"
+              <FieldLabel compact className="guided-control flex-grow-1">Default area (sqm)<input className="form-control" type="number" min="0.01" step="any"
                 placeholder="e.g. 120" value={block.defaultArea}
-                onChange={e => updateBlock(pi, bi, b => ({ ...b, defaultArea: e.target.value }))} />
+                onChange={e => updateBlock(pi, bi, b => ({ ...b, defaultArea: e.target.value }))} /></FieldLabel>
               <button type="button" className="btn btn-outline-primary flex-shrink-0"
                 onClick={() => applyDefault(pi, bi)}>Apply to all</button>
             </div>
-            <label className="form-label">Default price per sqm (₱) — optional</label>
+            <FieldLabel className="form-label">Default price per sqm (₱) — optional</FieldLabel>
             <div className="d-flex gap-2 mb-3">
-              <input aria-label={`Default price per sqm for block ${bi + 1}`} className="form-control" type="number" min="0" step="0.01" value={block.defaultPrice}
-                onChange={e => updateBlock(pi, bi, b => ({ ...b, defaultPrice: e.target.value }))} />
+              <FieldLabel compact className="guided-control flex-grow-1">{`Default price per sqm for block ${bi + 1}`}<input aria-label={`Default price per sqm for block ${bi + 1}`} className="form-control" type="number" min="0" step="0.01" value={block.defaultPrice}
+                onChange={e => updateBlock(pi, bi, b => ({ ...b, defaultPrice: e.target.value }))} /></FieldLabel>
               <button type="button" className="btn btn-outline-primary flex-shrink-0" onClick={() => applyDefaultPrice(pi, bi)}>Apply price to all</button>
             </div>
             <p className="small text-secondary">Individual lot areas, prices and availability (editable before saving)</p>
             <div className="row g-2">
               {block.areasSqm.map((area, li) => <div className="col-12 col-md-6 col-xl-4" key={li}>
                 <div className="border rounded p-2">
-                  <label className="form-label small fw-semibold">Lot {block.startLotNumber + li}</label>
+                  <FieldLabel className="form-label small fw-semibold">Lot {block.startLotNumber + li}</FieldLabel>
                   <div className="d-flex gap-2">
-                    <input aria-label={`Lot ${li + 1} area in sqm`} className="form-control form-control-sm"
+                    <FieldLabel compact className="guided-control">{`Lot ${li + 1} area in sqm`}<input aria-label={`Lot ${li + 1} area in sqm`} className="form-control form-control-sm"
                       type="number" min="0.01" step="any" placeholder="sqm" value={area}
                       onChange={e => updateBlock(pi, bi, b => ({
                         ...b, areasSqm: b.areasSqm.map((v, i) => i === li ? e.target.value : v)
-                      }))} />
-                    <select aria-label={`Lot ${li + 1} status`} className="form-select form-select-sm"
+                      }))} /></FieldLabel>
+                    <FieldLabel compact className="guided-control">{`Lot ${li + 1} status`}<select aria-label={`Lot ${li + 1} status`} className="form-select form-select-sm"
                       value={block.statuses[li]}
                       onChange={e => updateBlock(pi, bi, b => ({
                         ...b, statuses: b.statuses.map((v, i) => i === li ? e.target.value : v)
                       }))}>
                       {STATUSES.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
-                    </select>
+                    </select></FieldLabel>
                   </div>
-                  <label className="form-label small mt-2">Price per sqm (₱)
+                  <FieldLabel className="form-label small mt-2">Price per sqm (₱)
                     <input aria-label={`Lot ${block.startLotNumber + li} price per sqm`} className="form-control form-control-sm" type="number" min="0" step="0.01" value={block.pricesPerSqm[li]}
                       onChange={e => updateBlock(pi, bi, b => ({ ...b, pricesPerSqm: b.pricesPerSqm.map((v, i) => i === li ? e.target.value : v) }))} />
-                  </label>
+                  </FieldLabel>
                   <div className="small">Price per lot: <output aria-label={`Lot ${block.startLotNumber + li} price per lot`}>{money(lotPrice(area, block.pricesPerSqm[li]))}</output></div>
                 </div>
               </div>)}
@@ -314,7 +315,7 @@ export default function PropertyInventory({ project, onClose }) {
         </form>}
       </div>}
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <h3 className="h6 fw-bold mb-0">Existing lots ({visibleProperties.length} of {properties.length})</h3>
+        {editMode&&<RequiredNote/>}<h3 className="h6 fw-bold mb-0">Existing lots ({visibleProperties.length} of {properties.length})</h3>
         {mode === "modify" && !lotEditing && !archived && <button className="btn btn-outline-primary btn-sm" disabled={busy} onClick={() => setLotEditing(true)}>Edit lot information</button>}
         {editMode && <div className="d-flex flex-wrap gap-2 align-items-center">
           <span className="small text-secondary">{changed.length} unsaved lot edits</span>
@@ -324,13 +325,13 @@ export default function PropertyInventory({ project, onClose }) {
       </div>
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>
-          <label htmlFor={`filter-${key}`} className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}</label>
+          <FieldLabel htmlFor={`filter-${key}`} className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}
           <select id={`filter-${key}`} className="form-select form-select-sm" value={filters[key]} onChange={e => changeFilters(old => ({
             ...old, [key]: e.target.value, ...(key === "phase" ? { block: "", lot: "" } : key === "block" ? { lot: "" } : {})
           }))}>
             <option value="">All {key === "status" ? "statuses" : key + "s"}</option>
             {(key === "status" ? STATUSES : optionsFor(key)).map(value => <option key={value} value={value}>{key === "status" ? statusLabel(value) : value}</option>)}
-          </select>
+          </select></FieldLabel>
         </div>)}
       </div>
       {editMode && <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -339,25 +340,25 @@ export default function PropertyInventory({ project, onClose }) {
         <span className="small text-secondary">Select up to 100 available lots with no connected client. Selection clears when filters change.</span>
       </div>}
       <div className="table-responsive"><table className="table table-sm align-middle">
-        <thead><tr>{editMode && <th><input aria-label="Select all eligible visible lots" type="checkbox" className="form-check-input"
+        <thead><tr>{editMode && <th><FieldLabel compact className="guided-control">Select all eligible visible lots<input aria-label="Select all eligible visible lots" type="checkbox" className="form-check-input"
           disabled={busy || !!generator || changed.length > 0 || !eligibleVisible.length}
           checked={eligibleVisible.length > 0 && chosenLots.length === Math.min(eligibleVisible.length, 100)}
-          onChange={e => setSelectedLots(e.target.checked ? eligibleVisible.slice(0, 100).map(p => p._id) : [])} /></th>}<th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Price per sqm</th><th>Price per lot</th><th>Status</th>{editMode && <th>Actions</th>}</tr></thead>
+          onChange={e => setSelectedLots(e.target.checked ? eligibleVisible.slice(0, 100).map(p => p._id) : [])} /></FieldLabel></th>}<th>Property ID</th><th>Phase</th><th>Block</th><th>Lot</th><th>Area (sqm)</th><th>Price per sqm</th><th>Price per lot</th><th>Status</th>{editMode && <th>Actions</th>}</tr></thead>
         <tbody>{!visibleProperties.length ? <tr><td colSpan={editMode ? 10 : 8} className="text-center text-secondary py-3">{properties.length ? "No lots match these filters." : "No lots yet. Add a phase to get started."}</td></tr> : visibleProperties.map(p => <tr key={p._id}>
-          {editMode && <td><input aria-label={`Select ${p.propertyId} for deletion`} className="form-check-input" type="checkbox"
+          {editMode && <td><FieldLabel compact className="guided-control">{`Select ${p.propertyId} for deletion`}<input aria-label={`Select ${p.propertyId} for deletion`} className="form-check-input" type="checkbox"
             disabled={busy || !!generator || changed.length > 0 || !deletableLot(p) || (chosenLots.length >= 100 && !selectedLots.includes(p._id))}
-            checked={selectedLots.includes(p._id)} onChange={() => toggleSelected(p._id)} /></td>}
-          <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{editMode ? <input aria-label={`Lot number for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="1" step="1"
-            disabled={busy || !!generator} value={drafts[p._id]?.lotNumber ?? p.lotNumber} onChange={e => updateDraft(p._id, "lotNumber", e.target.value)} /> : p.lotNumber}</td>
-          <td>{editMode ? <input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0.01" step="any"
-            disabled={busy || !!generator} value={drafts[p._id]?.areaSqm ?? ""} onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /> : p.areaSqm ?? "—"}</td>
-          <td>{editMode ? <input aria-label={`Price per sqm for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0" step="0.01"
-            disabled={busy || !!generator} value={drafts[p._id]?.pricePerSqm ?? ""} onChange={e => updateDraft(p._id, "pricePerSqm", e.target.value)} /> : money(p.pricePerSqm)}</td>
+            checked={selectedLots.includes(p._id)} onChange={() => toggleSelected(p._id)} /></FieldLabel></td>}
+          <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{editMode ? <FieldLabel compact className="guided-control">{`Lot number for ${p.propertyId}`}<input required aria-label={`Lot number for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="1" step="1"
+            disabled={busy || !!generator} value={drafts[p._id]?.lotNumber ?? p.lotNumber} onChange={e => updateDraft(p._id, "lotNumber", e.target.value)} /></FieldLabel> : p.lotNumber}</td>
+          <td>{editMode ? <FieldLabel compact className="guided-control">{`Area for ${p.propertyId}`}<input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0.01" step="any"
+            disabled={busy || !!generator} value={drafts[p._id]?.areaSqm ?? ""} onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /></FieldLabel> : p.areaSqm ?? "—"}</td>
+          <td>{editMode ? <FieldLabel compact className="guided-control">{`Price per sqm for ${p.propertyId}`}<input aria-label={`Price per sqm for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0" step="0.01"
+            disabled={busy || !!generator} value={drafts[p._id]?.pricePerSqm ?? ""} onChange={e => updateDraft(p._id, "pricePerSqm", e.target.value)} /></FieldLabel> : money(p.pricePerSqm)}</td>
           <td><output aria-label={`Price per lot for ${p.propertyId}`}>{money(lotPrice(editMode ? drafts[p._id]?.areaSqm : p.areaSqm, editMode ? drafts[p._id]?.pricePerSqm : p.pricePerSqm))}</output></td>
-          <td>{editMode ? <select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm" disabled={busy || !!generator}
+          <td>{editMode ? <FieldLabel compact className="guided-control">{`Status for ${p.propertyId}`}<select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm" disabled={busy || !!generator}
             value={drafts[p._id]?.status ?? p.status} onChange={e => updateDraft(p._id, "status", e.target.value)}>
             {STATUSES.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
-          </select> : <StatusBadge status={p.status} />}</td>
+          </select></FieldLabel> : <StatusBadge status={p.status} />}</td>
           {editMode && <td><button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || !!generator || changed.length > 0 || !deletableLot(p)}
             onClick={() => deleteLots([p])}>Delete lot</button>
             {!deletableLot(p) && <div className="small text-secondary">{p.client ? "Connected to a client" : "Not available for deletion"}</div>}</td>}
