@@ -1,3 +1,4 @@
+import {paymentRegisterWorkbook} from "../utils/paymentRegister.js";
 import {monitoringReports,reportColumns,reportRow} from "../utils/monitoringReports.js";
 import {validateTerms,configureSchedule} from "../utils/contractMonitoring.js";
 import {attachMonitoringUpdate,reconcileAccount} from "../services/monitoringService.js";
@@ -202,5 +203,16 @@ export async function exportMonitoringReport(req,res,next){
   const {default:ExcelJS}=await import("exceljs");const workbook=new ExcelJS.Workbook();
   for(const [name,entries]of Object.entries(rows)){const sheet=workbook.addWorksheet(name);sheet.addRow(reportColumns);for(const row of entries)sheet.addRow(reportRow(row));sheet.getRow(1).font={bold:true};sheet.columns.forEach(c=>c.width=24)}
   res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");res.setHeader("Content-Disposition",`attachment; filename="payment-monitoring-${from}-${to}.xlsx"`);res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
+ }catch(e){next(e)}
+}
+
+export async function exportPaymentRegister(req,res,next){
+ try {
+  const {from,to}=dateRange(req.query),project=req.query.project?id(req.query.project):null;
+  const accounts=await populate(PropertyAssignment.find(project?{project}:{})).lean();
+  const workbook=paymentRegisterWorkbook(accounts,from,to);
+  res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition",`attachment; filename="payment-commission-register-${from}-${to}.xlsx"`);
+  res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
  }catch(e){next(e)}
 }
