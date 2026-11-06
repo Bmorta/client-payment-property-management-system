@@ -139,3 +139,14 @@ button, input, select, textarea { font: inherit; }
 .monitoring-stat[data-kind="PAID_IN_ADVANCE"] .stat-icon { background: #e9f6f0; color: #218260; }
 .monitoring-stat[data-kind="FORFEITURE_REVIEW_REQUIRED"] .stat-icon { background: #fceeee; color: #b14c55; }
 @media (prefers-reduced-motion: reduce) { .monitoring-stat { transition: none; } }
+.field-label-row { display: flex; align-items: baseline; gap: 7px; margin-bottom: .45rem; }
+.field-label-row > .form-label { margin-bottom: 0; }
+.required-mark, .required-note > span:first-child { color: #b42335; font-weight: 700; }
+.required-note { color: #64748b; font-size: .76rem; }
+.field-help { display: inline-flex; flex: 0 0 auto; align-self: center; }
+.field-help-button { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; border-radius: 50%; color: #607491; cursor: help; }
+.field-help-button > span, .help-example { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1.3px solid currentColor; border-radius: 50%; font-family: Georgia, serif; font-size: 12px; font-style: normal; font-weight: 700; line-height: 1; }
+.field-help-button:hover, .field-help-button[aria-expanded="true"] { background: #eaf0fc; color: #2458d3; }
+.field-help-tooltip { position: fixed; z-index: 3100; width: min(340px, calc(100vw - 24px)); max-height: min(340px, calc(100dvh - 24px)); overflow-y: auto; padding: 15px 17px; background: #17263d; color: #f4f7fd; border: 1px solid #344964; border-radius: 9px; box-shadow: 0 8px 28px #14213730; font-size: .8rem; line-height: 1.6; font-weight: 400; }
+.field-help-tooltip > strong { display: block; margin-bottom: 6px; font-weight: 650; font-size: .83rem; }
+.field-help-tooltip > span { display: block; color: #dce5f3; white-space: pre-line; }

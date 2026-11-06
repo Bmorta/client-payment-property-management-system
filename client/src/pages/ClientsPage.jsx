@@ -1,3 +1,4 @@
+import RequiredMark from "../components/RequiredMark.jsx";
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
 import AssignmentFields, { blankAssignment } from "../components/AssignmentFields.jsx";
@@ -20,8 +21,8 @@ export default function ClientsPage(){
   <div className="mb-4"><p className="text-uppercase small fw-semibold text-secondary mb-1">Management</p><h1 className="h3 fw-bold mb-1">Clients</h1><p className="text-secondary mb-0">Maintain one master client record. Assign multiple lots across projects, track installment schedules and view payment history.</p></div>
   <CenterPopup message={message} error={error} onClose={()=>{setMessage("");setError("")}} />
   <div className="row g-4">
-   <div className="col-12 col-xl-4"><div className="card border-0 shadow-sm"><div className="card-body"><h2 className="h5 fw-bold">{editing?"Edit Client":"Add Client"}</h2><form onSubmit={submit} className="mt-3"><fieldset disabled={busy}>
-    {[["clientId","Client ID",false],["firstName","First Name",true],["middleName","Middle Name",false],["lastName","Last Name",true],["suffix","Suffix",false],["contactNumber","Contact Number",false],["email","Email",false],["address","Address",false]].map(([k,l,r])=><div className="mb-3" key={k}><label className="form-label">{l}</label><input className="form-control" type={k==="email"?"email":"text"} value={form[k]} readOnly={k==="clientId"} placeholder={k==="clientId"?"Assigned automatically when saved":undefined} required={r} onChange={e=>setForm({...form,[k]:e.target.value})}/></div>)}
+   <div className="col-12 col-xl-4"><div className="card border-0 shadow-sm"><div className="card-body"><h2 className="h5 fw-bold">{editing?"Edit Client":"Add Client"}</h2><p className="required-note"><span aria-hidden="true">*</span> Required fields</p><form onSubmit={submit} className="mt-3"><fieldset disabled={busy}>
+    {[["clientId","Client ID",false],["firstName","First Name",true],["middleName","Middle Name",false],["lastName","Last Name",true],["suffix","Suffix",false],["contactNumber","Contact Number",false],["email","Email",false],["address","Address",false]].map(([k,l,r])=><div className="mb-3" key={k}><label className="form-label">{l}{r&&<RequiredMark/>}</label><input className="form-control" type={k==="email"?"email":"text"} value={form[k]} readOnly={k==="clientId"} placeholder={k==="clientId"?"Assigned automatically when saved":undefined} required={r} onChange={e=>setForm({...form,[k]:e.target.value})}/></div>)}
     <div className="mb-3"><label className="form-label">Status</label><select className="form-select" value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></select></div>
     <div className="mb-3"><label className="form-label">Notes</label><textarea className="form-control" rows="3" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></div>
     {editing&&<p className="small text-secondary">Payment terms belong to each property. Use Edit Payment Agreement in Properties & accounts below to review its saved terms.</p>}

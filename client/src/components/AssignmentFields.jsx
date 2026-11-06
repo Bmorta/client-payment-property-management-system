@@ -1,3 +1,4 @@
+import RequiredMark from "./RequiredMark.jsx";
 import { useEffect, useState } from "react";
 import ContractTerms from "./ContractTerms.jsx";
 import TermSelector from "./TermSelector.jsx";
@@ -28,15 +29,15 @@ export default function AssignmentFields({ value, onChange, refreshKey = 0, clie
   return <div className="row g-3">
     {error && <p className="text-danger" role="alert">{error}</p>}
     {[["projectId", "Project", projects.map(p => [p._id, p.projectName])], ["phase", "Phase", phases.map(n => [n, `Phase ${n}`])], ["block", "Block", blocks.map(n => [n, `Block ${n}`])], ["propertyId", "Lot", options.map(p => [p._id, `Lot ${p.lotNumber} · ${p.areaSqm ?? "?"} sqm`])]].map(([key, label, choices]) => <div className="col-12 col-sm-6" key={key}>
-      <label className="form-label w-100">{label}<select aria-label={`Assignment ${label}`} className="form-select" required value={value[key]} onChange={e => set(key, e.target.value)}><option value="">Select {label.toLowerCase()}</option>{choices.map(([id, text]) => <option key={id} value={id}>{text}</option>)}</select></label>
+      <label className="form-label w-100">{label}<RequiredMark/><select aria-label={`Assignment ${label}`} className="form-select" required value={value[key]} onChange={e => set(key, e.target.value)}><option value="">Select {label.toLowerCase()}</option>{choices.map(([id, text]) => <option key={id} value={id}>{text}</option>)}</select></label>
     </div>)}
     {loading && <p role="status">Loading available lots...</p>}
     {value.projectId && !loading && !lots.length && <p className="text-secondary small">No available, unassigned lots in this project.</p>}
     {lot && <p className="small mb-0">Lot price: <strong>{money(lotPrice(lot.areaSqm, lot.pricePerSqm))}</strong>. Each account keeps the agreed price when assigned.</p>}
     <TermSelector value={value} onChange={onChange}/>
-    <div className="col-sm-6"><label className="form-label w-100">Planned down payment (₱)<input className="form-control" type="number" min="0" step="0.01" required value={value.downPayment} onChange={e => set("downPayment", e.target.value)} /></label></div>
-    <div className="col-sm-6"><label className="form-label w-100">Contract date<input className="form-control" type="date" required max={localDate()} value={value.contractDate} onChange={e => set("contractDate", e.target.value)} /></label></div>
-    <div className="col-sm-6"><label className="form-label w-100">First installment due<input className="form-control" type="date" required min={value.contractDate} value={value.firstDueDate} onChange={e => set("firstDueDate", e.target.value)} /></label></div>
+    <div className="col-sm-6"><label className="form-label w-100">Planned down payment (₱)<RequiredMark/><input className="form-control" type="number" min="0" step="0.01" required value={value.downPayment} onChange={e => set("downPayment", e.target.value)} /></label></div>
+    <div className="col-sm-6"><label className="form-label w-100">Contract date<RequiredMark/><input className="form-control" type="date" required max={localDate()} value={value.contractDate} onChange={e => set("contractDate", e.target.value)} /></label></div>
+    <div className="col-sm-6"><label className="form-label w-100">First installment due<RequiredMark/><input className="form-control" type="date" required min={value.contractDate} value={value.firstDueDate} onChange={e => set("firstDueDate", e.target.value)} /></label></div>
     <ContractTerms value={value} onChange={onChange}/>
     <div className="col-12"><PaymentEstimate monitoringTerms={value.monitoringTerms} monthlyInstallment={value.monthlyInstallment} totalCents={totalCents} months={value.months} termType={value.termType} downPayment={value.downPayment} firstDueDate={value.firstDueDate} contractDate={value.contractDate} propertyLabel={lot ? `Phase ${lot.phaseNumber} / Block ${lot.blockNumber} / Lot ${lot.lotNumber}` : ""} /></div>
     <p className="small text-secondary">The down payment is scheduled, not marked paid. Record actual money received through Payment.</p>
