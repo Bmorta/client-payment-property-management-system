@@ -17,7 +17,7 @@ const CommissionsPage=lazy(()=>import("./pages/CommissionsPage.jsx"));
 const ClientsPage=lazy(()=>import("./pages/ClientsPage.jsx"));
 
 const PaymentMonitoringPage=lazy(()=>import("./pages/PaymentMonitoringPage.jsx"));
-const DashboardPage=PaymentMonitoringPage;
+const DashboardPage=()=> <PaymentMonitoringPage dashboard/>;
 
 const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
