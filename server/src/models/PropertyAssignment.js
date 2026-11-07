@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { validTerm } from "../../../shared/paymentSchedule.js";
 const { Schema } = mongoose;
 const paymentSchema = new Schema({
+  fundingAccount:{type:String,enum:["CASH","NONCASH",null],default:null}, receiptScope: String, configuration: Schema.Types.Mixed,
   type: {type:String,enum:["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY"],default:"AUTO"},
   allocations: {type:[Schema.Types.Mixed],default:[]},
   revisions: {type:[Schema.Types.Mixed],default:[]},
@@ -46,5 +47,8 @@ const assignmentSchema = new Schema({
   createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true }
 }, { timestamps: true });
 assignmentSchema.index({"commissionSnapshot.records.agent":1,project:1});
+assignmentSchema.index({"payments.paymentId":1},{unique:true,partialFilterExpression:{"payments.paymentId":{$type:"string"}}});
+assignmentSchema.index({"commissionPayouts.payoutId":1},{unique:true,partialFilterExpression:{"commissionPayouts.payoutId":{$type:"string"}}});
+assignmentSchema.index({"correctionRequests.requestNumber":1},{unique:true,partialFilterExpression:{"correctionRequests.requestNumber":{$type:"string"}}});
 assignmentSchema.index({ client: 1, createdAt: -1 });
 export default mongoose.model("PropertyAssignment", assignmentSchema);

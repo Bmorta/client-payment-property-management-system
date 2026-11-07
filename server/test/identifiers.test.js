@@ -25,14 +25,14 @@ test("concurrent allocations advance beyond historical client IDs without loweri
  const ids=await Promise.all(Array.from({length:20},()=>generateRecordId("client")));
  assert.equal(new Set(ids).size,20);assert.ok(ids.includes("CL-000151"));assert.equal(values.client,170);
 });
-test("payment and internal receipt sequences are independent and reconcile embedded legacy numbers",async t=>{
+test("payment IDs reconcile history while external receipts cannot be generated",async t=>{
  t.mock.method(PropertyAssignment,"aggregate",async pipeline=>{
   assert.deepEqual(pipeline[0],{$unwind:"$payments"});
   return [{value:pipeline[1].$match["payments.receiptNumber"]?52:80}];
  });
  counters(t);
  assert.equal(await generateRecordId("payment"),"PAY-000081");
- assert.equal(await generateRecordId("receipt"),"RCT-000053");
+ await assert.rejects(generateRecordId("receipt"),/Unknown record ID/);
 });
 test("new clients receive a server ID even if caller supplies one",async t=>{
  t.mock.method(Client,"aggregate",async()=>[{value:20}]);counters(t);

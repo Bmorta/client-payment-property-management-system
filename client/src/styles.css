@@ -161,3 +161,10 @@ button, input, select, textarea { font: inherit; }
 .guided-control { min-width: 0; }
 .guided-control > .field-label-row { justify-content: flex-end; margin-bottom: .15rem; }
 .guided-control:has(input[type="checkbox"]) > .field-label-row { justify-content: flex-start; }
+.search-combobox { position: relative; min-width: 0; flex: 1; }
+.search-suggestions { position: absolute; z-index: 1200; top: 100%; left: 0; right: 0; max-height: 320px; overflow: auto; background: var(--bs-body-bg,white); border: 1px solid var(--bs-border-color,#dce4ef); border-radius: 8px; box-shadow: 0 8px 24px #14213720; }
+.search-suggestions [role="option"],.search-suggestions p { padding: .6rem .8rem; margin: 0; cursor: pointer; }
+.search-suggestions [role="option"]:hover,.search-suggestions .active { background: var(--bs-secondary-bg,#eef3fa); }
+:where(main h1,main h2,main h3,[tabindex="-1"]) { scroll-margin-top: 110px; }
+.method-filter { position: relative; }
+.method-filter-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 1250; padding: 1rem; min-width: 0; max-width: calc(100vw - 24px); max-height: min(420px, 55dvh); overflow-y: auto; background: var(--bs-body-bg,white); border: 1px solid var(--bs-border-color,#dce4ef); border-radius: 9px; box-shadow: 0 8px 24px #14213720; }

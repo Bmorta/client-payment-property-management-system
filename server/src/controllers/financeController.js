@@ -1,3 +1,8 @@
+import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
+import {financialRows,isPosted} from "../utils/financialReporting.js";
+import {expenseClassification} from "./cashLedgerController.js";
+import {transactionReport} from "./collectionReportController.js";
+import {validateReceipt,checkReceipt,receiptScope} from "../services/receiptService.js";
 import {dashboardCharts} from "../utils/dashboardCharts.js";
 import {paymentRegisterWorkbook} from "../utils/paymentRegister.js";
 import {monitoringReports,reportColumns,reportRow} from "../utils/monitoringReports.js";
@@ -19,7 +24,7 @@ const fail = (code, message) => { throw Object.assign(new Error(message), { stat
 const id = value => { if (typeof value !== "string" || !mongoose.isValidObjectId(value)) fail(400, "Invalid identifier."); return value; };
 const text = (value, max = 500) => { if (value != null && typeof value !== "string") fail(400, "Invalid text field."); return (value || "").trim().slice(0, max); };
 const requestKey = value => { if (typeof value !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(value)) fail(400, "Invalid submission ID. Reload the form."); return value; };
-const populate = query => query.populate("client", "clientId firstName middleName lastName suffix").populate("project", "projectName projectCode").populate("property", "propertyId phaseNumber blockNumber lotNumber areaSqm");
+const populate = query => query.populate("client", "clientId firstName middleName lastName suffix").populate("project", "projectId projectName projectCode").populate("property", "propertyId phaseNumber blockNumber lotNumber areaSqm");
 const accountData = (account, user) => {
   const { auditEvents, notifications, correctionRequests, ...safe } = account;
   const { allocations } = allocatePayments(account);
@@ -74,14 +79,14 @@ export async function assignProperty(req, res, next) {
     next(e);
   }
 }
-const samePayment = (p, input) => p.amountCents === input.amountCents && p.paymentDate === input.paymentDate && p.method === input.method && p.reference === input.reference && p.notes === input.notes && (p.type || "AUTO") === (input.type || "AUTO");
+const samePayment = (p, input) => p.amountCents === input.amountCents && p.paymentDate === input.paymentDate && p.method === input.method && p.reference === input.reference && p.notes === input.notes && (p.type || "AUTO") === (input.type || "AUTO") && physicalFunding(p.method,p.fundingAccount)===input.fundingAccount && p.receiptNumber===input.receiptNumber && JSON.stringify(p.configuration||{})===JSON.stringify(input.configuration||{});
 export async function acceptPayment(req, res, next) {
   try {
     const accountId = id(req.body.accountId), requestId = requestKey(req.body.requestId);
     const amountCents = moneyCents(req.body.amount), paymentDate = req.body.paymentDate;
     if (!amountCents || !validDate(paymentDate) || paymentDate > today() || !METHODS.includes(req.body.method)) fail(400, "Enter a positive payment, valid date and payment method.");
     if (req.body.type && !["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY"].includes(req.body.type)) fail(400,"Invalid payment type.");
-    const input = { type: req.body.type || "AUTO", amountCents, paymentDate, method: req.body.method, reference: text(req.body.reference, 120), notes: text(req.body.notes) };
+    const input = { fundingAccount:validateFunding(req.body.method,req.body.fundingAccount),receiptNumber:validateReceipt(req.body.receiptNumber),receiptScope:receiptScope(), configuration:paymentConfiguration(req.body.configuration,req.user), type: req.body.type || "AUTO", amountCents, paymentDate, method: req.body.method, reference: text(req.body.reference, 120), notes: text(req.body.notes) };
     let account = await PropertyAssignment.findById(accountId).lean();
     if (!account) fail(404, "Client account not found.");
     if (paymentDate < account.contract.contractDate) fail(400, "Payment date cannot be before the contract date.");
@@ -92,12 +97,14 @@ export async function acceptPayment(req, res, next) {
     }
     const [client, project] = await Promise.all([Client.findById(account.client), Project.findById(account.project)]);
     if (!client || client.status !== "ACTIVE" || !project || project.status === "ARCHIVED") fail(409, "Payments require an active client and a project that is not archived.");
-    const payment = { ...input, agreementVersion: (account.agreementHistory?.length || 0) + 1, actorUsername: req.user.username, actorRole: req.user.role, requestId, paymentId: await generateRecordId("payment"), receiptNumber: await generateRecordId("receipt"), createdBy: req.user._id, createdAt: new Date() };
+    const payment = { ...input, agreementVersion: (account.agreementHistory?.length || 0) + 1, actorUsername: req.user.username, actorRole: req.user.role, requestId, paymentId: await generateRecordId("payment"),  createdBy: req.user._id, createdAt: new Date() };
+    if(account.contract.monitoringTerms?.pendingPaymentPolicy&&!input.configuration.allocationPriority)fail(400,"Select the transaction allocation priority; the permanent payment policy is not configured yet.");
     const proposed={...account,payments:[...account.payments,payment]};
     const preview=allocationPreview(account,proposed,payment.paymentId);
     // Generated IDs are normalized for preview/confirm comparison.
     const normalized=allocationPreview(account,{...account,payments:[...account.payments,{...payment,paymentId:"PREVIEW"}]},"PREVIEW");
     if(account.contract.monitoringTerms && req.body.previewToken!==normalized.token)fail(409,"Review the allocation preview again; the account or contractual date changed.");
+    await checkReceipt(input.receiptNumber,input.receiptScope,accountId,payment.paymentId,requestId,true,true);
     payment.allocations=preview.allocations;
     const update=attachMonitoringUpdate(proposed,{ $push: {payments:payment,auditEvents:{eventId:req.auditEvent?._id,action:"PAYMENT_RECORDED",userId:req.user._id,username:req.user.username,role:req.user.role,timestamp:new Date(),updatedValues:payment}},$inc:{__v:1}}, {userId:req.user._id,username:req.user.username,role:req.user.role},"Payment posted");
     account = await PropertyAssignment.findOneAndUpdate({ _id: accountId, __v: account.__v ?? 0, "payments.requestId": { $ne: requestId }
@@ -114,14 +121,14 @@ export async function acceptPayment(req, res, next) {
 }
 async function paymentRows() {
   const accounts = await populate(PropertyAssignment.find({ "payments.0": { $exists: true } })).lean();
-  return accounts.flatMap(account => account.payments.map(raw => {const payment=effectivePayment(raw);return ({ ...payment, accountId: account._id, assignmentId: account.assignmentId, client: account.client, project: account.project, property: account.property })}))
-    .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return financialRows(accounts,[]).collections.sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
 }
 export async function listPayments(req, res, next) {
+  if(req.query.paged||req.query.format)return transactionReport(req,res,next);
   try { res.json({ success: true, data: await paymentRows() }); } catch (e) { next(e); }
 }
 export async function listExpenses(req, res, next) {
-  try { res.json({ success: true, data: await Expense.find().populate("project", "projectName projectCode").sort({ expenseDate: -1, createdAt: -1 }).lean() }); } catch (e) { next(e); }
+  try { res.json({ success: true, data: await Expense.find().populate("project", "projectId projectName projectCode").sort({ expenseDate: -1, createdAt: -1 }).lean() }); } catch (e) { next(e); }
 }
 export async function createExpense(req, res, next) {
   try {
@@ -130,10 +137,12 @@ export async function createExpense(req, res, next) {
     const description = text(req.body.description);
     if (!amountCents || !description || !["OFFICE", "PROJECT", "OTHER"].includes(category) || !validDate(expenseDate) || expenseDate > today()) fail(400, "Enter a positive amount, description, category and valid expense date.");
     const project = category === "PROJECT" ? id(req.body.projectId) : null;
-    const data = { requestId, amountCents, category, expenseDate, description, project, payee: text(req.body.payee, 120), reference: text(req.body.reference, 120) };
+    const classification=await expenseClassification({...req.body,amountCents,expenseDate});
+    const data = { ...classification, requestId, amountCents, category, expenseDate, description, project, payee: text(req.body.payee, 120), reference: text(req.body.reference, 120) };
     const old = await Expense.findOne({ requestId }).lean();
     if (old) {
-      if (Object.entries(data).some(([key, value]) => String(old[key] ?? "") !== String(value ?? ""))) fail(409, "This submission ID belongs to a different expense. Review the list.");
+      const comparable={...old,fundingAccount:physicalFunding(old.method,old.fundingAccount),payoutLinkChecked:!!old.payoutLinkChecked};
+      if (Object.entries(data).some(([key, value]) => String(comparable[key] ?? "") !== String(value ?? ""))) fail(409, "This submission ID belongs to a different expense. Review the list.");
       return res.json({ success: true, data: old, message: "Expense already recorded. No duplicate created." });
     }
     if (project && !(await Project.exists({ _id: project, status: { $ne: "ARCHIVED" } }))) fail(409, "Choose a project that is not archived.");
@@ -149,9 +158,9 @@ export async function createExpense(req, res, next) {
 export async function report(req, res, next) {
   try {
     const { from, to } = dateRange(req.query), project = req.query.project ? id(req.query.project) : null;
-    const [allPayments, allExpenses, accounts] = await Promise.all([paymentRows(), Expense.find().populate("project", "projectName projectCode").lean(), populate(PropertyAssignment.find(project ? { project } : {})).lean()]);
-    const payments = allPayments.filter(p => p.paymentDate >= from && p.paymentDate <= to && (!project || String(p.project?._id) === project));
-    const expenses = allExpenses.filter(e => e.expenseDate >= from && e.expenseDate <= to && (!project || String(e.project?._id) === project));
+    const [allPayments, allExpenses, accounts] = await Promise.all([paymentRows(), Expense.find().populate("project", "projectId projectName projectCode").populate("createdBy","username").lean(), populate(PropertyAssignment.find(project ? { project } : {})).lean()]);
+    const payments = allPayments.filter(p => p.posted!==false && p.paymentDate >= from && p.paymentDate <= to && (!project || String(p.project?._id) === project));
+    const expenses = allExpenses.filter(e => isPosted(e) && e.expenseDate >= from && e.expenseDate <= to && (!project || String(e.project?._id) === project));
     const collectedCents = payments.reduce((n, p) => n + p.amountCents, 0), expenseCents = expenses.reduce((n, e) => n + e.amountCents, 0);
     const asOf = to < today() ? to : today();
     const balances = accounts.filter(a => a.contract.contractDate <= asOf).map(a => ({ ...accountData(a, req.user), summary: summarizeAccount(a, asOf) }));
@@ -191,7 +200,11 @@ export async function previewPayment(req,res,next){
   const account=await PropertyAssignment.findById(id(req.body.accountId)).lean();if(!account)fail(404,"Account not found.");
   const amountCents=moneyCents(req.body.amount),paymentDate=req.body.paymentDate,type=req.body.type||"AUTO";
   if(!amountCents||!validDate(paymentDate)||paymentDate<account.contract.contractDate||paymentDate>today()||!["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY"].includes(type))fail(400,"Check the payment amount, date and type.");
-  const proposed={...account,payments:[...account.payments,{paymentId:"PREVIEW",amountCents,paymentDate,type,createdAt:new Date()}]};
+  validateReceipt(req.body.receiptNumber);await checkReceipt(req.body.receiptNumber,receiptScope(),account._id,"PREVIEW",req.body.requestId);
+  const fundingAccount=validateFunding(req.body.method,req.body.fundingAccount);
+  const configuration=paymentConfiguration(req.body.configuration,req.user);
+  if(account.contract.monitoringTerms?.pendingPaymentPolicy&&!configuration.allocationPriority)fail(400,"Choose the transaction allocation priority before previewing this payment.");
+  const proposed={...account,payments:[...account.payments,{paymentId:"PREVIEW",amountCents,paymentDate,type,configuration,fundingAccount,createdAt:new Date()}]};
   res.json({success:true,data:allocationPreview(account,proposed,"PREVIEW")});
  }catch(e){next(e)}
 }
@@ -224,4 +237,12 @@ export async function dashboardAnalytics(req,res,next){
   const [accounts,expenses]=await Promise.all([PropertyAssignment.find(filter).select("payments").lean(),Expense.find({...filter,expenseDate:{$gte:from,$lte:to}}).select("amountCents expenseDate").lean()]);
   res.json({success:true,data:{from,to,months:dashboardCharts(accounts,expenses,from,to)}});
  }catch(e){next(e)}
+}
+
+export function paymentConfiguration(input,user){
+ if(input==null)return {};
+ if(typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(k=>!["allocationPriority","reason"].includes(k)))fail(400,"Only supported transaction allocation priority may be overridden here. Use the explicit agreement editor or administrator waiver for penalty changes.");
+ if(Object.keys(input).length===0)return {};
+ if(!["ADMIN","STAFF"].includes(user?.role)||!["PRINCIPAL_FIRST","PENALTY_FIRST"].includes(input.allocationPriority)||typeof input.reason!=="string"||input.reason.trim().length<5||input.reason.length>500)fail(400,"Choose a valid payment priority and give an override reason (5–500 characters).");
+ return {allocationPriority:input.allocationPriority,reason:input.reason.trim()};
 }

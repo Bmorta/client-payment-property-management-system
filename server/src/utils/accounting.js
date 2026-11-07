@@ -1,7 +1,7 @@
 import { allocatePayments } from "./paymentLedger.js";
 import { validDate } from "../../../shared/paymentSchedule.js";
 export { TERMS, MAX_TERM_MONTHS, validTerm, moneyCents, validDate, monthDate, buildSchedule } from "../../../shared/paymentSchedule.js";
-export const METHODS = ["CASH", "BANK_TRANSFER", "GCASH", "CHECK", "OTHER"];
+export {PAYMENT_METHODS as METHODS} from "../../../shared/paymentMethods.js";
 export const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 export function summarizeAccount(account, asOf = today()) {
   // Historical reports use the agreement that applied at the report cutoff.

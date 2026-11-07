@@ -1,3 +1,4 @@
+import SearchInput from "../components/SearchInput.jsx";
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 const ActivityLogs = lazy(() => import("../components/ActivityLogs.jsx"));
@@ -297,14 +298,7 @@ export default function UsersPage() {
       <div className="card border-0 shadow-sm">
         <div className="card-body">
           <div className="mb-3">
-            <FieldLabel className="form-label" htmlFor="userSearch">Search users
-            <input
-              id="userSearch"
-              className="form-control"
-              placeholder="Search username, name, email or role"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            /></FieldLabel>
+            <SearchInput label="Search users" value={search} onChange={value=>{setSearch(value);}} items={users.map(u=>({key:u._id,label:u.username,detail:`${u.firstName} ${u.lastName} ${u.email} ${u.role}`}))}/>
           </div>
 
           <div className="table-responsive">

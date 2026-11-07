@@ -1,3 +1,4 @@
+import SearchInput from "../components/SearchInput.jsx";
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
@@ -21,6 +22,7 @@ export default function PropertyInventory({ project, onClose }) {
   const [drafts, setDrafts] = useState({});
   const [selectedLots, setSelectedLots] = useState([]);
   const [phases, setPhases] = useState([]);
+  const [inventoryQuery,setInventoryQuery]=useState("");
   const [mode, setMode] = useState("");
   const [generator, setGenerator] = useState("");
   const [selectedPhase, setSelectedPhase] = useState("");
@@ -176,6 +178,7 @@ export default function PropertyInventory({ project, onClose }) {
     } });
   };
   const visibleProperties = properties.filter(p =>
+    [p.propertyId,`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber}`,p.status].join(" ").toLowerCase().includes(inventoryQuery.toLowerCase()) &&
     (!filters.phase || String(p.phaseNumber) === filters.phase) && (!filters.block || String(p.blockNumber) === filters.block) &&
     (!filters.lot || String(p.lotNumber) === filters.lot) && (!filters.status || p.status === filters.status));
   const eligibleVisible = visibleProperties.filter(deletableLot);
@@ -323,6 +326,7 @@ export default function PropertyInventory({ project, onClose }) {
           <button type="button" className="btn btn-outline-secondary btn-sm" disabled={busy} onClick={() => { const discard = () => {cancelEdits();setSelectedLots([]);setLotEditing(false);setConfirmAction(null)}; if(changed.length) setConfirmAction({discard:true,text:"Discard unsaved lot changes?",action:discard}); else discard(); }}>Cancel Editing / Go Back</button>
         </div>}
       </div>
+      <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([])}} items={properties.map(p=>({key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>
           <FieldLabel htmlFor={`filter-${key}`} className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}

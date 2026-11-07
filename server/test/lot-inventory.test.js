@@ -1,3 +1,5 @@
+import Phase from "../src/models/Phase.js";
+import Block from "../src/models/Block.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
@@ -11,6 +13,7 @@ import { validPrice, lotPrice } from "../src/utils/lotPricing.js";
 
 const projectId = "507f1f77bcf86cd799439011";
 const ids = ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"];
+test.beforeEach(t=>{for(const model of [Phase,Block,Property])t.mock.method(model,"aggregate",async()=>[])});
 const response = () => ({ code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
 const req = (body = {}) => ({ params: { projectId }, body, user: { _id: projectId } });
 const next = error => { throw error; };

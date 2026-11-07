@@ -1,3 +1,5 @@
+import {useSearchParams} from "react-router-dom";
+import PropertyPaymentDetails from "./PropertyPaymentDetails.jsx";
 import {RequiredNote} from "./FieldLabel.jsx";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -10,10 +12,10 @@ import PropertyPaymentHistory from "./PropertyPaymentHistory.jsx";
 import CenterPopup from "./CenterPopup.jsx";
 import { pesos, clientName, lotName } from "../utils/finance.js";
 export default function ClientAccounts({ client, refreshKey = 0 }) {
-  const { user } = useAuth();
+  const { user } = useAuth();const [params,setParams]=useSearchParams();
   const [editingAgreement,setEditingAgreement]=useState(null);
   const [accounts, setAccounts] = useState([]), [form, setForm] = useState(blankAssignment), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [error, setError] = useState(""), [version, setVersion] = useState(0);
-  useEffect(() => { let cancelled = false; setLoading(true); api.get(`/finance/accounts?client=${client._id}`).then(({ data }) => { if (!cancelled) setAccounts(data.data); }).catch(e => { if (!cancelled) setError(e.response?.data?.message || "Unable to load client accounts."); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [client._id, version, refreshKey]);
+  useEffect(() => { let cancelled = false; setLoading(true); api.get(`/finance/accounts?client=${client._id}`).then(({ data }) => { if (!cancelled) {setAccounts(data.data);if(!params.get("account")&&data.data[0])setParams({account:data.data[0]._id},{replace:true});} }).catch(e => { if (!cancelled) setError(e.response?.data?.message || "Unable to load client accounts."); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [client._id, version, refreshKey]);
   const assign = async e => {
     e.preventDefault(); if (!form.propertyId) return;
     setBusy(true);
@@ -24,11 +26,12 @@ export default function ClientAccounts({ client, refreshKey = 0 }) {
   return <section className="card border-0 shadow-sm mt-4"><div className="card-body">
     <h2 className="h5 fw-bold">Properties & accounts — {clientName(client)}</h2>
     <CenterPopup message={message} error={error} onClose={() => { setMessage(""); setError(""); }} />
-    {loading ? <p role="status">Loading accounts...</p> : !accounts.length ? <p className="text-secondary">No assigned lots yet.</p> : accounts.map(a => <details key={a._id} className="border rounded p-3 mb-3">
+    {loading ? <p role="status">Loading accounts...</p> : !accounts.length ? <p className="text-secondary">No assigned lots yet.</p> : accounts.map(a => <details key={a._id} className="border rounded p-3 mb-3" open={params.get("account")===a._id} onToggle={e=>{if(e.currentTarget.open&&params.get("account")!==a._id)setParams({account:a._id},{replace:true})}}>
       <summary><strong>{a.project?.projectName} — {lotName(a.property)}</strong><span className="d-block small mt-1">{a.assignmentId} · {a.contract.termType === "CUSTOM" ? "Custom " : ""}{a.contract.months} months · Balance {pesos(a.summary.balanceCents)} · {a.summary.alert.replaceAll("_", " ")}</span></summary>
       <div className="d-flex flex-wrap gap-3 my-3"><span>Contract: {pesos(a.contract.totalCents)}</span><span>Paid: {pesos(a.summary.paidCents)}</span><span>Overdue: {pesos(a.summary.overdueCents)}</span><Link to={`/payment?account=${a._id}`} className="btn btn-sm btn-primary">Accept Payment</Link></div>
       {user?.role === "ADMIN" && <button type="button" className="btn btn-sm btn-outline-primary my-2" onClick={() => setEditingAgreement(a._id)}>Edit Payment Agreement</button>}
       {editingAgreement === a._id && <AgreementEditor key={`${a._id}/${a.__v}`} account={a} onClose={() => setEditingAgreement(null)} onSaved={() => {setEditingAgreement(null);setVersion(v=>v+1);setMessage("Agreement updated. Recorded payments are unchanged.")}} />}
+      <PropertyPaymentDetails account={a}/>
       <AccountMonitoringDetails account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
       <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Installment</th><th>Due date</th><th>Scheduled</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{a.summary.schedule.map(s => <tr key={s.installment}><td>{s.installment === 0 ? "Down payment" : s.installment}</td><td>{s.dueDate}</td><td>{pesos(s.amountCents)}</td><td>{pesos(s.paidCents)}</td><td>{pesos(s.balanceCents)}</td><td>{!s.balanceCents ? "Paid" : s.penaltyReview ? "Overdue >10 days" : s.overdue ? "Overdue" : "Scheduled"}</td></tr>)}</tbody></table></div>
       <PropertyPaymentHistory account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>

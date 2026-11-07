@@ -1,0 +1,57 @@
+import {physicalFunding,isCashFunded} from "./fundingAccount.js";
+import {effectivePayment} from './paymentLedger.js';
+import {effectivePayout} from './commissionLedger.js';
+import {PAYMENT_METHODS} from '../../../shared/paymentMethods.js';
+export const fail=(message,statusCode=400)=>{throw Object.assign(new Error(message),{statusCode})};
+export const total=rows=>{const n=rows.reduce((s,r)=>s+r.amountCents,0);if(!Number.isSafeInteger(n))fail('Financial total exceeds integer-centavo precision.',409);return n};
+export function parseMethods(value){if(value==null||value==='')return [];const values=Array.isArray(value)?value:String(value).split(',');if(values.some(v=>!PAYMENT_METHODS.includes(v)))fail('Select valid payment methods.');const selected=[...new Set(values)];return selected.length===PAYMENT_METHODS.length?[]:selected}
+const badStatus=s=>['VOIDED','CANCELLED','CANCELED','REVERSED','DRAFT','PENDING','REJECTED'].includes(String(s||'').toUpperCase());
+export function isPosted(raw){const last=raw.revisions?.at(-1)?.values||{};return !badStatus(last.status||raw.status)&&!last.voided&&!last.cancelled&&!last.reversed&&!raw.voided&&!raw.cancelled&&!raw.reversed&&raw.posted!==false&&last.posted!==false}
+export function financialRows(accounts,expenses){
+ const collections=[],payouts=[],recoveries=[];
+ for(const a of accounts){
+  for(const raw of a.payments||[]){const p=effectivePayment(raw),posted=isPosted(raw)&&p.amountCents>0;collections.push({...p,recordedMethod:p.method,method:PAYMENT_METHODS.includes(p.method)?p.method:"UNCLASSIFIED",posted,status:posted?p.status:(raw.revisions?.at(-1)?.values?.voided||raw.voided||p.status==='VOIDED')?'VOIDED':(raw.revisions?.at(-1)?.values?.reversed||raw.reversed)?'REVERSED':(raw.revisions?.at(-1)?.values?.cancelled||raw.cancelled)?'CANCELLED':String(raw.revisions?.at(-1)?.values?.status||raw.status||'PENDING').toUpperCase().replace('CANCELED','CANCELLED'),accountId:String(a._id),assignmentId:a.assignmentId,client:a.client,project:a.project,property:a.property})}
+  for(const raw of a.commissionPayouts||[]){const p=effectivePayout(raw);if(isPosted(raw)&&p.amountCents>0)payouts.push({...p,date:p.releaseDate,accountId:String(a._id),project:a.project})}
+  for(const r of a.commissionRecoveries||[])if(isPosted(r)&&r.amountCents>0)recoveries.push({...r,date:r.recoveryDate,accountId:String(a._id),project:a.project});
+ }
+ return {collections,expenses:expenses.filter(e=>isPosted(e)&&e.amountCents>0).map(e=>({...e,status:e.status||'POSTED',recordedMethod:e.method,method:PAYMENT_METHODS.includes(e.method)?e.method:'UNCLASSIFIED'})),payouts,recoveries};
+}
+const identity=value=>String(value?._id||value||'');
+const paymentText=r=>[r.paymentId,r.receiptNumber,r.client?.clientId,r.client?.firstName,r.client?.middleName,r.client?.lastName,r.project?.projectName,r.property?.propertyId,`Phase ${r.property?.phaseNumber} Block ${r.property?.blockNumber} Lot ${r.property?.lotNumber}`,r.reference].join(' ').toLowerCase();
+const expenseText=r=>[r.expenseId,r.category,r.description,r.payee,r.project?.projectName,r.reference].join(' ').toLowerCase();
+export function filterPayments(rows,query){
+ const methods=parseMethods(query.methods),q=String(query.q||'').slice(0,100).toLowerCase();
+ return rows.filter(p=>(!query.from||p.paymentDate>=query.from)&&(!query.to||p.paymentDate<=query.to)&&(!methods.length||methods.includes(p.method))&&(!query.client||identity(p.client)===query.client)&&(!query.project||identity(p.project)===query.project)&&(!query.status||p.status===query.status)&&paymentText(p).includes(q));
+}
+export function sorted(rows,key='date',direction='desc',section='collections'){
+ const keys=section==='collections'?{date:'paymentDate',amount:'amountCents',id:'paymentId',client:'client'}:{date:'expenseDate',amount:'amountCents',id:'expenseId',description:'description'};
+ if(!keys[key]||!['asc','desc'].includes(direction))fail('Choose a valid sort order.');
+ return [...rows].sort((a,b)=>{const field=keys[key],av=field==='client'?paymentText({...a,paymentId:'',receiptNumber:''}):a[field],bv=field==='client'?paymentText({...b,paymentId:'',receiptNumber:''}):b[field];return (typeof av==='number'?av-bv:String(av||'').localeCompare(String(bv||'')))*(direction==='asc'?1:-1)||String(a.paymentId||a.expenseId).localeCompare(String(b.paymentId||b.expenseId))});
+}
+export function pageRows(rows,page=1){const n=Number(page);if(!Number.isSafeInteger(n)||n<1||n>100000)fail('Invalid page.');return {rows:rows.slice((n-1)*20,n*20),count:rows.length,page:n,pageSize:20}}
+const cashKinds={INFLOW:1,BANK_WITHDRAWAL:1,OUTFLOW:-1,BANK_DEPOSIT:-1};
+export function cashPosition(data,entries,from,to){
+ const active=entries.filter(e=>e.status==='POSTED'&&e.effectiveDate<=to),anchor=active.find(e=>e.kind==='OPENING'&&e.effectiveDate<=from),reasons=[];
+ if(!anchor)reasons.push('An authorized opening cash balance on or before the selected start date is required.');
+ const start=anchor?.effectiveDate||from,inWindow=date=>date>=start&&date<=to,allPayments=data.collections.filter(p=>p.posted&&inWindow(p.paymentDate)),allExpenses=data.expenses.filter(e=>inWindow(e.expenseDate)),allPayouts=data.payouts.filter(p=>inWindow(p.date)),allRecoveries=data.recoveries.filter(r=>inWindow(r.date));
+ const unknown=[...allPayments.filter(p=>!physicalFunding(p.method,p.fundingAccount)),...allExpenses.filter(e=>!physicalFunding(e.method,e.fundingAccount)),...allPayouts.filter(p=>!physicalFunding(p.method,p.fundingAccount)),...allRecoveries.filter(r=>!physicalFunding(r.method,r.fundingAccount))];
+ if(unknown.length)reasons.push(`${unknown.length} record(s) since the opening/start date have unclassified payment methods or Other funding accounts (${unknown.slice(0,5).map(r=>r.paymentId||r.expenseId||r.payoutId||r.requestId).join(", ")}). Classify/correct them before calculating physical cash.`);
+ const linked=new Set();for(const e of allExpenses){if(e.commissionPayoutId){const p=allPayouts.find(p=>p.payoutId===e.commissionPayoutId);if(!p||p.amountCents!==e.amountCents||p.method!==e.method||physicalFunding(p.method,p.fundingAccount)!==physicalFunding(e.method,e.fundingAccount)||p.date!==e.expenseDate)reasons.push(`Linked payout changed or is invalid for expense ${e.expenseId}; reconcile it before calculating cash.`);else if(linked.has(p.payoutId))reasons.push(`Commission payout ${p.payoutId} is linked to more than one expense.`);else linked.add(p.payoutId)}else if(!e.payoutLinkChecked&&isCashFunded(e)&&allPayouts.some(p=>isCashFunded(p)&&p.amountCents===e.amountCents&&p.date===e.expenseDate))reasons.push(`Expense ${e.expenseId} may also represent a commission payout. Link it or confirm it is independent.`)}
+ const events=[...allPayments.filter(isCashFunded).map(p=>({date:p.paymentDate,amountCents:p.amountCents,kind:'COLLECTION',reference:p.paymentId})),...allExpenses.filter(isCashFunded).map(e=>({date:e.expenseDate,amountCents:-e.amountCents,kind:'EXPENSE',reference:e.expenseId})),...allPayouts.filter(p=>isCashFunded(p)&&!linked.has(p.payoutId)).map(p=>({date:p.date,amountCents:-p.amountCents,kind:'COMMISSION_PAYOUT',reference:p.payoutId})),...allRecoveries.filter(isCashFunded).map(r=>({date:r.date,amountCents:r.amountCents,kind:'COMMISSION_RECOVERY',reference:r.requestId})),...active.filter(e=>e.kind!=='OPENING'&&inWindow(e.effectiveDate)).map(e=>({date:e.effectiveDate,amountCents:e.amountCents*cashKinds[e.kind],kind:e.kind,reference:e.entryId}))];
+ const period=events.filter(e=>e.date>=from),before=events.filter(e=>e.date<from),openingCents=anchor?anchor.amountCents+total(before):null;
+ if(openingCents!==null&&!Number.isSafeInteger(openingCents))fail("Opening cash exceeds supported centavo precision.",409);
+ const sum=kind=>total(period.filter(e=>kind.includes(e.kind))),collectionsCents=sum(['COLLECTION']),expensesCents=Math.abs(sum(['EXPENSE'])),otherInflowsCents=sum(['INFLOW','BANK_WITHDRAWAL','COMMISSION_RECOVERY']),bankDepositsCents=Math.abs(sum(['BANK_DEPOSIT'])),otherOutflowsCents=Math.abs(sum(['OUTFLOW','COMMISSION_PAYOUT']));
+ const computedClosingCents=openingCents==null?null:openingCents+collectionsCents+otherInflowsCents-expensesCents-bankDepositsCents-otherOutflowsCents;
+ if(computedClosingCents!=null&&!Number.isSafeInteger(computedClosingCents))fail('Cash balance exceeds supported centavo precision.',409);
+ if(computedClosingCents<0&&computedClosingCents!==null)reasons.push('The recorded cash ledger has a negative balance. Reconcile missing or incorrect entries.');
+ return {available:reasons.length===0,reasons,openingCents:reasons.length?null:openingCents,closingCents:reasons.length?null:computedClosingCents,computedClosingCents,collectionsCents,expensesCents,otherInflowsCents,bankDepositsCents,otherOutflowsCents,anchorDate:anchor?.effectiveDate||null,events:period.sort((a,b)=>a.date.localeCompare(b.date)||String(a.reference||'').localeCompare(String(b.reference||''))),scope:'Complete office cash ledger; independent of method/project/detail filters'};
+}
+export function buildCollectionReport(data,entries,query){
+ const {from,to}=query,methods=parseMethods(query.methods),qExpenses=String(query.expenseQ||'').slice(0,100).toLowerCase();
+ const collections=sorted(filterPayments(data.collections.filter(p=>p.posted),{...query,q:query.collectionQ,status:''}),query.collectionSort||'date',query.collectionDirection||'asc');
+ const expenses=sorted(data.expenses.filter(e=>e.expenseDate>=from&&e.expenseDate<=to&&(!query.project||identity(e.project)===query.project)&&(!methods.length||methods.includes(e.method))&&expenseText(e).includes(qExpenses)),query.expenseSort||'date',query.expenseDirection||'asc','expenses');
+ const breakdown=[...PAYMENT_METHODS,'UNCLASSIFIED'].filter(m=>!methods.length||methods.includes(m)).map(method=>{const collectionsCents=total(collections.filter(p=>p.method===method)),expensesCents=total(expenses.filter(e=>e.method===method));return {method,collectionsCents,expensesCents,netCents:collectionsCents-expensesCents}});
+ const trend=new Map();for(const [rows,field,dateField] of [[collections,'collectionsCents','paymentDate'],[expenses,'expensesCents','expenseDate']])for(const r of rows){const date=r[dateField],bucket=trend.get(date)||{date,collectionsCents:0,expensesCents:0};bucket[field]+=r.amountCents;trend.set(date,bucket)}
+ const totalCollectionsCents=total(collections),totalExpensesCents=total(expenses);
+ return {from,to,methods,project:query.project||'',scope:methods.length?'Selected payment methods':'All payment methods (including unclassified legacy expenses)',totalCollectionsCents,totalExpensesCents,netCollectionCents:totalCollectionsCents-totalExpensesCents,collectionCount:collections.length,expenseCount:expenses.length,breakdown,trend:[...trend.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(r=>({...r,netCents:r.collectionsCents-r.expensesCents})),cash:cashPosition(data,entries,from,to),collections,expenses,unclassifiedPeriodExpenses:data.expenses.filter(e=>e.expenseDate>=from&&e.expenseDate<=to&&!physicalFunding(e.method,e.fundingAccount)).length};
+}

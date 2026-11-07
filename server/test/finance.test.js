@@ -1,3 +1,4 @@
+import ReceiptClaim from "../src/models/ReceiptClaim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import PropertyAssignment from "../src/models/PropertyAssignment.js";
@@ -15,6 +16,10 @@ const req = body => ({ params: { id }, get: () => "test", user: { _id: id }, bod
 const next = e => { throw e; };
 const account = () => ({ _id: id, client: id, project: id, property: propertyId, contract: { totalCents: 120000, months: 12, contractDate: "2026-01-01", firstDueDate: "2026-01-31", schedule: buildSchedule(120000,12,"2026-01-31") }, payments: [] });
 test.beforeEach(t => {
+ t.mock.method(Project,"aggregate",async()=>[]);t.mock.method(Expense,"aggregate",async()=>[]);
+ t.mock.method(PropertyAssignment,"find",()=>({select:()=>({lean:async()=>[]})}));
+ t.mock.method(ReceiptClaim,"findById",()=>({lean:async()=>null}));
+ t.mock.method(ReceiptClaim,"findOneAndUpdate",(filter,update)=>({lean:async()=>({...update.$setOnInsert})}));
  t.mock.method(Client, "aggregate", async () => []);
  t.mock.method(PropertyAssignment, "aggregate", async () => []);
  t.mock.method(ActivityLog, "create", async () => ({}));
@@ -42,19 +47,19 @@ test("partial payments allocate oldest first and warnings do not forfeit or add 
  assert.equal(summarizeAccount(a,"2026-05-15").alert,"FORFEITURE_REVIEW");
  assert.equal(a.payments.length,2);assert.equal(Object.hasOwn(summary,"penaltyCents"),false);
 });
-function paymentBody(){return {accountId:id,requestId:"request-payment-1234",amount:"100.00",paymentDate:"2026-02-01",method:"CASH",reference:"R1",notes:""};}
+function paymentBody(){return {receiptNumber:"0004587",accountId:id,requestId:"request-payment-1234",amount:"100.00",paymentDate:"2026-02-01",method:"CASH",reference:"R1",notes:""};}
 function active(t){t.mock.method(Client,"findById",async()=>({status:"ACTIVE"}));t.mock.method(Project,"findById",async()=>({status:"ACTIVE"}));}
 test("payment posting atomically protects balance and submission ID",async t=>{
  const a=account();active(t);t.mock.method(PropertyAssignment,"findById",()=>({lean:async()=>a}));
  t.mock.method(PropertyAssignment,"findOneAndUpdate",(filter,update)=>{
   assert.deepEqual(filter["payments.requestId"],{$ne:"request-payment-1234"});
   assert.equal(filter.__v,0); // version guards the validated effective ledger
-  assert.equal(update.$push.payments.amountCents,10000);assert.match(update.$push.payments.receiptNumber,/^RCT-/);a.payments.push(update.$push.payments);return {lean:async()=>a};
+  assert.equal(update.$push.payments.amountCents,10000);assert.equal(update.$push.payments.receiptNumber,"0004587");a.payments.push(update.$push.payments);return {lean:async()=>a};
  });
  const res=response();await acceptPayment(req(paymentBody()),res,next);assert.equal(res.code,201);assert.equal(res.body.summary.balanceCents,110000);
 });
 test("network retry returns original payment without another write",async t=>{
- const a=account(),body=paymentBody();a.payments=[{requestId:body.requestId,amountCents:10000,paymentDate:body.paymentDate,method:body.method,reference:body.reference,notes:"",paymentId:"PAY-1"}];
+ const a=account(),body=paymentBody();a.payments=[{requestId:body.requestId,amountCents:10000,paymentDate:body.paymentDate,method:body.method,reference:body.reference,notes:"",paymentId:"PAY-1",receiptNumber:body.receiptNumber}];
  t.mock.method(PropertyAssignment,"findById",()=>({lean:async()=>a}));
  const write=t.mock.method(PropertyAssignment,"findOneAndUpdate",()=>{throw Error("Must not write")});
  let res=response();await acceptPayment(req(body),res,next);assert.equal(res.body.data.paymentId,"PAY-1");assert.equal(write.mock.callCount(),0);
@@ -87,8 +92,8 @@ test("occupied lot does not create a second account",async t=>{
  assert.equal(create.mock.callCount(),0);
 });
 test("expense replay does not create another expense and altered replay is rejected",async t=>{
- const body={requestId:"request-expense-1234",category:"OFFICE",expenseDate:today(),amount:"200",description:"Supplies",payee:"Store",reference:"R"};
- t.mock.method(Expense,"findOne",()=>({lean:async()=>({requestId:body.requestId,category:body.category,expenseDate:body.expenseDate,amountCents:20000,description:body.description,payee:body.payee,reference:body.reference,project:null})}));
+ const body={method:"CASH",requestId:"request-expense-1234",category:"OFFICE",expenseDate:today(),amount:"200",description:"Supplies",payee:"Store",reference:"R"};
+ t.mock.method(Expense,"findOne",()=>({lean:async()=>({method:"CASH",commissionPayoutId:null,payoutLinkChecked:false,requestId:body.requestId,category:body.category,expenseDate:body.expenseDate,amountCents:20000,description:body.description,payee:body.payee,reference:body.reference,project:null})}));
  const create=t.mock.method(Expense,"create",async()=>{throw Error("Must not create")});
  const res=response();await createExpense(req(body),res,next);assert.match(res.body.message,/already recorded/);assert.equal(create.mock.callCount(),0);
  await assert.rejects(()=>createExpense(req({...body,amount:"201"}),response(),next),/different expense/);

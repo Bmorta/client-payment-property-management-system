@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const projectSchema = new mongoose.Schema(
   {
-    projectId: { type: String, trim: true, uppercase: true, unique: true, required: true },
+    projectId: { immutable: true, type: String, trim: true, uppercase: true, unique: true, required: true },
     projectName: { type: String, trim: true, required: true },
     projectCode: { type: String, trim: true, uppercase: true, unique: true, required: true },
     description: { type: String, trim: true, default: "" },

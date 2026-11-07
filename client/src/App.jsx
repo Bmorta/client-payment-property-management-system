@@ -1,3 +1,5 @@
+const ClientAccountsPage=lazy(()=>import("./pages/ClientAccountsPage.jsx"));
+import DialogNavigation from "./components/DialogNavigation.jsx";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
@@ -10,7 +12,7 @@ import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
 const PaymentPage=lazy(()=>import("./pages/PaymentPage.jsx"));
 const ApprovalRequestsPage=lazy(()=>import("./pages/ApprovalRequestsPage.jsx"));
-import ExpensesPage from "./pages/ExpensesPage.jsx";
+const ExpensesPage=lazy(()=>import("./pages/ExpensesPage.jsx"));
 const ReportsPage=lazy(()=>import("./pages/ReportsPage.jsx"));
 const AgentsPage=lazy(()=>import("./pages/AgentsPage.jsx"));
 const CommissionsPage=lazy(()=>import("./pages/CommissionsPage.jsx"));
@@ -35,7 +37,7 @@ const AdminRoute = ({ children }) => {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter><Suspense fallback={<p className="p-4">Loading...</p>}>
+      <BrowserRouter><DialogNavigation/><Suspense fallback={<p className="p-4">Loading...</p>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
@@ -47,6 +49,7 @@ export default function App() {
               <Route path="/agents" element={<AgentsPage/>}/>
               <Route path="/commissions" element={<CommissionsPage/>}/>
               <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/clients/:clientId/accounts" element={<ClientAccountsPage/>}/>
               <Route path="/payment-transactions" element={<PaymentTransactionsPage />} />
               <Route path="/payment-monitoring" element={<PaymentMonitoringPage />} />
               <Route path="/approval-requests" element={<AdminRoute><ApprovalRequestsPage /></AdminRoute>} />

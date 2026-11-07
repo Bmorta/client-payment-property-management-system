@@ -1,3 +1,4 @@
+import SequenceCounter from "../src/models/SequenceCounter.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import PropertyAssignment from "../src/models/PropertyAssignment.js";
@@ -46,3 +47,5 @@ test("void retains original transaction and removes amount from effective balanc
 test("overpayment correction and stale base revision never write",async t=>{const a=account(),write=mockAccount(t,a);await assert.rejects(()=>correctPayment(req("ADMIN",{confirm:true,amount:"1300"}),response(),next),/exceeds/);await assert.rejects(()=>correctPayment(req("ADMIN",{confirm:true,baseRevision:2}),response(),next),/changed/);assert.equal(write.mock.callCount(),0)});
 test("notification reads expose only own or admin-role notifications",async t=>{const a=account();a.notifications=[{id:"own",recipient:staff,readBy:[]},{id:"admin",recipient:"ADMIN",readBy:[]},{id:"other",recipient:"another",readBy:[]}];t.mock.method(PropertyAssignment,"find",()=>({select:()=>({lean:async()=>[a]})}));assert.deepEqual((await notificationData({_id:staff,role:"STAFF"})).rows.map(n=>n.id),["own"]);let filter;t.mock.method(PropertyAssignment,"updateMany",async(f,u,o)=>{filter=o.arrayFilters[0];return {}});await readNotifications({user:{_id:staff,role:"STAFF"},params:{notificationId:"admin"}},response(),next);assert.deepEqual(filter["n.recipient"],{$in:[staff,"STAFF"]})});
 test("client search paginates in MongoDB without projecting financial ledgers",async t=>{t.mock.method(Client,"aggregate",async pipeline=>{const facet=pipeline.at(-1).$facet;assert.deepEqual(facet.rows[0],{$skip:20});assert.equal(facet.rows.at(-1).$project.payments,undefined);return [{rows:[{clientId:"CL-1"}],total:[{count:21}]}]});const res=response();await searchClients({query:{q:"Ana",page:"2"}},res,next);assert.equal(res.body.total,21);assert.equal(res.body.page,2);assert.equal(res.body.data.length,1)});
+
+test.beforeEach(t=>{t.mock.method(PropertyAssignment,"aggregate",async()=>[]);t.mock.method(SequenceCounter,"findOneAndUpdate",async()=>({value:1}))});

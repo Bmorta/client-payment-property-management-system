@@ -1,3 +1,4 @@
+import {generateRecordId} from "../utils/generateRecordId.js";
 import Project from "../models/Project.js";
 import { logActivity } from "../utils/activityLogger.js";
 
@@ -24,16 +25,16 @@ export const getProject = async (req, res, next) => {
 
 export const createProject = async (req, res, next) => {
   try {
-    const { projectId, projectName, projectCode, description, location, startDate, status } = req.body;
-    if (!projectId || !projectName || !projectCode) {
-      return res.status(400).json({ success: false, message: "Project ID, name, and code are required." });
+    const { projectName, projectCode, description, location, startDate, status } = req.body;
+    if (!projectName || !projectCode) {
+      return res.status(400).json({ success: false, message: "Project name and code are required." });
     }
     if (status && !allowedStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: "Invalid project status." });
     }
 
     const project = await Project.create({
-      projectId, projectName, projectCode, description, location,
+      projectId: await generateRecordId("project"), projectName, projectCode, description, location,
       startDate: startDate || null,
       status: status || "PLANNING",
       createdBy: req.user._id
@@ -67,8 +68,8 @@ export const updateProject = async (req, res, next) => {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ success: false, message: "Project not found." });
 
+    if (projectId !== undefined && projectId !== project.projectId) return res.status(400).json({success:false,message:"Project ID is read-only."});
     Object.assign(project, {
-      projectId: projectId ?? project.projectId,
       projectName: projectName ?? project.projectName,
       projectCode: projectCode ?? project.projectCode,
       description: description ?? project.description,

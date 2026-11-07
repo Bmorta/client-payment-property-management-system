@@ -23,7 +23,7 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   await Promise.all([Agent.init(),User.init(),Client.init(),Project.init(),Property.init(),PropertyAssignment.init()]);
   const users={};for(const role of ["ADMIN","STAFF","VIEWER"]){const u=await User.create({username:role.toLowerCase(),firstName:role,lastName:"Test",email:`${role}@test.local`,passwordHash:"not-used",role});users[role]=signAccessToken(u)}
   const admin=await User.findOne({role:"ADMIN"});
-  async function api(path,method="GET",body,role="ADMIN",status=200){const r=await fetch(url+path,{method,headers:{Authorization:`Bearer ${users[role]}`,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});const data=await r.json();assert.equal(r.status,status,JSON.stringify(data));return data}
+  async function api(path,method="GET",body,role="ADMIN",status=200){if(method==="POST"&&["/finance/payments","/finance/payments/preview"].includes(path))body={...body,receiptNumber:body.receiptNumber||`OFFICE-${body.requestId}`};const r=await fetch(url+path,{method,headers:{Authorization:`Bearer ${users[role]}`,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});const data=await r.json();assert.equal(r.status,status,JSON.stringify(data));return data}
   await Client.create({clientId:"CLT-000090",firstName:"Legacy",lastName:"Test",createdBy:admin._id});
   const clients=await Promise.all([api("/clients","POST",{firstName:"Ana",lastName:"Morta",clientId:"IGNORED"},"ADMIN",201),api("/clients","POST",{firstName:"Bea",lastName:"Morta"},"ADMIN",201)]);
   assert.equal(new Set(clients.map(c=>c.data.clientId)).size,2);assert.ok(clients.every(c=>Number(c.data.clientId.split("-")[1])>90));
@@ -32,10 +32,11 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   const property=await Property.create({propertyId:"PROP-001",project:project._id,phaseNumber:1,blockNumber:2,lotNumber:7,areaSqm:100,pricePerSqm:1000,createdBy:admin._id});
   const assignment=(await api(`/clients/${client._id}/assignments`,"POST",{propertyId:String(property._id),months:12,downPayment:"10000",contractDate:"2026-01-01",firstDueDate:"2026-02-01"},"ADMIN",201)).data;
   const search=await api("/finance/clients/search?q=7&page=1");assert.equal(search.data[0]._id,client._id);assert.equal(search.data[0].accounts,undefined);
-  const body={accountId:assignment._id,amount:"12000",paymentDate:"2026-02-01",method:"CASH",requestId:randomUUID()};
+  const body={receiptNumber:"0004587",accountId:assignment._id,amount:"12000",paymentDate:"2026-02-01",method:"CASH",requestId:randomUUID()};
   const posted=await Promise.all([0,1].map(async()=>{const r=await fetch(url+"/finance/payments",{method:"POST",headers:{Authorization:`Bearer ${users.STAFF}`,"Content-Type":"application/json"},body:JSON.stringify(body)});assert.ok([200,201].includes(r.status));return r.json()}));
-  const payment=posted[0].data;assert.match(payment.receiptNumber,/^RCT-/);assert.equal(posted[1].data.receiptNumber,payment.receiptNumber);
+  const payment=posted[0].data;assert.equal(payment.receiptNumber,"0004587");assert.equal(posted[1].data.receiptNumber,payment.receiptNumber);
   const replay=await api("/finance/payments","POST",body,"STAFF");assert.equal(replay.data.receiptNumber,payment.receiptNumber);
+  delete body.receiptNumber;
   const original=await PropertyAssignment.findById(assignment._id).lean();assert.equal(original.payments.length,1);
   await PropertyAssignment.collection.updateOne({_id:original._id},{$set:{"payments.0.externalCommissionMetadata":{agent:"legacy-agent",amountCents:1234},"contract.externalCommissionMetadata":{agent:"legacy-agent"}}});
   const correction={amount:"14000",paymentDate:"2026-02-01",method:"CASH",notes:"Corrected count",reason:"Counted cash again",type:"AUTO",baseRevision:0,requestId:randomUUID()};
@@ -148,7 +149,82 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   await api(`/finance/accounts/${assignment._id}/payments/${streamPayment.paymentId}/corrections`,"POST",{...correction,amount:"7400",type:"INSTALLMENT",baseRevision:streamPayment.revisions?.length||0,requestId:randomUUID()},"STAFF",201);
   const changed=await Promise.race([reader.read(),new Promise((_,reject)=>setTimeout(()=>reject(Error("SSE update timed out")),6000))]);assert.match(new TextDecoder().decode(changed.value),/data:/);abort.abort();
   assert.ok(await ActivityLog.exists({module:"Payment Corrections",outcome:"SUCCEEDED"}));
- }finally{
-  abort.abort();server.closeAllConnections();await new Promise(r=>server.close(r));await mongoose.connection.dropDatabase();await mongoose.disconnect();
+
+  // New office-update acceptance: generated projects, manual receipts, scoped
+  // uniqueness under contention, receipt approval history and expense exports.
+  const generatedProjects=await Promise.all([1,2].map(i=>api('/projects','POST',{projectName:`Generated ${i}`,projectCode:`AUTO${i}`,status:'ACTIVE'},'ADMIN',201)));
+  assert.match(generatedProjects[0].data.projectId,/^PRJ-\d{6}$/);assert.notEqual(generatedProjects[0].data.projectId,generatedProjects[1].data.projectId);
+  await api(`/projects/${generatedProjects[0].data._id}`,'PUT',{projectId:'MANUAL-CHANGE'},'ADMIN',400);
+  const receiptLot=await Property.create({propertyId:'PROP-RECEIPT',project:project._id,phaseNumber:8,blockNumber:1,lotNumber:1,areaSqm:100,pricePerSqm:1000,createdBy:admin._id});
+  const receiptSale=(await api(`/clients/${client._id}/assignments`,'POST',{propertyId:String(receiptLot._id),months:12,contractDate:'2026-01-01',firstDueDate:'2026-02-01'},'ADMIN',201)).data;
+  const manualBase={accountId:receiptSale._id,amount:'100',paymentDate:'2026-11-05',method:'CASH',receiptNumber:'OR-000007/A'};
+  const concurrentReceipt=await Promise.all([0,1].map(async()=>{const r=await fetch(url+'/finance/payments',{method:'POST',headers:{Authorization:`Bearer ${users.STAFF}`,'Content-Type':'application/json'},body:JSON.stringify({...manualBase,requestId:randomUUID()})});return {status:r.status,body:await r.json()}}));assert.equal(concurrentReceipt.filter(r=>r.status===201).length,1);assert.equal(concurrentReceipt.filter(r=>r.status===409).length,1);
+  const manual=concurrentReceipt.find(r=>r.status===201).body.data;assert.equal(manual.receiptNumber,'OR-000007/A');
+  const missing=await fetch(url+'/finance/payments',{method:'POST',headers:{Authorization:`Bearer ${users.STAFF}`,'Content-Type':'application/json'},body:JSON.stringify({...manualBase,receiptNumber:'',requestId:randomUUID()})});assert.equal(missing.status,400);
+  await api('/finance/payments','POST',{...manualBase,accountId:secondSale._id,requestId:randomUUID()},'STAFF',409);
+  const receiptCorrection={amount:'100',paymentDate:'2026-11-05',method:'CASH',type:'AUTO',receiptNumber:'0000009-B',reason:'Correct issued receipt number',baseRevision:0,requestId:randomUUID()};
+  const receiptPath=`/finance/accounts/${receiptSale._id}/payments/${manual.paymentId}/corrections`;
+  const correctionRequest=(await api(receiptPath,'POST',receiptCorrection,'STAFF',201)).data;assert.match(correctionRequest.requestNumber,/^REQ-\d{6}$/);
+  assert.equal((await PropertyAssignment.findById(receiptSale._id)).payments[0].receiptNumber,'OR-000007/A');
+  await api(`/finance/accounts/${receiptSale._id}/requests/${correctionRequest.requestId}/decision`,'POST',{decision:'APPROVED',confirm:true,reason:'Checked physical receipt'});
+  const correctedReceipt=(await api(`/finance/accounts/${receiptSale._id}`)).data.payments[0];assert.equal(correctedReceipt.receiptNumber,'0000009-B');assert.equal(correctedReceipt.revisions[0].previousValues.receiptNumber,'OR-000007/A');
+  await api('/finance/payments','POST',{...manualBase,receiptNumber:'OR-000007/A',requestId:randomUUID()},'STAFF',409);
+  await api('/finance/expenses','POST',{method:'CASH',category:'PROJECT',projectId:String(project._id),expenseDate:'2026-11-05',amount:'100.25',description:'Office export acceptance',requestId:randomUUID()},'STAFF',201);
+  const expenseData=(await api(`/finance/reports/expenses?from=2026-11-01&to=2026-11-05&project=${project._id}&q=Office%20export`)).data;assert.equal(expenseData.totalCents,10025);assert.equal(expenseData.count,1);assert.equal(expenseData.rows[0].createdBy.username,"staff");
+  for(const format of ['xlsx','pdf']){const result=await fetch(url+`/finance/reports/expenses?from=2026-11-01&to=2026-11-05&project=${project._id}&q=Office%20export&format=${format}`,{headers:{Authorization:`Bearer ${users.ADMIN}`}});assert.equal(result.status,200);const bytes=Buffer.from(await result.arrayBuffer());assert.equal(bytes.subarray(0,format==='pdf'?5:2).toString(),format==='pdf'?'%PDF-':'PK');if(format==='xlsx'){const {default:ExcelJS}=await import('exceljs');const book=new ExcelJS.Workbook();await book.xlsx.load(bytes);assert.equal(book.getWorksheet('Expenses').getCell('F5').value,100.25);assert.equal(book.getWorksheet('Expenses').getCell('F6').value,100.25)}}
+  const sequence=(await api(`/commissions?agent=${agentA._id}&project=${project._id}`)).data.rows;for(let i=1;i<sequence.length;i++)if(sequence[i].accountId===sequence[i-1].accountId)assert.ok(sequence[i].period>=sequence[i-1].period);
+
+
+  // Collection/cash report acceptance uses an isolated day so prior scenarios
+  // cannot serve as invented opening cash or hidden expense classifications.
+  const cashDay='2026-11-04',cashPaymentBase={accountId:receiptSale._id,paymentDate:cashDay,type:'INSTALLMENT'};
+  for(const [method,amount] of [['CASH','1000'],['GCASH','500'],['MAYA','200'],['BANK_TRANSFER','300']])await api('/finance/payments','POST',{...cashPaymentBase,method,amount,receiptNumber:`CASH-REPORT-${method}`,requestId:randomUUID()},'STAFF',201);
+  await api('/finance/expenses','POST',{category:'OFFICE',expenseDate:cashDay,amount:'100',description:'Cash summary expense',requestId:randomUUID()},'STAFF',400);
+  for(const [method,amount] of [['CASH','100'],['GCASH','50']])await api('/finance/expenses','POST',{method,category:'OFFICE',expenseDate:cashDay,amount,description:`Cash report expense ${method}`,payoutLinkChecked:true,requestId:randomUUID()},'STAFF',201);
+  const cashBody={kind:'OPENING',amount:'1000',effectiveDate:cashDay,reason:'Authorized physical cash count',coverageConfirmed:true,confirm:true,requestId:randomUUID()};
+  await api('/finance/cash-ledger','POST',cashBody,'STAFF',403);const openingCash=(await api('/finance/cash-ledger','POST',cashBody,'ADMIN',201)).data;assert.match(openingCash.entryId,/^CSH-\d{6}$/);await api('/finance/cash-ledger','POST',cashBody);
+  await api('/finance/cash-ledger','POST',{...cashBody,requestId:randomUUID()},'ADMIN',409);
+  const depositCash=(await api('/finance/cash-ledger','POST',{...cashBody,kind:'BANK_DEPOSIT',amount:'200',reason:'Office cash deposited to bank',requestId:randomUUID()},'ADMIN',201)).data;
+  const cashQuery=`from=${cashDay}&to=${cashDay}&methods=GCASH,MAYA`;
+  // Earlier commission scenario includes an actual PHP 200 cash payout on this day.
+  const summaryCash=(await api(`/finance/reports/collections?${cashQuery}`)).data;
+  assert.match(summaryCash.snapshot,/^[a-f0-9]{64}$/);assert.equal(summaryCash.totalCollectionsCents,70000);assert.equal(summaryCash.totalExpensesCents,5000);assert.equal(summaryCash.netCollectionCents,65000);assert.equal(summaryCash.cash.available,true);assert.equal(summaryCash.cash.openingCents,100000);assert.equal(summaryCash.cash.closingCents,150000);assert.equal(summaryCash.cash.collectionsCents,100000);assert.equal(summaryCash.cash.expensesCents,10000);assert.equal(summaryCash.expenses.count,1);
+  const allCash=(await api(`/finance/reports/collections?from=${cashDay}&to=${cashDay}`)).data;assert.equal(allCash.totalCollectionsCents,200000);assert.equal(allCash.totalExpensesCents,15000);assert.equal(allCash.cash.closingCents,summaryCash.cash.closingCents);
+  const {default:ExcelJS}=await import('exceljs');
+  for(const format of ['xlsx','pdf']){const r=await fetch(url+`/finance/reports/collections?${cashQuery}&format=${format}&expectedSnapshot=${summaryCash.snapshot}`,{headers:{Authorization:`Bearer ${users.ADMIN}`}});assert.equal(r.status,200);const bytes=Buffer.from(await r.arrayBuffer());if(format==='xlsx'){const book=new ExcelJS.Workbook();await book.xlsx.load(bytes);assert.equal(book.getWorksheet('Summary').getCell('B8').value,700);assert.equal(book.getWorksheet('Summary').getCell('B9').value,50);assert.equal(book.getWorksheet('Summary').getCell('B18').value,1500);assert.equal(book.getWorksheet('Collections').rowCount,9)}else assert.equal(bytes.subarray(0,5).toString(),'%PDF-')}
+  for(let n=0;n<22;n++)await api('/finance/payments','POST',{...cashPaymentBase,paymentDate:'2026-11-03',method:'CASH',amount:'1',receiptNumber:`PAGED-CASH-${n}`,requestId:randomUUID()},'STAFF',201);
+  const pagedCash=(await api('/finance/payments?paged=1&from=2026-11-03&to=2026-11-03&methods=CASH,GCASH&page=2')).data;assert.equal(pagedCash.count,22);assert.equal(pagedCash.rows.length,2);assert.equal(pagedCash.totalCents,2200);
+  const fullCash=(await api('/finance/payments?paged=1&all=1&from=2026-11-03&to=2026-11-03&methods=CASH,GCASH&page=2')).data;assert.equal(fullCash.rows.length,22);assert.equal(fullCash.totalCents,pagedCash.totalCents);
+  const legacyExpenseId=new mongoose.Types.ObjectId();await (await import('../src/models/Expense.js')).default.collection.insertOne({_id:legacyExpenseId,expenseId:'EXP-LEGACY-CASH',requestId:randomUUID(),expenseDate:cashDay,category:'OFFICE',description:'Legacy unclassified cash cost',amountCents:2500,createdBy:admin._id,__v:0});
+  await api(`/finance/reports/collections?${cashQuery}&expectedSnapshot=${summaryCash.snapshot}&all=1`,'GET',undefined,'ADMIN',409);
+  const unknownCash=(await api(`/finance/reports/collections?${cashQuery}`)).data;assert.equal(unknownCash.cash.available,false);assert.equal(unknownCash.cash.closingCents,null);assert.equal(unknownCash.totalExpensesCents,5000);
+  const classifyCash={method:'CASH',payoutLinkChecked:true,expectedVersion:0,reason:'Verified original funding record',confirm:true};await api(`/finance/expenses/${legacyExpenseId}/classification`,'PATCH',classifyCash,'STAFF',403);await api(`/finance/expenses/${legacyExpenseId}/classification`,'PATCH',classifyCash);
+  const classifiedCash=(await api(`/finance/reports/collections?${cashQuery}`)).data;assert.equal(classifiedCash.cash.available,true);assert.equal(classifiedCash.cash.closingCents,147500);
+  const beforeLinkedCash=(await api('/finance/reports/collections?from=2026-11-05&to=2026-11-05')).data;
+  const linkedExpenseBody={method:'CASH',category:'PROJECT',projectId:String(project._id),expenseDate:'2026-11-05',amount:'80',description:'Commission already paid through payout',commissionPayoutId:monthlyPayout.payoutId,requestId:randomUUID()};
+  await api('/finance/expenses','POST',linkedExpenseBody,'STAFF',201);const afterLinkedCash=(await api('/finance/reports/collections?from=2026-11-05&to=2026-11-05')).data;assert.equal(beforeLinkedCash.cash.available,true);assert.equal(afterLinkedCash.cash.available,true);assert.equal(afterLinkedCash.cash.closingCents,beforeLinkedCash.cash.closingCents);assert.equal(afterLinkedCash.totalExpensesCents,beforeLinkedCash.totalExpensesCents+8000);
+  await api('/finance/expenses','POST',{...linkedExpenseBody,requestId:randomUUID()},'STAFF',409);
+  await api(`/finance/cash-ledger/${depositCash._id}/void`,'POST',{expectedVersion:0,reason:'Deposit was entered in error',confirm:true});const afterVoidCash=(await api(`/finance/reports/collections?${cashQuery}`)).data;assert.equal(afterVoidCash.cash.closingCents,167500);
+  assert.ok(await ActivityLog.exists({'metadata.details.action':'CASH_ENTRY_RECORDED',outcome:'SUCCEEDED'}));assert.ok(await ActivityLog.exists({'metadata.details.action':'EXPENSE_CLASSIFIED',outcome:'SUCCEEDED'}));
+
+  const otherBase={...cashPaymentBase,method:'OTHER',amount:'20',receiptNumber:'OTHER-FUNDING-001',requestId:randomUUID()};
+  await api('/finance/payments','POST',otherBase,'STAFF',400);await api('/finance/payments','POST',{...otherBase,fundingAccount:'NONCASH'},'STAFF',201);
+  const beforeOtherCash=(await api(`/finance/reports/collections?${cashQuery}`)).data;assert.equal(beforeOtherCash.cash.available,true);assert.equal(beforeOtherCash.cash.closingCents,167500);
+  await api('/finance/payments','POST',{...otherBase,amount:'5',receiptNumber:'OTHER-FUNDING-002',fundingAccount:'CASH',requestId:randomUUID()},'STAFF',201);
+  const afterOtherCash=(await api(`/finance/reports/collections?${cashQuery}`)).data;assert.equal(afterOtherCash.totalCollectionsCents,70000);assert.equal(afterOtherCash.cash.closingCents,168000);
+  const allOther=(await api(`/finance/reports/collections?from=${cashDay}&to=${cashDay}`)).data;assert.equal(allOther.breakdown.find(b=>b.method==='OTHER').collectionsCents,2500);
+  await api('/finance/expenses','POST',{category:'OTHER',method:'OTHER',fundingAccount:'NONCASH',expenseDate:cashDay,amount:'10',description:'Other noncash funding confirmed',requestId:randomUUID()},'STAFF',201);
+  assert.equal((await api(`/finance/reports/collections?${cashQuery}`)).data.cash.closingCents,168000);
+
+  // Exercise the migration only against this disposable test database.
+  const missingProjectId=new mongoose.Types.ObjectId();await Project.collection.insertOne({_id:missingProjectId,projectName:'Legacy missing ID',projectCode:'MISSING-ID',status:'ARCHIVED',createdBy:admin._id});
+  const {spawnSync}=await import('node:child_process'),migrationUri=new URL(process.env.CPM_TEST_MONGO_URI);migrationUri.pathname='/'+dbName;
+  const dry=spawnSync(process.execPath,['src/scripts/backfillInternalIds.js'],{cwd:new URL('../',import.meta.url).pathname.replace(/\/integration\/$/,'/'),env:{...process.env,MONGODB_URI:migrationUri.toString()},encoding:'utf8',timeout:30000});
+  assert.equal(dry.status,0,dry.stderr);assert.equal((await Project.collection.findOne({_id:missingProjectId})).projectId,undefined);
+  const applied=spawnSync(process.execPath,['src/scripts/backfillInternalIds.js','--apply'],{cwd:new URL('../',import.meta.url).pathname.replace(/\/integration\/$/,'/'),env:{...process.env,MONGODB_URI:migrationUri.toString()},encoding:'utf8',timeout:30000});
+  assert.equal(applied.status,0,applied.stderr);const backfilled=await Project.collection.findOne({_id:missingProjectId});assert.match(backfilled.projectId,/^PRJ-\d{6}$/);assert.equal(backfilled.status,'ARCHIVED');assert.equal(String(backfilled._id),String(missingProjectId));assert.equal((await Project.findById(project._id)).projectId,'PRJ-1');assert.ok(await ActivityLog.exists({action:'INTERNAL_ID_BACKFILL',outcome:'SUCCEEDED'}));
+
+ }catch(error){t.diagnostic("Original integration failure: "+error.stack);throw error;}finally{
+  abort.abort();server.closeAllConnections();await new Promise(r=>server.close(r));if(mongoose.connection.readyState===1)await mongoose.connection.dropDatabase();await mongoose.disconnect();
  }
 });

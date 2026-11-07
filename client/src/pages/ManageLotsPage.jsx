@@ -38,7 +38,7 @@ export default function ManageLotsPage() {
         <p className="text-uppercase small fw-semibold text-secondary mb-1">Management</p>
         <h1 className="h3 fw-bold mb-1">Manage Lots</h1>
         {project && <div className="d-flex flex-wrap align-items-center gap-2">
-          <span className="text-secondary">{project.projectName} · {project.projectCode}</span>
+          <span className="text-secondary">{project.projectId} · {project.projectName} · {project.projectCode}</span>
           <StatusBadge status={project.status} />
         </div>}
       </div>
