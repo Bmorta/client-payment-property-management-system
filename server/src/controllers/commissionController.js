@@ -1,3 +1,4 @@
+import {previewCommission} from "../../../shared/commissionMath.js";
 import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
 import mongoose from "mongoose";
 import Agent from "../models/Agent.js";
@@ -39,14 +40,23 @@ export async function agentProfile(req,res,next){try{
 async function account(req){const a=await PropertyAssignment.findById(id(req.params.id)).lean();if(!a)fail(404,"Property sale account not found.");return a}
 const checkVersion=(a,req)=>{if(req.body.expectedVersion!==a.__v)fail(409,"Account changed. Reload and review before saving.");if(req.body.confirm!==true)fail(400,"Confirm the financial change before saving.")};
 async function write(a,req,update,description){const merged=attachMonitoringUpdate(a,update,actor(req),description);const saved=await PropertyAssignment.findOneAndUpdate({_id:a._id,__v:a.__v??0},{...merged,$inc:{__v:1}},{new:true,runValidators:true}).lean();if(!saved)fail(409,"The account changed. Refresh and retry.");return saved}
-export async function saveCommissionAgreement(req,res,next){try{
- const a=await account(req);checkVersion(a,req);if(!["number","string"].includes(typeof req.body.termMonths)||String(req.body.termMonths).trim()==="")fail(400,"Enter a whole commission term in months.");const note=reason(req),percentageBps=moneyCents(req.body.percentage),termMonths=Number(req.body.termMonths);
- if(percentageBps<=0||percentageBps>10000||!Number.isSafeInteger(termMonths)||termMonths<1||termMonths>1200||!Array.isArray(req.body.agents)||req.body.agents.length<1||req.body.agents.length>100)fail(400,"Choose a 0–100% allocation, positive commission term and assigned agents.");
- if(req.body.agents.some(r=>!r||typeof r!=="object"||typeof r.agent!=="string"))fail(400,"Choose valid assigned agents.");
- const ids=req.body.agents.map(r=>String(id(r.agent)));if(new Set(ids).size!==ids.length)fail(400,"An agent can only appear once in an agreement.");const agents=await Agent.find({_id:{$in:ids}}).lean();if(agents.length!==ids.length||agents.some(agent=>agent.status!=="ACTIVE"&&!a.commissionAgreement?.agents.some(old=>old.agent===String(agent._id))))fail(400,"Newly assigned agents must be active.");
- const allocations=req.body.agents.map((r,i)=>{const agent=agents.find(a=>String(a._id)===ids[i]),bps=moneyCents(r.percentage);if(!bps||bps>10000)fail(400,"Enter a positive agent percentage up to 100%.");return {agent:String(agent._id),agentId:agent.agentId,percentageBps:bps}});
+async function commissionValues(a,body){
+ if(!["number","string"].includes(typeof body.termMonths)||String(body.termMonths).trim()==="")fail(400,"Enter a whole commission term in months.");const percentageBps=moneyCents(body.percentage),termMonths=Number(body.termMonths);
+ if(percentageBps<=0||percentageBps>10000||!Number.isSafeInteger(termMonths)||termMonths<1||termMonths>1200||!Array.isArray(body.agents)||body.agents.length<1||body.agents.length>100)fail(400,"Choose a 0–100% allocation, positive commission term and assigned agents.");
+ if(body.agents.some(r=>!r||typeof r!=="object"||typeof r.agent!=="string"))fail(400,"Choose valid assigned agents.");
+ const ids=body.agents.map(r=>String(id(r.agent)));if(new Set(ids).size!==ids.length)fail(400,"An agent can only appear once in an agreement.");const agents=await Agent.find({_id:{$in:ids}}).lean();if(agents.length!==ids.length||agents.some(agent=>agent.status!=="ACTIVE"&&!a.commissionAgreement?.agents.some(old=>old.agent===String(agent._id))))fail(400,"Newly assigned agents must be active.");
+ const allocations=body.agents.map((r,i)=>{const agent=agents.find(a=>String(a._id)===ids[i]),bps=moneyCents(r.percentage);if(!bps||bps>10000)fail(400,"Enter a positive agent percentage up to 100%.");return {agent:String(agent._id),agentId:agent.agentId,percentageBps:bps}});
  if(allocations.reduce((n,a)=>n+a.percentageBps,0)>percentageBps)fail(400,"Assigned agent percentages exceed the property's commission allocation.");
- const agreement={propertyBudgetCents:percentAmount(a.contract.totalCents,percentageBps),percentageBps,termMonths,agents:allocations,version:(a.commissionAgreement?.version||0)+1,contractTotalCents:a.contract.totalCents,agreedDownPaymentCents:a.contract.downPaymentCents,...actor(req),reason:note};
+ return {percentageBps,termMonths,allocations,preview:previewCommission(a.contract,allocations,termMonths)};
+}
+export async function previewCommissionAgreement(req,res,next){try{const a=await account(req);if(req.body.expectedVersion!==a.__v)fail(409,"Account changed. Reload before previewing commission.");const values=await commissionValues(a,req.body);res.json({success:true,data:{agents:values.preview,remainingPercentageBps:values.percentageBps-values.allocations.reduce((n,r)=>n+r.percentageBps,0)}})}catch(e){next(e)}}
+export async function saveCommissionAgreement(req,res,next){try{
+ const a=await account(req);checkVersion(a,req);const note=reason(req),{percentageBps,termMonths,allocations}=await commissionValues(a,req.body);
+ const action=req.body.agreementAction||"CREATE";
+ if(!["CREATE","MODIFY"].includes(action))fail(400,"Choose create or modify agreement.");
+ if(a.commissionAgreement&&action!=="MODIFY")return res.status(409).json({success:false,code:"PROPERTY_ALREADY_ASSIGNED",accountId:String(a._id),message:"Property Already Assigned. This property sale already has a commission assignment. Open Modify Existing Assignment instead."});
+ if(!a.commissionAgreement&&action==="MODIFY")fail(409,"There is no existing commission assignment to modify. Reload the account.");
+ const agreement={monthlyEarningRule:"FULL_INSTALLMENT_PERIODS",propertyBudgetCents:percentAmount(a.contract.totalCents,percentageBps),percentageBps,termMonths,agents:allocations,version:(a.commissionAgreement?.version||0)+1,contractTotalCents:a.contract.totalCents,agreedDownPaymentCents:a.contract.downPaymentCents,...actor(req),reason:note};
  const previous=a.commissionAgreement||null;const proposed={...a,commissionAgreement:agreement};
  const update={$set:{commissionAgreement:agreement},$push:{commissionAgreementHistory:{previousValues:previous,updatedValues:agreement,...actor(req),reason:note},auditEvents:{action:"COMMISSION_AGREEMENT_UPDATED",previousValues:previous,updatedValues:agreement,...actor(req),reason:note}}};
  await write(proposed,req,update,note);res.json({success:true,message:"Commission agreement saved. Existing payouts are preserved; any over-release is a recovery balance."});

@@ -1,3 +1,4 @@
+import ProjectMap from "../components/ProjectMap.jsx";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../services/api.js";
@@ -47,6 +48,6 @@ export default function ManageLotsPage() {
 
     {loading && <p className="text-secondary" role="status">Loading project...</p>}
     {error && <div className="alert alert-danger" role="alert">{error}</div>}
-    {!loading && !error && project && <PropertyInventory key={project._id} project={project} />}
+    {!loading && !error && project && <><ProjectMap project={project}/><PropertyInventory key={project._id} project={project} /></>}
   </main>;
 }

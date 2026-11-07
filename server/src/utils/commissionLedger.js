@@ -1,29 +1,25 @@
 import {randomUUID} from "node:crypto";
-const roundRatio=(a,b,c)=>Number((BigInt(a)*BigInt(b)+BigInt(Math.floor(c/2)))/BigInt(c));
-export const percentAmount=(cents,bps)=>roundRatio(cents,bps,10000);
-export function apportionBudgets(cents,agents){
- const entries=agents.map(a=>({agent:String(a.agent),floor:Number(BigInt(cents)*BigInt(a.percentageBps)/10000n),remainder:BigInt(cents)*BigInt(a.percentageBps)%10000n}));
- let extra=percentAmount(cents,agents.reduce((n,a)=>n+a.percentageBps,0))-entries.reduce((n,e)=>n+e.floor,0);
- entries.sort((a,b)=>a.remainder===b.remainder?a.agent.localeCompare(b.agent):a.remainder>b.remainder?-1:1);
- for(const entry of entries)if(extra>0){entry.floor++;extra--}
- return new Map(entries.map(e=>[e.agent,e.floor]));
-}
-export function splitCommission(total,term){let regular=Math.round(total/term);if(regular*(term-1)>total)regular=Math.floor(total/term);return Array.from({length:term},(_,i)=>i===term-1?total-regular*(term-1):regular)}
+import {roundRatio,percentAmount,apportionBudgets,splitCommission} from "../../../shared/commissionMath.js";
+export {percentAmount,apportionBudgets,splitCommission} from "../../../shared/commissionMath.js";
 export const effectivePayout=p=>({...p,...(p.revisions?.at(-1)?.values||{}),payoutId:p.payoutId,status:p.revisions?.at(-1)?.values?.voided?"VOIDED":p.revisions?.length?"CORRECTED":"RELEASED",amountCents:p.revisions?.at(-1)?.values?.voided?0:(p.revisions?.at(-1)?.values?.amountCents??p.amountCents)});
 export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
  const agreement=account.commissionAgreement,previous=account.commissionSnapshot?.records||[],records=[],payouts=(account.commissionPayouts||[]).map(effectivePayout).filter(p=>p.releaseDate<=asOf);
  if(agreement){
   const monthlyBasis=account.contract.totalCents-account.contract.downPaymentCents;
   const sources=Object.entries(ledger.allocations).filter(([paymentId])=>{const raw=(account.payments||[]).find(p=>p.paymentId===paymentId),last=raw?.revisions?.at(-1)?.values;return !(["CANCELLED","VOIDED"].includes(last?.status||raw?.status)||last?.voided||last?.cancelled||raw?.voided||raw?.cancelled)}).flatMap(([paymentId,rows])=>rows.filter(r=>["DOWN_PAYMENT","INSTALLMENT","ADVANCE"].includes(r.allocationType)).map(r=>({...r,paymentId}))).sort((a,b)=>a.installment-b.installment||a.effectiveDate.localeCompare(b.effectiveDate)||a.paymentId.localeCompare(b.paymentId));
-  const dpSources=sources.filter(s=>s.installment===0),monthlySources=sources.filter(s=>s.installment>0);
+  const paidByPeriod=new Map();for(const source of sources.filter(s=>s.installment>0))paidByPeriod.set(source.installment,(paidByPeriod.get(source.installment)||0)+source.amountCents);
+  const buyerPeriods=account.contract.schedule.filter(s=>s.installment>0),completed=new Set(buyerPeriods.filter(s=>(paidByPeriod.get(s.installment)||0)>=s.amountCents&&s.amountCents>0).map(s=>s.installment));
+  const dpSources=sources.filter(s=>s.installment===0),allMonthlySources=sources.filter(s=>s.installment>0),monthlySources=allMonthlySources.filter(s=>completed.has(s.installment));
   const agentBudgets=apportionBudgets(account.contract.totalCents,agreement.agents),dpBudgets=apportionBudgets(account.contract.downPaymentCents,agreement.agents);
   for(const allocation of agreement.agents){
    const agent=String(allocation.agent),budgetCents=agentBudgets.get(agent),dpBudget=Math.min(budgetCents,dpBudgets.get(agent)),monthlyBudget=budgetCents-dpBudget;
-   const basisPeriods=splitCommission(monthlyBasis,agreement.termMonths),budgets=splitCommission(monthlyBudget,agreement.termMonths);
+   const sameTerm=buyerPeriods.length===agreement.termMonths;
+   const basisPeriods=sameTerm?buyerPeriods.map(s=>s.amountCents):splitCommission(monthlyBasis,agreement.termMonths),budgets=splitCommission(monthlyBudget,agreement.termMonths);
    const buckets=[{type:"DP",period:0,basisCents:account.contract.downPaymentCents,budgetCents:dpBudget,sources:dpSources.map(s=>({...s}))}];
    let sourceIndex=0,consumed=0;
    for(let i=0;i<agreement.termMonths;i++){
     const bucket={type:"MONTHLY",period:i+1,basisCents:basisPeriods[i],budgetCents:budgets[i],sources:[]};let capacity=bucket.basisCents;
+    if(sameTerm){bucket.sources=allMonthlySources.filter(s=>s.installment===buyerPeriods[i].installment).map(s=>({...s}));capacity=0}
     while(capacity>0&&sourceIndex<monthlySources.length){const source=monthlySources[sourceIndex],amount=Math.min(capacity,source.amountCents-consumed);if(amount>0){bucket.sources.push({...source,amountCents:amount});capacity-=amount;consumed+=amount}if(consumed===source.amountCents){sourceIndex++;consumed=0}}
     buckets.push(bucket);
    }
@@ -31,8 +27,8 @@ export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
     if(bucket.budgetCents===0)continue;
     const commissionId=`${account.assignmentId}-COM-${allocation.agentId||agent}-${bucket.type}${bucket.period}`,old=previous.find(r=>r.commissionId===commissionId);
     let collected=0,earned=0;
-    const sourceAllocations=bucket.sources.map(source=>{collected+=source.amountCents;const cumulative=bucket.basisCents?(collected>=bucket.basisCents?bucket.budgetCents:Math.min(Math.max(0,bucket.budgetCents-1),roundRatio(bucket.budgetCents,collected,bucket.basisCents))):0;const commissionCents=cumulative-earned;earned=cumulative;return {...source,commissionCents}});
-    records.push({commissionId,agent,agentId:allocation.agentId,type:bucket.type,period:bucket.period,percentageBps:allocation.percentageBps,budgetCents:bucket.budgetCents,basisCents:bucket.basisCents,collectedCents:collected,earnedCents:earned,sourceAllocations,earningDate:sourceAllocations.at(-1)?.effectiveDate||null,firstEarnedAt:old?.firstEarnedAt||(earned>0?sourceAllocations[0]?.effectiveDate:null),agreementVersion:agreement.version});
+    const sourceAllocations=bucket.sources.map(source=>{collected+=source.amountCents;const cumulative=bucket.basisCents?(collected>=bucket.basisCents?bucket.budgetCents:bucket.type==="MONTHLY"?0:Math.min(Math.max(0,bucket.budgetCents-1),roundRatio(bucket.budgetCents,collected,bucket.basisCents))):0;const commissionCents=cumulative-earned;earned=cumulative;return {...source,commissionCents}});
+    records.push({commissionId,agent,agentId:allocation.agentId,type:bucket.type,period:bucket.period,percentageBps:allocation.percentageBps,budgetCents:bucket.budgetCents,basisCents:bucket.basisCents,collectedCents:collected,earnedCents:earned,sourceAllocations,earningDate:earned>0?sourceAllocations.at(-1)?.effectiveDate||null:null,firstEarnedAt:old?.firstEarnedAt||(earned>0?sourceAllocations.find(s=>s.commissionCents>0)?.effectiveDate:null),earningRule:"FULL_INSTALLMENT_PERIODS",agreementVersion:agreement.version});
    }
   }
  }

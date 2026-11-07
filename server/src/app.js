@@ -18,6 +18,7 @@ app.use(cors({
   credentials: true
 }));
 
+app.use("/api/projects/:projectId/map",express.json({limit:"6mb"}));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => {

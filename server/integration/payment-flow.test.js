@@ -216,6 +216,32 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   await api('/finance/expenses','POST',{category:'OTHER',method:'OTHER',fundingAccount:'NONCASH',expenseDate:cashDay,amount:'10',description:'Other noncash funding confirmed',requestId:randomUUID()},'STAFF',201);
   assert.equal((await api(`/finance/reports/collections?${cashQuery}`)).data.cash.closingCents,168000);
 
+  // Fixed commission configuration and map uploads use only this disposable database.
+  commissionDetails=(await api(`/commissions/accounts/${assignment._id}`)).data;
+  const currentAgreement={...agreementBody,expectedVersion:commissionDetails.__v};
+  await api(`/commissions/accounts/${assignment._id}/agreement`,'PUT',currentAgreement,'ADMIN',409);
+  const fixedCommissionPreview=(await api(`/commissions/accounts/${assignment._id}/agreement-preview`,'POST',currentAgreement)).data;assert.equal(fixedCommissionPreview.agents.length,2);assert.equal(fixedCommissionPreview.remainingPercentageBps,0);
+  await api(`/commissions/accounts/${assignment._id}/agreement-preview`,'POST',currentAgreement,'STAFF',403);
+  const payoutCount=commissionDetails.payouts.length;
+  await api(`/commissions/accounts/${assignment._id}/agreement`,'PUT',{...currentAgreement,agreementAction:'MODIFY',reason:'Reviewed fixed monthly agreement'});
+  commissionDetails=(await api(`/commissions/accounts/${assignment._id}`)).data;assert.equal(commissionDetails.payouts.length,payoutCount);assert.ok(commissionDetails.agreementHistory.length>=2);
+  const raceAccount=(await api(`/commissions/accounts/${advanceAccount._id}`)).data;
+  const raceAgreement={percentage:'10',termMonths:36,agents:[{agent:agentB._id,percentage:'10'}],expectedVersion:raceAccount.__v,confirm:true,reason:'Concurrent independent assignment test',agreementAction:'CREATE'};
+  const agreementRace=await Promise.all([0,1].map(async()=>{const result=await fetch(url+`/commissions/accounts/${advanceAccount._id}/agreement`,{method:'PUT',headers:{Authorization:`Bearer ${users.ADMIN}`,'Content-Type':'application/json'},body:JSON.stringify(raceAgreement)});assert.ok([200,409].includes(result.status));return result.status}));assert.equal(agreementRace.filter(status=>status===200).length,1);assert.equal((await PropertyAssignment.findById(advanceAccount._id)).commissionAgreementHistory.length,1);
+  const testMap=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXkAAAAASUVORK5CYII=','base64');
+  const uploadMap={filename:'lot-map.png',dataBase64:testMap.toString('base64'),expectedVersion:0};
+  assert.equal((await api(`/projects/${project._id}/map/info`)).data,null);
+  await api(`/projects/${project._id}/map`,'PUT',uploadMap,'VIEWER',403);
+  await api(`/projects/${project._id}/map`,'PUT',uploadMap,'STAFF');
+  const mapDetails=(await api(`/projects/${project._id}/map/info`,'GET',undefined,'VIEWER')).data;assert.equal(mapDetails.version,1);assert.equal(mapDetails.data,undefined);assert.equal(mapDetails.width,1);
+  const originalMap=await fetch(url+`/projects/${project._id}/map`,{headers:{Authorization:`Bearer ${users.VIEWER}`}});assert.equal(originalMap.status,200);assert.ok(Buffer.from(await originalMap.arrayBuffer()).equals(testMap));
+  await api(`/projects/${project._id}/map`,'PUT',uploadMap,'ADMIN',409);
+  await api(`/projects/${project._id}/map`,'PUT',{...uploadMap,dataBase64:Buffer.from('<svg/>').toString('base64'),expectedVersion:1},'ADMIN',400);
+  const {default:ProjectMap}=await import('../src/models/ProjectMap.js');
+  assert.equal((await ProjectMap.findOne({project:project._id}).lean()).history.length,1);
+  const mapRace=await Promise.all([0,1].map(async()=>{const result=await fetch(url+`/projects/${project._id}/map`,{method:'PUT',headers:{Authorization:`Bearer ${users.ADMIN}`,'Content-Type':'application/json'},body:JSON.stringify({...uploadMap,filename:'map-v2.png',expectedVersion:1})});assert.ok([200,409].includes(result.status));return result.status}));assert.equal(mapRace.filter(status=>status===200).length,1);assert.equal(await ProjectMap.countDocuments({project:project._id}),1);assert.equal((await ProjectMap.findOne({project:project._id}).lean()).version,2);
+  const mapAudit=await ActivityLog.find({module:'Projects','metadata.requestedValues.filename':'lot-map.png'}).lean();assert.ok(mapAudit.length);assert.ok(!JSON.stringify(mapAudit).includes(uploadMap.dataBase64));
+
   // Preview-first list reports retain existing permissions and include every matching page.
   await Agent.insertMany(Array.from({length:25},(_,i)=>({agentId:`AGT-PREVIEW-${i}`,fullName:`Preview Agent ${String(i).padStart(2,'0')}`,agentType:'TEST',status:'ACTIVE',createdBy:admin._id})));
   await ActivityLog.insertMany(Array.from({length:25},(_,i)=>({action:'UPDATED',module:'Settings',description:`Preview Audit ${i}`,username:'admin',userRole:'ADMIN',userId:admin._id,updatedValues:{passwordHash:'NEVER_EXPORT_AUDIT',visible:'yes'}})));
