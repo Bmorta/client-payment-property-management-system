@@ -18,7 +18,7 @@ const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
 const areaValue = value => value === "" || value === null ? null : Number(value);
 const positiveInteger = value => Number.isSafeInteger(value) && value > 0;
 
-export default function PropertyInventory({ project, onClose, readOnly = false }) {
+export default function PropertyInventory({ project, onClose, readOnly = false, externalFilters=null }) {
   const [properties, setProperties] = useState([]);
   const [savedStructure, setSavedStructure] = useState({ phases: [], blocks: [] });
   const [drafts, setDrafts] = useState({});
@@ -30,6 +30,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false }
   const [selectedPhase, setSelectedPhase] = useState("");
   const [selectedBlock, setSelectedBlock] = useState("");
   const [filters, setFilters] = useState({ phase: "", block: "", lot: "", status: "" });
+  useEffect(()=>{if(externalFilters)setFilters(f=>({...f,...externalFilters}))},[JSON.stringify(externalFilters)]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);

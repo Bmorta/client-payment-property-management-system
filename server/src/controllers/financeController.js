@@ -1,3 +1,4 @@
+import {needsAllocationChoice,paymentContext} from '../utils/paymentContext.js';
 import {reportIdentity,brandExcel} from "../services/companyBranding.js";
 import {createHash} from "node:crypto";
 import Agent from "../models/Agent.js";
@@ -105,7 +106,7 @@ export async function acceptPayment(req, res, next) {
     const [client, project] = await Promise.all([Client.findById(account.client), Project.findById(account.project)]);
     if (!client || client.status !== "ACTIVE" || !project || project.status === "ARCHIVED") fail(409, "Payments require an active client and a project that is not archived.");
     const payment = { ...input, agreementVersion: (account.agreementHistory?.length || 0) + 1, actorUsername: req.user.username, actorRole: req.user.role, requestId, paymentId: await generateRecordId("payment"),  createdBy: req.user._id, createdAt: new Date() };
-    if(account.contract.monitoringTerms?.pendingPaymentPolicy&&!input.configuration.allocationPriority)fail(400,"Select the transaction allocation priority; the permanent payment policy is not configured yet.");
+    if(needsAllocationChoice(account,input))fail(400,"This payment has both outstanding principal and penalties. Choose its allocation priority or an explicit payment type, then review the allocation.");
     const proposed={...account,payments:[...account.payments,payment]};
     const preview=allocationPreview(account,proposed,payment.paymentId);
     // Generated IDs are normalized for preview/confirm comparison.
@@ -211,7 +212,7 @@ export async function previewPayment(req,res,next){
   validateReceipt(req.body.receiptNumber);await checkReceipt(req.body.receiptNumber,receiptScope(),account._id,"PREVIEW",req.body.requestId);
   const fundingAccount=validateFunding(req.body.method,req.body.fundingAccount);
   const configuration=paymentConfiguration(req.body.configuration,req.user);
-  if(account.contract.monitoringTerms?.pendingPaymentPolicy&&!configuration.allocationPriority)fail(400,"Choose the transaction allocation priority before previewing this payment.");
+  if(needsAllocationChoice(account,{paymentDate,type,configuration}))fail(400,"This payment has both outstanding principal and penalties. Choose its allocation priority or an explicit payment type, then review the allocation.");
   const proposed={...account,payments:[...account.payments,{paymentId:"PREVIEW",amountCents,paymentDate,type,configuration,fundingAccount,createdAt:new Date()}]};
   res.json({success:true,data:allocationPreview(account,proposed,"PREVIEW")});
  }catch(e){next(e)}
@@ -262,3 +263,5 @@ export function paymentConfiguration(input,user){
  if(!["ADMIN","STAFF"].includes(user?.role)||!["PRINCIPAL_FIRST","PENALTY_FIRST"].includes(input.allocationPriority)||typeof input.reason!=="string"||input.reason.trim().length<5||input.reason.length>500)fail(400,"Choose a valid payment priority and give an override reason (5–500 characters).");
  return {allocationPriority:input.allocationPriority,reason:input.reason.trim()};
 }
+
+export async function getPaymentContext(req,res,next){try{const a=await PropertyAssignment.findById(id(req.query.accountId)).lean(),date=req.query.date;if(!a)fail(404,'Account not found.');if(!validDate(date)||date<a.contract.contractDate||date>today())fail(400,'Choose a valid payment date.');res.json({success:true,data:paymentContext(a,date)})}catch(e){next(e)}}

@@ -50,7 +50,7 @@ export function calculateLedger(account,payments,asOf=calendarDay()){
     remaining-=amount;
    }
   }
-  else if(p.type==="PENALTY")penalty();
+  else if(p.type==="PENALTY"||p.type==="AUTO"&&schedule.every(s=>s.balanceCents===0))penalty();
   else if(p.type==="AUTO"&&(p.configuration?.allocationPriority||policyAt(p.paymentDate)?.allocationPriority)==="PENALTY_FIRST"){penalty();principal()}
   else {principal();if(p.type==="AUTO"&&(p.configuration?.allocationPriority||policyAt(p.paymentDate)?.allocationPriority))penalty()}
   if(remaining>0)throw Object.assign(new Error("Payment exceeds the remaining balance for its payment type. Review allocations or charges before saving."),{statusCode:409});

@@ -1,3 +1,5 @@
+import {getPaymentContext} from '../controllers/financeController.js';
+import {propertySummary} from '../controllers/inventorySummaryController.js';
 import {migrationPaymentGuard} from "../middleware/migrationPaymentGuard.js";
 import {schedulePrintPreview,schedulePrintChoices} from "../controllers/schedulePrintController.js";
 import {collectionReport} from "../controllers/collectionReportController.js";
@@ -14,6 +16,8 @@ import { authorize } from "../middleware/authorize.js";
 import { listAccounts, acceptPayment, listPayments, listExpenses, createExpense, report, updateAgreement, getAccount, previewPayment, exportMonitoringReport, exportPaymentRegister, dashboardAnalytics } from "../controllers/financeController.js";
 const router = Router();
 router.use(authenticate, auditMutation);
+router.get("/payments/context",getPaymentContext);
+router.get("/property-summary",propertySummary);
 router.get("/schedule-print/preview",schedulePrintPreview);
 router.get("/schedule-print/accounts",schedulePrintChoices);
 router.get("/monitoring",listMonitoring);
