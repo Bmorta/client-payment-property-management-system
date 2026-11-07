@@ -18,3 +18,8 @@ Export to Excel is available beside Print Inventory in both the dedicated invent
 Additional modified files: client/src/pages/PropertyInventory.jsx and server/src/routes/projectRoutes.js. Added: shared/inventoryFilters.js, server/src/controllers/inventoryExportController.js and server/test/inventory-export.test.js.
 
 Verification: 127 backend tests passed, one optional MongoDB integration skipped; three new export cases cover workbook numeric round trips, combined filters, missing/zero prices, empty results and malformed requests. Client build passed. DOM checks verified that the download uses active filters and that existing print/read-only behavior remains intact. Nothing committed or pushed.
+
+
+## Preview-first inventory actions
+
+Both Property Inventory and Manage Lots now use Refresh Results, Print, Export CSV and Export Excel. Print/export buttons first load the shared report preview; download buttons appear inside it. The preview includes all matching saved records, active filters, project identity and numeric prices. Downloads require the same unchanged result fingerprint; changed saved prices require a fresh preview. This supersedes the earlier direct-download button workflow. Pending lot edits must still be saved or cancelled before output.

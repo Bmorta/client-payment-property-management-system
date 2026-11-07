@@ -8,7 +8,7 @@ The authenticated `/api/list-reports/:module` endpoint reuses existing list cont
 
 Downloads require a preview fingerprint. The server rebuilds the filtered result and rejects changed data with HTTP 409. Staff must close the stale preview and load a fresh one. Printing uses the report already reviewed. Excel numeric monetary values remain numbers, and CSV protects text fields beginning with spreadsheet formulas. Print output escapes stored text and excludes edit controls. No new production dependencies or database migrations are required.
 
-Scope: these six modules. Existing inventory and Payment Transactions actions are unchanged in this update.
+Property Inventory and Manage Lots now also use this preview-first toolbar, including Refresh Results and CSV export. The inventory preview includes project identity, phase/block/lot/status/search filters and saved numeric pricing. Payment Transactions actions remain unchanged by this update.
 
 ## Files
 
@@ -25,3 +25,10 @@ Scope: these six modules. Existing inventory and Payment Transactions actions ar
 DOM tests passed for preview-before-download, preview pagination over 45 rows, full-result printing, snapshot/filter parameters, stale-download blocking and Escape. Existing office workflow and commission interface regressions passed. Client production build and git whitespace check passed. Actual office-browser/printer appearance review remains pending.
 
 Changes are not committed or pushed. Run instructions and environment are unchanged.
+
+
+## Inventory preview follow-up
+
+Updated PropertyInventory.jsx, listReportController.js and listReport.js to include inventory in the shared preview workflow. The existing dedicated inventory Excel endpoint remains compatible, while page buttons now require preview through the shared reporting endpoint. Downloads reject inventory changes since preview, including saved price changes.
+
+Verification: 131 regular backend tests passed (one optional integration skipped in the default command); the isolated HTTP/MongoDB integration passed separately, including inventory CSV/Excel and stale-price rejection. Inventory preview and shared preview DOM checks passed; client production build passed. No business records or production data were changed, and no commit/push was performed.

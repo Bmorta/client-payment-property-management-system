@@ -20,5 +20,10 @@ test('admin permission and preview requirements are enforced before database acc
  for(const [module,user,query,expected] of [['users',{role:'STAFF'},{},403],['activity-logs',{role:'VIEWER'},{},403],['projects',{role:'STAFF'},{format:'xlsx'},400],['projects',{role:'STAFF'},{q:['bad']},400],['__proto__',{role:'ADMIN'},{},404]]){
  let status;await listReport({params:{module},user,query},{status(n){status=n;return this},json(){}},e=>{throw e});assert.equal(status,expected);
  }
- assert.equal(Object.keys(reportModules).length,6);
+ assert.equal(Object.keys(reportModules).length,7);
+});
+
+test('inventory preview uses saved numeric prices and preserves unknown versus zero',async()=>{
+ const report=makeListReport('inventory',[{propertyId:'PROP-1',phaseNumber:1,blockNumber:1,lotNumber:1,areaSqm:100,pricePerSqm:1800,status:'AVAILABLE'},{propertyId:'PROP-2',areaSqm:80,pricePerSqm:null},{propertyId:'PROP-3',areaSqm:80,pricePerSqm:0}]);
+ assert.equal(report.rows[0][6],180000);assert.equal(report.rows[1][6],'');assert.equal(report.rows[2][6],0);const book=new ExcelJS.Workbook();await book.xlsx.load(await reportWorkbook(report));assert.equal(book.worksheets[0].getCell('G7').value,180000);
 });

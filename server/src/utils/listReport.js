@@ -1,8 +1,10 @@
+import {lotPrice} from "./lotPricing.js";
 import ExcelJS from 'exceljs';
 const name=r=>r.fullName||[r.firstName,r.middleName,r.lastName,r.suffix].filter(Boolean).join(' ');
 const timestamp=v=>v?new Date(v).toLocaleString('en-PH',{timeZone:'Asia/Manila'}):'';
 const json=v=>JSON.stringify(v??null);
 export const reportModules={
+ inventory:{title:'Property Inventory',headers:['Property ID','Phase','Block','Lot','Area (sqm)','Price per sqm PHP','Price per lot PHP','Status'],row:r=>[r.propertyId,r.phaseNumber,r.blockNumber,r.lotNumber,r.areaSqm??'',r.pricePerSqm??'',lotPrice(r.areaSqm,r.pricePerSqm)??'',r.status==='FOR_ASSUME'?'For Assume':r.status]},
  projects:{title:'Projects',headers:['Project ID','Project','Code','Location','Start Date','Status'],row:r=>[r.projectId,r.projectName,r.projectCode,r.location,r.startDate?String(r.startDate).slice(0,10):'',r.status],search:r=>[r.projectId,r.projectName,r.projectCode,r.location].join(' ')},
  clients:{title:'Clients',headers:['Client ID','Name','Contact Number','Email','Address','Status'],row:r=>[r.clientId,name(r),r.contactNumber,r.email,r.address,r.status],search:r=>[r.clientId,r.firstName,r.lastName,r.email,r.contactNumber].join(' ')},
  agents:{title:'Agents',headers:['Agent ID','Name','Contact Number','Email','Address','Type','Status','Assigned Projects'],row:r=>[r.agentId,r.fullName,r.contactNumber,r.email,r.address,r.agentType,r.status,(r.assignedProjects||[]).map(p=>p.projectName).join('; ')]},
