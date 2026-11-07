@@ -66,3 +66,7 @@ Backend/shared:
 Tests:
 - `server/test/export-voucher-update.test.js`
 - `server/integration/company-reporting.test.js`, `historical-migration.test.js`
+
+## Voucher button usability follow-up
+
+Print Commission Voucher remains enabled even without a selection and while the list is loading or empty. Without a selection it opens saved vouchers with instructions for preparing a new one. Paid vouchers remain available for reprinting. Commission eligibility checks apply to preparing/paying new voucher amounts, not opening voucher history.
