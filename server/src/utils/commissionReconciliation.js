@@ -1,0 +1,16 @@
+import {createHash} from 'node:crypto';
+import {validDate} from '../../../shared/paymentSchedule.js';
+export const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export function agreementScope(account,body){
+ const old=account.commissionAgreement,mode=body.effectiveMode??old?.effectiveMode??'CONTRACT_DATE',date=mode==='CONTRACT_DATE'?account.contract.contractDate:body.effectiveDate??old?.effectiveDate;
+ if(!['CONTRACT_DATE','SELECTED_DATE'].includes(mode)||!validDate(date)||date<account.contract.contractDate)throw Object.assign(new Error('Choose the contract date or a valid effective date on/after the contract date.'),{statusCode:400});
+ return {effectiveMode:mode,effectiveDate:date,effectivePolicy:'PAYMENTS_ON_OR_AFTER'};
+}
+export function historicalFingerprint(record,agreement){return digest({commissionId:record.commissionId,percentageBps:record.percentageBps,budgetCents:record.budgetCents,basisCents:record.basisCents,effectiveDate:agreement?.effectiveDate||record.agreementEffectiveDate||null,historicalPayouts:record.historicalPayoutEvidence||[],historicalSources:record.sourceAllocations.filter(s=>s.historical).map(s=>[s.paymentId,s.installment,s.amountCents,s.effectiveDate])})}
+export function historicalReviewMatches(review,record,agreement){return review.commissionId===record.commissionId&&review.fingerprint===historicalFingerprint(record,agreement)}
+export function reconciliationPreview(account,agreement,snapshot,budgets){
+ const records=snapshot.records,active=records.filter(r=>!r.retired),total=k=>{const value=records.reduce((n,r)=>n+(r[k]||0),0);if(!Number.isSafeInteger(value))throw Object.assign(new Error('Commission preview exceeds supported centavo precision.'),{statusCode:409});return value};
+ const agents=budgets.map(b=>{const rows=active.filter(r=>r.agent===b.agent);return {...b,agentId:agreement.agents.find(a=>a.agent===b.agent)?.agentId,completedInstallments:rows.filter(r=>r.type==='MONTHLY'&&r.earnedCents>0).length,downPaymentEarnedCents:rows.filter(r=>r.type==='DP').reduce((n,r)=>n+r.earnedCents,0),monthlyEarnedCents:rows.filter(r=>r.type==='MONTHLY').reduce((n,r)=>n+r.earnedCents,0),earnedCents:rows.reduce((n,r)=>n+r.earnedCents,0),previouslyReleasedCents:rows.reduce((n,r)=>n+r.netReleasedCents,0),unreleasedCents:rows.reduce((n,r)=>n+r.unreleasedCents,0),historicalVerificationCents:rows.reduce((n,r)=>n+r.historicalVerificationCents,0),releasableCents:rows.reduce((n,r)=>n+r.releasableCents,0)}});
+ const data={accountId:String(account._id),assignmentId:account.assignmentId,contractDate:account.contract.contractDate,effectiveDate:agreement.effectiveDate,effectiveMode:agreement.effectiveMode,effectivePolicy:agreement.effectivePolicy,agents,earnedCents:total('earnedCents'),previouslyReleasedCents:total('netReleasedCents'),unreleasedCents:total('unreleasedCents'),historicalVerificationCents:total('historicalVerificationCents'),releasableCents:total('releasableCents'),recoveryDueCents:total('recoveryDueCents'),retroactive:records.some(r=>r.earnedCents>(account.commissionSnapshot?.records?.find(old=>old.commissionId===r.commissionId)?.earnedCents||0))};
+ data.token=digest({accountId:data.accountId,version:account.__v,agreement,records:records.map(({firstEarnedAt,...r})=>r)});return data;
+}

@@ -106,6 +106,7 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   const agreementBody={percentage:"10",termMonths:12,agents:[{agent:agentA._id,percentage:"6"},{agent:agentB._id,percentage:"4"}],expectedVersion:commissionDetails.__v,confirm:true,reason:"Signed project commission split"};
   await api(`/commissions/accounts/${assignment._id}/agreement`,"PUT",{...agreementBody,agents:[{agent:agentA._id,percentage:"6"},{agent:agentB._id,percentage:"5"}]},"ADMIN",400);
   await api(`/commissions/accounts/${assignment._id}/agreement`,"PUT",agreementBody,"STAFF",403);
+  const retroPreview=(await api(`/commissions/accounts/${assignment._id}/agreement-preview`,"POST",agreementBody)).data.reconciliation;agreementBody.previewToken=retroPreview.token;agreementBody.confirmRetroactive=true;
   await api(`/commissions/accounts/${assignment._id}/agreement`,"PUT",agreementBody);
   let ledgerData=(await api(`/commissions?agent=${agentA._id}&project=${project._id}&type=DP&status=UNRELEASED`)).data;
   assert.equal(ledgerData.total,1);assert.equal(ledgerData.rows[0].earnedCents,60000);assert.equal(ledgerData.summary.propertyBudgetCents,1000000);
@@ -223,10 +224,11 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   const fixedCommissionPreview=(await api(`/commissions/accounts/${assignment._id}/agreement-preview`,'POST',currentAgreement)).data;assert.equal(fixedCommissionPreview.agents.length,2);assert.equal(fixedCommissionPreview.remainingPercentageBps,0);
   await api(`/commissions/accounts/${assignment._id}/agreement-preview`,'POST',currentAgreement,'STAFF',403);
   const payoutCount=commissionDetails.payouts.length;
-  await api(`/commissions/accounts/${assignment._id}/agreement`,'PUT',{...currentAgreement,agreementAction:'MODIFY',reason:'Reviewed fixed monthly agreement'});
+  await api(`/commissions/accounts/${assignment._id}/agreement`,'PUT',{...currentAgreement,agreementAction:'MODIFY',reason:'Reviewed fixed monthly agreement',previewToken:fixedCommissionPreview.reconciliation.token,confirmRetroactive:true});
   commissionDetails=(await api(`/commissions/accounts/${assignment._id}`)).data;assert.equal(commissionDetails.payouts.length,payoutCount);assert.ok(commissionDetails.agreementHistory.length>=2);
   const raceAccount=(await api(`/commissions/accounts/${advanceAccount._id}`)).data;
   const raceAgreement={percentage:'10',termMonths:36,agents:[{agent:agentB._id,percentage:'10'}],expectedVersion:raceAccount.__v,confirm:true,reason:'Concurrent independent assignment test',agreementAction:'CREATE'};
+  raceAgreement.previewToken=(await api(`/commissions/accounts/${advanceAccount._id}/agreement-preview`,'POST',raceAgreement)).data.reconciliation.token;raceAgreement.confirmRetroactive=true;
   const agreementRace=await Promise.all([0,1].map(async()=>{const result=await fetch(url+`/commissions/accounts/${advanceAccount._id}/agreement`,{method:'PUT',headers:{Authorization:`Bearer ${users.ADMIN}`,'Content-Type':'application/json'},body:JSON.stringify(raceAgreement)});assert.ok([200,409].includes(result.status));return result.status}));assert.equal(agreementRace.filter(status=>status===200).length,1);assert.equal((await PropertyAssignment.findById(advanceAccount._id)).commissionAgreementHistory.length,1);
   const testMap=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhXkAAAAASUVORK5CYII=','base64');
   const uploadMap={filename:'lot-map.png',dataBase64:testMap.toString('base64'),expectedVersion:0};

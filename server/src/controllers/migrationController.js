@@ -1,3 +1,6 @@
+import {calculateCommissions} from '../utils/commissionLedger.js';
+import {allocatePayments} from '../utils/paymentLedger.js';
+import {historicalFingerprint} from '../utils/commissionReconciliation.js';
 import {reportIdentity,brandExcel} from "../services/companyBranding.js";
 import mongoose from 'mongoose';
 import {randomUUID,createHash} from 'node:crypto';
@@ -113,8 +116,10 @@ export async function workflow(req,res,next){try{
    await ReceiptClaim.create([{_id:key,scope:row.series,receiptNumber:row.receiptNumber,accountId:a._id,paymentId:`HIS-${row.rowId}`,requestId:`migration-${row.rowId}`}],{session});
   }
   const payouts=payoutRows(current,req.user).map(payout=>{const record=p.commissions.find(c=>c.commissionId===payout.commissionId);return {...payout,agent:record.agent,agentId:record.agentId,type:record.type,period:record.period,earnedCentsAtRelease:record.earnedCents}}),proposed={...result.proposed,commissionPayouts:[...(a.commissionPayouts||[]),...payouts]};
+  const verifiedCommissionRecords=calculateCommissions(proposed,allocatePayments(proposed)).records;
+  proposed.commissionHistoricalReviews=[...(a.commissionHistoricalReviews||[]),...p.commissions.filter(c=>current.rows.some(r=>!r.excluded&&r.kind==='COMMISSION'&&r.commissionId===c.commissionId)).map(c=>({commissionId:c.commissionId,fingerprint:historicalFingerprint(verifiedCommissionRecords.find(r=>r.commissionId===c.commissionId)||c,proposed.commissionAgreement),disposition:'MIGRATION_RECONCILED',documentReference:current.reconciliation.documentReference,migrationBatchId:current.batchId,...actor(req.user),reason:'Verified period-by-period historical commission reconciliation'}))];
   const mutation=monitoringMutation(proposed,actor(req.user),'Verified historical migration activation');
-  const set={migration:{...proposed.migration,historicalStatus:current.reconciliation.historicalStatus,approvedBy:String(req.user._id)},historicalPenalties:proposed.historicalPenalties,penaltyWaivers:proposed.penaltyWaivers,...(mutation.update?.$set||{})};
+  const set={commissionHistoricalReviews:proposed.commissionHistoricalReviews,migration:{...proposed.migration,historicalStatus:current.reconciliation.historicalStatus,approvedBy:String(req.user._id)},historicalPenalties:proposed.historicalPenalties,penaltyWaivers:proposed.penaltyWaivers,...(mutation.update?.$set||{})};
   // Old payment arrays are never overwritten. Appends and derived allocations,
   // penalties, commissions and the account audit outbox commit together.
   const push={...(mutation.update?.$push||{}),payments:{$each:result.payments},commissionPayouts:{$each:payouts}};

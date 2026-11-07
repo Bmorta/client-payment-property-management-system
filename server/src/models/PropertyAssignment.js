@@ -30,6 +30,7 @@ const assignmentSchema = new Schema({
     schedule: [{ _id: false, installment: Number, dueDate: String, amountCents: Number }]
   },
   commissionAgreement:Schema.Types.Mixed,
+  commissionHistoricalReviews:{type:[Schema.Types.Mixed],default:[]},
   commissionAgreementHistory:{type:[Schema.Types.Mixed],default:[]},
   commissionSnapshot:Schema.Types.Mixed,
   commissionEvents:{type:[Schema.Types.Mixed],default:[]},
@@ -49,6 +50,7 @@ const assignmentSchema = new Schema({
   payments: { type: [paymentSchema], default: [] },
   createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true }
 }, { timestamps: true });
+assignmentSchema.path('commissionSnapshot').validate(value=>!value?.records||new Set(value.records.map(r=>r.commissionId)).size===value.records.length,'Duplicate commission period keys.');
 assignmentSchema.index({"commissionSnapshot.records.agent":1,project:1});
 assignmentSchema.index({"payments.paymentId":1},{unique:true,partialFilterExpression:{"payments.paymentId":{$type:"string"}}});
 assignmentSchema.index({"commissionPayouts.payoutId":1},{unique:true,partialFilterExpression:{"commissionPayouts.payoutId":{$type:"string"}}});
