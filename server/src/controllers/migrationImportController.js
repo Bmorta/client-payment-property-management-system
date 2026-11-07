@@ -1,9 +1,10 @@
+import MigrationConfig from '../models/MigrationConfig.js';
 import ExcelJS from 'exceljs';
 import {inflateRawSync} from 'node:zlib';
 import MigrationBatch from '../models/MigrationBatch.js';
 import PropertyAssignment from '../models/PropertyAssignment.js';
 import {actor,newRow,duplicates} from '../services/migrationService.js';
-import {assertVersion,normalizeMigrationRow,hash,fail,clean} from '../utils/migrationRules.js';
+import {assertVersion,normalizeMigrationRow,hash,fail,clean,migrationContext} from '../utils/migrationRules.js';
 import {moneyCents} from '../utils/accounting.js';
 const columns=['Contract Reference','Record Type','Original Date','Receipt Number','Issuing Series','Payment Type','Payment Method','Funding Account','Amount PHP','Reference Number','Remarks','Source Document Type','Document Reference','Installment','Assessment ID','Commission ID','Earned PHP','Release Date','Client ID','Contract Price PHP','Agreed DP PHP','Term Months','Contract Date','First Due Date'];
 const types={clients:'CLIENT',contracts:'CONTRACT',payments:'PAYMENT','down-payments':'PAYMENT',penalties:'PENALTY_ASSESSMENT',commissions:'COMMISSION'};
@@ -59,7 +60,7 @@ export async function parseImport(req,batch){
  return {fileHash,filename:name,rows,totalRows:rows.length,validRows:rows.filter(r=>!r.errors.length&&!r.duplicates.length).length,invalidRows:rows.filter(r=>r.errors.length).length,suspectedDuplicates:rows.filter(r=>r.duplicates.length).length,totalPaymentCents:rows.filter(r=>r.normalized?.kind==='PAYMENT').reduce((n,r)=>n+r.normalized.amountCents,0),alreadyImported:batch.imports.some(i=>i.fileHash===fileHash)};
 }
 export async function importWorkbook(req,res,next){try{
- const batch=await MigrationBatch.findById(req.params.id).lean();if(!batch)fail('Migration not found.',404);
+ const stored=await MigrationBatch.findById(req.params.id).lean();if(!stored)fail('Migration not found.',404);const batch=migrationContext(stored,await MigrationConfig.findById('OFFICE').lean());
  if(req.user.role!=='ADMIN'&&String(batch.encoder)!==String(req.user._id))fail('Only the assigned encoder may import.',403);
  const parsed=await parseImport(req,batch);
  if(req.body.save!==true)return res.json({success:true,data:parsed});

@@ -11,7 +11,7 @@ export function materialize(account,batch){
  const proposed=structuredClone(account),rows=batch.rows.filter(r=>!r.excluded),payments=rows.filter(r=>r.kind==='PAYMENT').map(r=>({paymentId:`HIS-${r.rowId}`,requestId:`migration-${r.rowId}`,receiptNumber:r.receiptNumber,receiptScope:r.series,type:r.type,amountCents:r.amountCents,paymentDate:r.date,method:r.method,fundingAccount:r.fundingAccount,reference:r.reference,notes:r.remarks,createdAt:r.encodedAt,createdBy:r.encodedBy,actorUsername:r.encoderUsername,actorRole:'MIGRATION',origin:'HISTORICAL',migrationBatchId:batch.batchId,migrationRowId:r.rowId,configuration:{allocationPriority:'PRINCIPAL_FIRST'},revisions:[]}));
  const newPayments=payments.filter(p=>!(account.payments||[]).some(old=>old.paymentId===p.paymentId));
  proposed.payments=[...(account.payments||[]),...newPayments];
- proposed.migration={batchId:batch.batchId,cutoffDate:batch.cutoffDate,historicalStatus:batch.reconciliation?.historicalStatus||'ACTIVE',activatedAt:new Date()};
+ proposed.migration={batchId:batch.batchId,cutoffDate:batch.cutoffDate||today(),historicalStatus:batch.reconciliation?.historicalStatus||'ACTIVE',activatedAt:new Date()};
  proposed.historicalPenalties=[...(account.historicalPenalties||[]),...rows.filter(r=>r.kind==='PENALTY_ASSESSMENT'&&!(account.historicalPenalties||[]).some(a=>a.assessmentId===`HPA-${r.rowId}`)).map(r=>({assessmentId:`HPA-${r.rowId}`,installmentId:`I${r.installment}`,installment:r.installment,cycleDate:r.date,amountCents:r.amountCents,migrationBatchId:batch.batchId,documentReference:r.documentReference}))];
  proposed.penaltyWaivers=[...(account.penaltyWaivers||[]),...rows.filter(r=>r.kind==='PENALTY_WAIVER'&&!(account.penaltyWaivers||[]).some(w=>w.migrationRowId===r.rowId)).map(r=>({assessmentId:r.assessmentId,amountCents:r.amountCents,effectiveDate:r.date,reason:r.remarks,migrationRowId:r.rowId,migrationBatchId:batch.batchId}))];
  const ledger=calculateLedger(proposed,proposed.payments.map(effectivePayment),today());
@@ -28,6 +28,7 @@ export async function duplicates(row,accountId,excludeBatchId,session){
  return hits;
 }
 export async function validateBatch(batch,account,session){
+ const asOf=batch.cutoffDate||today(),preparationMode=batch.preparationMode??!batch.cutoffDate;
  const errors=[],warnings=[],active=batch.rows.filter(r=>!r.excluded),seen=[];
  if(!active.length)errors.push('No historical records to verify.');
  for(const r of active){
@@ -53,12 +54,12 @@ export async function validateBatch(batch,account,session){
  let cutoffLedger,commissions;
  if(result){
   try{
-   cutoffLedger=calculateLedger(result.proposed,result.proposed.payments.map(effectivePayment),batch.cutoffDate);
+   cutoffLedger=calculateLedger(result.proposed,result.proposed.payments.map(effectivePayment),asOf);
    if(cutoffLedger.balanceCents!==recon.officeBalanceCents)errors.push('Reconstructed principal differs from the verified office balance.');
    if(cutoffLedger.outstandingPenaltyCents!==recon.officePenaltyCents)errors.push('Recorded historical penalties differ from the verified office penalty balance.');
    if(recon.historicalStatus==='FULLY_PAID'&&(cutoffLedger.balanceCents||cutoffLedger.outstandingPenaltyCents))errors.push('Fully Paid status requires zero principal and penalty balances.');
    // Historical earned amounts must match the same production commission rules.
-   commissions=calculateCommissions(result.proposed,cutoffLedger,{asOf:batch.cutoffDate});
+   commissions=calculateCommissions(result.proposed,cutoffLedger,{asOf});
    const docs=active.filter(r=>r.kind==='COMMISSION'),existingPayouts=account.commissionPayouts||[];
    if(account.commissionAgreement){
     if(recon.commissionReview!=='RECONCILED')errors.push('The historical commission agreement requires documented period-by-period reconciliation.');
@@ -82,9 +83,9 @@ export async function validateBatch(batch,account,session){
   }catch(e){errors.push(e.message)}
  }
  let expectedPenaltyCents=null;
- try{const expected=calculateLedger({...account,migration:null,historicalPenalties:[],penaltyWaivers:(account.penaltyWaivers||[]).filter(w=>!w.migrationBatchId)},[...account.payments.map(effectivePayment),...(result?.payments||[])].filter(p=>p.type!=='PENALTY'),batch.cutoffDate);expectedPenaltyCents=expected.outstandingPenaltyCents}catch(e){warnings.push(`Expected contractual penalty unavailable: ${e.message}`)}
+ try{const expected=calculateLedger({...account,migration:null,historicalPenalties:[],penaltyWaivers:(account.penaltyWaivers||[]).filter(w=>!w.migrationBatchId)},[...account.payments.map(effectivePayment),...(result?.payments||[])].filter(p=>p.type!=='PENALTY'),asOf);expectedPenaltyCents=expected.outstandingPenaltyCents}catch(e){warnings.push(`Expected contractual penalty unavailable: ${e.message}`)}
  const total=active.filter(r=>r.kind==='PAYMENT').reduce((n,r)=>n+r.amountCents,0);if(!Number.isSafeInteger(total))errors.push('Historical total exceeds centavo precision.');
- const preview={errors:[...new Set(errors)],warnings,balanced:errors.length===0,cutoffDate:batch.cutoffDate,totalPaymentCents:total,paymentCount:active.filter(r=>r.kind==='PAYMENT').length,
+ const preview={errors:[...new Set(errors)],warnings,balanced:errors.length===0,cutoffDate:batch.cutoffDate||null,asOf,preparationMode,totalPaymentCents:total,paymentCount:active.filter(r=>r.kind==='PAYMENT').length,
   expectedBalanceCents:cutoffLedger?.balanceCents??null,officeBalanceCents:recon.officeBalanceCents??null,differenceCents:cutoffLedger&&Number.isSafeInteger(recon.officeBalanceCents)?cutoffLedger.balanceCents-recon.officeBalanceCents:null,recordedPenaltyCents:cutoffLedger?.outstandingPenaltyCents??null,expectedPenaltyCents,penaltyDifferenceCents:expectedPenaltyCents!=null&&cutoffLedger?expectedPenaltyCents-cutoffLedger.outstandingPenaltyCents:null,
   nextUnpaidDueDate:cutoffLedger?.nextUnpaidDueDate||null,schedule:cutoffLedger?.schedule||[],allocations:cutoffLedger?.allocations||{},commissions:commissions?.records||[],accountVersion:account.__v??0};
  preview.token=hash({batchVersion:batch.__v,rows:batch.rows,reconciliation:recon,preview});return {preview,result};

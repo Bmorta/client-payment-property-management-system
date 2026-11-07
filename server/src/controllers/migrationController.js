@@ -8,20 +8,20 @@ import PropertyAssignment from '../models/PropertyAssignment.js';
 import User from '../models/User.js';
 import ReceiptClaim from '../models/ReceiptClaim.js';
 import {today,validDate,moneyCents} from '../utils/accounting.js';
-import {clean,fail,hash,assertVersion,normalizeMigrationRow,migrationStats} from '../utils/migrationRules.js';
+import {clean,fail,hash,assertVersion,normalizeMigrationRow,migrationStats,migrationContext} from '../utils/migrationRules.js';
 import {actor,duplicates,newRow,validateBatch,payoutRows} from '../services/migrationService.js';
 import {calendarDay} from '../utils/contractMonitoring.js';
 import {monitoringMutation} from '../services/monitoringService.js';
 const id=v=>{if(typeof v!=='string'||!mongoose.isValidObjectId(v))fail('Invalid identifier.');return v};
-const load=async req=>{const b=await MigrationBatch.findById(id(req.params.id)).lean();if(!b)fail('Migration account not found.',404);return b};
+const load=async req=>{const b=await MigrationBatch.findById(id(req.params.id)).lean();if(!b)fail('Migration account not found.',404);return migrationContext(b,await MigrationConfig.findById('OFFICE').lean())};
 const account=async value=>{const a=await PropertyAssignment.findById(value).populate('client','clientId firstName middleName lastName').populate('project','projectId projectName').populate('property','propertyId phaseNumber blockNumber lotNumber').lean();if(!a)fail('Linked contract no longer exists.',409);return a};
 const canEdit=(b,user)=>{if(user.role!=='ADMIN'&&String(b.encoder)!==String(user._id))fail('Only the assigned encoder or an administrator may edit this migration.',403);if(!['NOT_STARTED','IN_PROGRESS','NEEDS_CORRECTION'].includes(b.status))fail('Return this record for correction before editing.',409)};
 async function save(b,req,set,event,details={}){const updated=await MigrationBatch.findOneAndUpdate({_id:b._id,__v:b.__v},{$set:set,$inc:{__v:1},$push:{history:{...actor(req.user),event,...details}}},{new:true,runValidators:true}).lean();if(!updated)fail('Another user changed this migration. Refresh and retry.',409);return updated;}
 const reply=(res,data,message)=>res.json({success:true,data,message});
-export async function getConfig(req,res,next){try{const config=await MigrationConfig.findById('OFFICE').lean(),staff=await User.find({isActive:true,role:{$in:['ADMIN','STAFF']}}).select('username firstName lastName role').lean();reply(res,{config,staff})}catch(e){next(e)}}
+export async function getConfig(req,res,next){try{const config=await MigrationConfig.findById('OFFICE').lean(),staff=await User.find({isActive:true,role:{$in:['ADMIN','STAFF']}}).select('username firstName lastName role').lean();reply(res,{config,staff,preparationMode:!validDate(config?.cutoffDate)})}catch(e){next(e)}}
 export async function setConfig(req,res,next){try{
- const cutoffDate=req.body.cutoffDate;if(!validDate(cutoffDate)||cutoffDate>=today())fail('Cutoff must be a valid date before today.');
- const existing=await MigrationConfig.findById('OFFICE').lean();if(existing&&existing.cutoffDate!==cutoffDate&&(existing.stagingStarted||await MigrationBatch.exists({})))fail('Cutoff is locked after staging begins. Administrator-led migration recovery is required to change it.',409);
+ const cutoffInput=clean(req.body.cutoffDate,100);if(cutoffInput.length>10)fail('Cutoff must be a calendar date in YYYY-MM-DD format.');const cutoffDate=cutoffInput||null;if(cutoffDate&&(!validDate(cutoffDate)||cutoffDate>=today()))fail('Cutoff must be a valid date before today.');
+ const existing=await MigrationConfig.findById('OFFICE').lean();if(existing&&existing.cutoffDate&&existing.cutoffDate!==cutoffDate&&(existing.stagingStarted||await MigrationBatch.exists({})))fail('Cutoff is locked after staging begins. Administrator-led migration recovery is required to change it.',409);
  if(existing&&req.body.version!==existing.__v)fail('Configuration changed. Refresh first.',409);
  const backupReference=clean(req.body.backupReference,200),recoveryTestReference=clean(req.body.recoveryTestReference,200),reason=clean(req.body.reason);if(!reason)fail('A configuration change reason is required.');
  let result;if(existing)result=await MigrationConfig.findOneAndUpdate({_id:'OFFICE',__v:existing.__v,...(existing.cutoffDate!==cutoffDate?{stagingStarted:{$ne:true}}:{})},{$set:{cutoffDate,backupReference,recoveryTestReference},$inc:{__v:1},$push:{history:{...actor(req.user),event:'CONFIG_UPDATED',previousValues:{cutoffDate:existing.cutoffDate,backupReference:existing.backupReference,recoveryTestReference:existing.recoveryTestReference},reason}}},{new:true}).lean();else result=await MigrationConfig.create({_id:'OFFICE',cutoffDate,backupReference,recoveryTestReference,history:[{...actor(req.user),event:'CONFIG_CREATED',reason}]});
@@ -40,12 +40,12 @@ export async function dashboard(req,res,next){try{
  const page=Number(req.query.page||1);if(!Number.isSafeInteger(page)||page<1)fail('Invalid page.');reply(res,{snapshot,stats:migrationStats(all,count),rows:req.query.all==='1'?rows:rows.slice((page-1)*20,page*20),count:rows.length,page});
 }catch(e){next(e)}}
 export async function createBatch(req,res,next){try{
- const config=await MigrationConfig.findById('OFFICE').lean();if(!config)fail('An administrator must configure the migration cutoff first.',409);
+ const config=await MigrationConfig.findById('OFFICE').lean();
  const a=await account(id(req.body.accountId));const existing=await MigrationBatch.findOne({account:a._id}).lean();if(existing)return reply(res,existing,'Existing migration opened.');
  const encoder=req.user.role==='ADMIN'&&req.body.encoder?id(req.body.encoder):req.user._id;
  if(!await User.exists({_id:encoder,isActive:true,role:{$in:['ADMIN','STAFF']}}))fail('Choose an active encoder.');
- const frozen=await MigrationConfig.updateOne({_id:'OFFICE',__v:config.__v,cutoffDate:config.cutoffDate},{$set:{stagingStarted:true}});if(frozen.matchedCount!==1)fail('Cutoff configuration changed. Refresh before starting migration.',409);
- const result=await MigrationBatch.create({batchId:`MIG-${randomUUID()}`,account:a._id,cutoffDate:config.cutoffDate,encoder,createdBy:req.user._id,history:[{...actor(req.user),event:'MIGRATION_STARTED'}]});reply(res,result,'Migration staging opened. No live records changed.');
+ if(config?.cutoffDate){const frozen=await MigrationConfig.updateOne({_id:'OFFICE',__v:config.__v,cutoffDate:config.cutoffDate},{$set:{stagingStarted:true}});if(frozen.matchedCount!==1)fail('Cutoff configuration changed. Refresh before starting migration.',409);}
+ const result=await MigrationBatch.create({batchId:`MIG-${randomUUID()}`,account:a._id,cutoffDate:config?.cutoffDate||null,encoder,createdBy:req.user._id,history:[{...actor(req.user),event:'MIGRATION_STARTED'}]});reply(res,result,'Migration staging opened. No live records changed.');
 }catch(e){if(e.code===11000)e=Object.assign(new Error('Migration already started. Refresh the dashboard.'),{statusCode:409});next(e)}}
 export async function getBatch(req,res,next){try{const b=await load(req),a=await account(b.account),documents=await MigrationDocument.find({batch:b._id}).select('-data').lean();reply(res,{...b,account:a,documents})}catch(e){next(e)}}
 export async function editBatch(req,res,next){try{
@@ -90,15 +90,17 @@ export async function workflow(req,res,next){try{
   if(b.status!=='PENDING_VERIFICATION')fail('Submit this account for verification first.',409);
   const a=await account(b.account),{preview:p}=await validateBatch(b,a);if(p.errors.length)fail(p.errors.join(' '),409);
   if(req.body.token!==p.token)fail('Reconciliation changed. Refresh and review the allocation preview.',409);
-  return reply(res,await save(b,req,{status:'VERIFIED',review:{...actor(req.user),token:p.token,accountVersion:p.accountVersion,reason,soleAdminReason:clean(req.body.soleAdminReason)}},'VERIFIED',{reason}),'Verified; not yet posted.');
+  return reply(res,await save(b,req,{status:'VERIFIED',review:{...actor(req.user),token:p.token,accountVersion:p.accountVersion,cutoffDate:b.cutoffDate||null,preparationMode:b.preparationMode,reason,soleAdminReason:clean(req.body.soleAdminReason)}},'VERIFIED',{reason,cutoffDate:b.cutoffDate||null,preparationMode:b.preparationMode}),'Verified; not yet posted.');
  }
  if(b.status!=='VERIFIED'||req.body.confirm!==true)fail('Verify the account and explicitly confirm activation.',409);
- const config=await MigrationConfig.findById('OFFICE').lean();if(!config?.backupReference||!config?.recoveryTestReference)fail('An administrator must record a verified backup and staging recovery-test reference before activation.',409);
+ const config=await MigrationConfig.findById('OFFICE').lean();if(!validDate(config?.cutoffDate))fail('Preparation Mode: configure the official migration cutoff before financial activation.',409);
+ if(!b.review||b.cutoffDate!==config.cutoffDate||(b.review.cutoffDate??b.cutoffDateSnapshot)!==config.cutoffDate||b.review.preparationMode)fail('The official cutoff requires a fresh reconciliation and administrator verification. Return this preparation review for correction and verify again.',409);
+ if(!config?.backupReference||!config?.recoveryTestReference)fail('An administrator must record a verified backup and staging recovery-test reference before activation.',409);
  // Multi-document financial posting fails closed on standalone MongoDB. No
  // financial writes occur outside this transaction; retries preserve source IDs.
  const session=await mongoose.startSession();let activated;
  try{await session.withTransaction(async()=>{
-  const current=await MigrationBatch.findById(b._id).session(session).lean();if(current.status==='COMPLETED'){activated=current;return}if(current.__v!==b.__v)fail('Migration changed. Refresh.',409);
+  const stored=await MigrationBatch.findById(b._id).session(session).lean(),current=migrationContext(stored,config);if(current.status==='COMPLETED'){activated=current;return}if(current.__v!==b.__v)fail('Migration changed. Refresh.',409);
   const a=await PropertyAssignment.findById(current.account).populate('client','clientId firstName lastName').session(session).lean();
   if(a.migration)fail('This account already has activated historical records.',409);
   const {preview:p,result}=await validateBatch(current,a,session);if(p.errors.length)fail(p.errors.join(' '),409);

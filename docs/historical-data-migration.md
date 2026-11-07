@@ -2,6 +2,20 @@
 
 This update adds Historical Data Migration on `feature/property-inventory`, following commit `4e4a71e`. Publishing the code does not import office data, run seeds, change connection credentials, deploy, or activate historical records.
 
+## Preparation Mode fix
+
+Historical staging no longer requires an official cutoff. With no configuration, or with a blank cutoff, the module shows Preparation Mode. From Dashboard select **Start Migration** or **Open** for a client-property account, then use Manual Encoding or Excel Import. Draft saving/editing, previews, duplicate validation, reconciliation, progress and administrator verification remain available. Dates must still be valid, not future-dated and not before the linked contract.
+
+The Configuration cutoff is optional during preparation. A preparation reconciliation is explicitly provisional and shows its as-of date (today in Asia/Manila); that date is not saved as an official cutoff. Draft/Not Activated labels distinguish these records from live payments. Preparation previews do not write to live accounts, balances, penalties, commissions, forfeiture or cash.
+
+Financial activation remains disabled in the interface and rejected by the backend without an official cutoff. Backup/recovery references, reconciliation, administrator approval, transaction support, receipt ownership and idempotency safeguards remain required. After configuring the first official cutoff, refresh the account, return any preparation verification for correction, recalculate and verify again. Rows after that cutoff must be corrected or excluded; the prior preparation approval cannot authorize posting. Existing configured batch snapshots and completed records are preserved.
+
+The nullable cutoff fields require no data reset or migration script. Existing accounts, financial histories, permissions, import limits and configured-cutoff locking remain unchanged.
+
+Fix validation: 152 backend tests passed, 2 optional integrations skipped in the default run; the expanded replica-set HTTP test and standalone safety path passed separately. DOM checks passed preparation-mode manual/Excel staging, optional cutoff, review and disabled activation. Production build passed with the existing nonfatal bundle-size warning. No office database was accessed.
+
+Modified for this fix: `client/src/pages/HistoricalMigrationPage.jsx`; `server/src/controllers/migrationController.js`; `server/src/controllers/migrationImportController.js`; `server/src/models/MigrationBatch.js`; `server/src/models/MigrationConfig.js`; `server/src/services/migrationService.js`; `server/src/utils/migrationRules.js`; `server/integration/historical-migration.test.js`; `server/test/historical-migration.test.js`; this document.
+
 ## Working features
 
 - Separate authenticated Historical Data Migration navigation/page for ADMIN and STAFF; VIEWER access is denied on the backend.
@@ -16,7 +30,7 @@ This update adds Historical Data Migration on `feature/property-inventory`, foll
 - Commission reconciliation uses the existing completed-installment earning rule. Documented earned totals must match the actual agreement. Each payout retains its original date; releases before buyer funding and over-releases are rejected. Multiple partial releases remain separate. No payout is generated merely from importing a buyer payment. Accounts with no commission agreement must explicitly confirm Not Applicable.
 - Submit → administrator verify → explicit administrator activation. Independent administrator approval is required when another active administrator is available; sole-administrator self-review requires an audited exception reason. Both original encoders and financial draft modifiers count in that separation check.
 - Activation appends payments/payouts, receipt claims, allocation/penalty/commission snapshots and audit events together with Completed status inside a MongoDB transaction. Concurrent activation, retries and receipt-claim conflicts do not duplicate or partially post financial records. A standalone server refuses activation without writing financial records; drafts and review remain usable.
-- Configurable cutoff is locked once staging begins, including protection against a concurrent cutoff change. Live payment posting/preview rejects dates belonging to historical migration. Historic corrections remain in the original historical date window and use the existing reason/preview/approval/revision workflow.
+- An official configured cutoff is locked once staging begins, including protection against a concurrent cutoff change. Preparation can precede the initial official cutoff. Live payment posting/preview rejects dates belonging to historical migration. Historic corrections remain in the original historical date window and use the existing reason/preview/approval/revision workflow.
 - Original effective dates determine collection report periods. New Historical / Live / All source filters are available in Payment Transactions and Collection & Cash Summary. Historical rows have a source badge, encoding-date context and export/print source labels. Drafts never enter reports. Historical receipts/payouts are excluded from the live physical cash calculation, which requires an authorized opening balance after the migration cutoff. Noncash classifications remain separate.
 - Private account/row evidence: PDF/PNG/JPEG preview, 2 MB maximum, 30 active documents per account; authenticated retrieval, MIME signature checks and no-store/nosniff/sandbox response headers. Unverified evidence can be removed/replaced through audited actions; approved evidence is protected. Uploading evidence does not verify it.
 - Migration history preserves original imported cells, row corrections, excluded/deleted drafts, file hashes, staff, reasons and review/activation events. Progress has print/Excel preview; Excel rejects a stale progress snapshot. Uploaded binary/base64 content is excluded from the general activity log.
@@ -35,8 +49,8 @@ This update adds Historical Data Migration on `feature/property-inventory`, foll
 
 New collections:
 
-1. `MigrationBatch`: unique batch/account references, cutoff snapshot, encoder/verifier, staging rows, file hashes/import sources, reconciliation, approval/activation details and append-only history. One batch per account; compare-and-swap `__v` checks.
-2. `MigrationConfig`: singleton OFFICE cutoff, staging-start lock, backup and recovery references, version, activation sequence and history.
+1. `MigrationBatch`: unique batch/account references, nullable cutoff snapshot during preparation, encoder/verifier, staging rows, file hashes/import sources, reconciliation, approval/activation details and append-only history. One batch per account; compare-and-swap `__v` checks.
+2. `MigrationConfig`: singleton OFFICE optional preparation cutoff, staging-start lock, backup and recovery references, version, activation sequence and history.
 3. `MigrationDocument`: authenticated evidence bytes, account/batch/optional row relationship, MIME/hash and removal metadata/history.
 
 Extended PropertyAssignment:
@@ -65,7 +79,7 @@ Keep the existing `server/.env` and MongoDB connection. For initial testing, use
 ## Operator test
 
 1. Log in as administrator and open Historical Data Migration → Configuration.
-2. Set the actual historical cutoff (must precede today). It locks after the first batch starts. Only enter backup/recovery references for actual completed tests.
+2. Leave the cutoff blank while planning. Before activation, set the actual historical cutoff (must precede today); once official and staging exists, it is locked. Only enter backup/recovery references for actual completed tests.
 3. Register/link a test client and property contract using original dates and terms. For the simple example, use 12 monthly installments of PHP 6,000, no DP, and no commission agreement. Keep this in a staging database.
 4. Find the account on the dashboard, Start Migration, assign its encoder and administrator verifier.
 5. Encode a PHP 15,000 installment receipt on the first due date. Use a text receipt such as `000001` and its actual issuing series. Save & Next Receipt should retain the account/series and offer `000002`.
@@ -144,7 +158,7 @@ Validation results are recorded in the final change summary after the checks fin
 - `server/src/utils/migrationRules.js`
 - `server/test/historical-migration.test.js`
 
-## Recorded test results
+## Original module test results (before Preparation Mode fix)
 
 - Default server suite: 151 passed, 2 optional HTTP integrations skipped without their URI environment variables (153 total).
 - Existing isolated MongoDB/HTTP payment/commission/property regression: passed separately.

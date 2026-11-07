@@ -13,7 +13,7 @@ import MigrationBatch from '../src/models/MigrationBatch.js';
 import MigrationConfig from '../src/models/MigrationConfig.js';
 import ReceiptClaim from '../src/models/ReceiptClaim.js';
 import {signAccessToken} from '../src/utils/jwt.js';
-import {buildSchedule} from '../src/utils/accounting.js';
+import {buildSchedule,today} from '../src/utils/accounting.js';
 
 test('historical migration HTTP workflow, staging, reconciliation and transactional activation',{skip:!process.env.CPM_MIGRATION_TEST_URI},async()=>{
  const name=`cpm_migration_test_${randomUUID().replaceAll('-','')}`;await mongoose.connect(process.env.CPM_MIGRATION_TEST_URI,{dbName:name});
@@ -24,9 +24,36 @@ test('historical migration HTTP workflow, staging, reconciliation and transactio
   async function api(path,method='GET',body,role='ADMIN',status=200){const r=await fetch(url+path,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});let data;try{data=await r.json()}catch{throw new Error(`Not JSON ${path}: ${r.status}`)}assert.equal(r.status,status,`${path}: ${JSON.stringify(data)}`);return data.data}
   const client=await Client.create({clientId:'CL-001',firstName:'Historical',lastName:'Buyer',createdBy:users.ADMIN._id});const project=await Project.create({projectId:'PRJ-MIG',projectName:'Migration Test',projectCode:'MIG',createdBy:users.ADMIN._id});
   async function createAccount(num=1,months=12){const property=await Property.create({propertyId:`PROP-MIG${num}`,project:project._id,phaseNumber:1,blockNumber:1,lotNumber:num,areaSqm:100,pricePerSqm:720,createdBy:users.ADMIN._id});return PropertyAssignment.create({assignmentId:`CTR-MIG${num}`,client:client._id,project:project._id,property:property._id,contract:{totalCents:7200000,downPaymentCents:0,months,contractDate:'2022-01-01',firstDueDate:'2022-02-05',schedule:buildSchedule(7200000,months,'2022-02-05',0,'2022-01-01')},createdBy:users.ADMIN._id})}
-  const a=await createAccount();await api('/migration','GET',null,'VIEWER',403);await api('/migration/batches','POST',{accountId:String(a._id)},'STAFF',409);
-  await api('/migration/config','PUT',{cutoffDate:'2026-10-31',reason:'Approved office cutoff',backupReference:'test-backup-verified',recoveryTestReference:'test-recovery-verified'});
-  let b=await api('/migration/batches','POST',{accountId:String(a._id)},'STAFF');assert.equal(b.status,'NOT_STARTED');assert.equal((await api('/migration/batches','POST',{accountId:String(a._id)},'STAFF'))._id,b._id);
+  const a=await createAccount();await api('/migration','GET',null,'VIEWER',403);
+  assert.equal((await api('/migration/config')).preparationMode,true);
+  let prep=await api('/migration/batches','POST',{accountId:String(a._id)},'STAFF');assert.equal(prep.cutoffDate,null);const prepPath=`/migration/batches/${prep._id}`;
+  const liveBefore=JSON.stringify(await PropertyAssignment.findById(a._id).lean()),cashBefore=(await api(`/finance/reports/collections?from=${today()}&to=${today()}`)).cash;
+  const prepRow={kind:'PAYMENT',date:'2022-02-05',receiptNumber:'000PREP1',series:'PREPARATION',type:'INSTALLMENT',method:'CASH',amount:1200};
+  prep=await api(prepPath,'PATCH',{version:prep.__v,action:'UPSERT_ROW',row:prepRow},'STAFF');
+  prep=await api(prepPath,'PATCH',{version:prep.__v,action:'UPSERT_ROW',rowId:prep.rows[0].rowId,row:{...prepRow,amount:1500}},'STAFF');assert.equal(prep.rows[0].amountCents,150000);
+  await api(prepPath,'PATCH',{version:prep.__v,action:'UPSERT_ROW',row:{...prepRow,amount:1500}},'STAFF',409);
+  const prepTemplate=await fetch(url+'/migration/templates/payments',{headers:{Authorization:`Bearer ${tokens.STAFF}`}}),prepBook=new ExcelJS.Workbook();await prepBook.xlsx.load(Buffer.from(await prepTemplate.arrayBuffer()));
+  prepBook.getWorksheet('Records').getRow(2).values=[a.assignmentId,'PAYMENT','2022-03-05','000PREP2','PREPARATION','INSTALLMENT','CASH','',1500];
+  const prepFile={filename:'preparation.xlsx',base64:Buffer.from(await prepBook.xlsx.writeBuffer()).toString('base64')};
+  const prepImport=await api(prepPath+'/import','POST',prepFile,'STAFF');assert.equal(prepImport.validRows,1);
+  prep=await api(prepPath+'/import','POST',{...prepFile,version:prep.__v,save:true,rowNumbers:[2]},'STAFF');assert.equal(prep.rows.length,2);
+  assert.equal((await api(prepPath+'/import','POST',{...prepFile,version:prep.__v,save:true,rowNumbers:[2]},'STAFF')).alreadyImported,true);
+  prep=await api(prepPath,'PATCH',{version:prep.__v,action:'RECONCILE',reconciliation:{officeBalance:69000,officePenalty:0,historicalStatus:'ACTIVE',expectedPeriods:12,documentReference:'Provisional printed ledger',commissionReview:'NOT_APPLICABLE'}},'STAFF');
+  let prepPreview=await api(prepPath+'/preview');assert.equal(prepPreview.balanced,true);assert.equal(prepPreview.preparationMode,true);assert.equal(prepPreview.cutoffDate,null);assert.match(prepPreview.asOf,/^\d{4}-\d{2}-\d{2}$/);
+  prep=await api(prepPath+'/workflow','POST',{version:prep.__v,action:'SUBMIT',reason:'Preparation review'},'STAFF');prepPreview=await api(prepPath+'/preview');
+  prep=await api(prepPath+'/workflow','POST',{version:prep.__v,action:'VERIFY',reason:'Provisional verification only',token:prepPreview.token});assert.equal(prep.review.preparationMode,true);assert.equal(prep.history.at(-1).preparationMode,true);assert.equal(prep.history.at(-1).cutoffDate,null);
+  prepPreview=await api(prepPath+'/preview');await api(prepPath+'/workflow','POST',{version:prep.__v,action:'ACTIVATE',reason:'Must remain blocked',confirm:true,token:prepPreview.token},'ADMIN',409);
+  assert.equal(JSON.stringify(await PropertyAssignment.findById(a._id).lean()),liveBefore);assert.deepEqual((await api(`/finance/reports/collections?from=${today()}&to=${today()}`)).cash,cashBefore);assert.equal(await ReceiptClaim.countDocuments(),0);
+  assert.equal((await api('/finance/payments?paged=1')).count,0);assert.equal((await api('/migration')).stats.paymentCount,2);
+  // Configuration may be saved without an official cutoff. No placeholder date.
+  await api('/migration/config','PUT',{cutoffDate:'2026-10-31T00:00:00Z',reason:'Malformed cutoff is not accepted'},'ADMIN',400);
+  const prepConfig=await api('/migration/config','PUT',{cutoffDate:'',reason:'Continue planning without go-live date'});assert.equal(prepConfig.cutoffDate,null);
+  await api('/migration/config','PUT',{version:prepConfig.__v,cutoffDate:'2026-10-31',reason:'Approved office cutoff',backupReference:'test-backup-verified',recoveryTestReference:'test-recovery-verified'});
+  prepPreview=await api(prepPath+'/preview');assert.equal(prepPreview.preparationMode,false);assert.equal(prepPreview.cutoffDate,'2026-10-31');
+  await api(prepPath+'/workflow','POST',{version:prep.__v,action:'ACTIVATE',reason:'Old preparation approval is insufficient',confirm:true,token:prepPreview.token},'ADMIN',409);
+  prep=await api(prepPath+'/workflow','POST',{version:prep.__v,action:'RETURN',reason:'Reconcile under official cutoff'});
+  for(const r of [...prep.rows])prep=await api(prepPath,'PATCH',{version:prep.__v,action:'DELETE_ROW',rowId:r.rowId,reason:'Finish preparation test'},'STAFF');
+  let b=await api('/migration/batches','POST',{accountId:String(a._id)},'STAFF');assert.equal(b.status,'IN_PROGRESS');assert.equal((await api('/migration/batches','POST',{accountId:String(a._id)},'STAFF'))._id,b._id);
   const path=`/migration/batches/${b._id}`;const row={kind:'PAYMENT',date:'2022-02-05',receiptNumber:'000001',series:'2022-A',type:'INSTALLMENT',method:'CASH',amount:'15000',documentReference:'Printed ledger p1'};
   await api(path,'PATCH',{version:b.__v,action:'UPSERT_ROW',row},'VIEWER',403);
   b=await api(path,'PATCH',{version:b.__v,action:'UPSERT_ROW',row},'STAFF');assert.equal(b.rows.length,1);assert.equal((await PropertyAssignment.findById(a._id)).payments.length,0);

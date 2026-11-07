@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
-import {normalizeMigrationRow,possibleDuplicate,assertVersion,migrationStats} from '../src/utils/migrationRules.js';
+import {normalizeMigrationRow,possibleDuplicate,assertVersion,migrationStats,migrationContext} from '../src/utils/migrationRules.js';
 import {materialize} from '../src/services/migrationService.js';
 import {validateWorkbookArchive} from '../src/controllers/migrationImportController.js';
 import {calculateLedger} from '../src/utils/contractMonitoring.js';
@@ -54,4 +54,16 @@ test('historical down payments reduce the original scheduled DP once and stay ou
  const original={...account,contract:{...account.contract,downPaymentCents:1200000,schedule:buildSchedule(7200000,12,'2022-02-05',1200000,'2022-01-01')}};
  const rows=[{kind:'PAYMENT',rowId:'dp',date:'2022-01-01',amountCents:1200000,type:'DOWN_PAYMENT',method:'CASH',receiptNumber:'DP-1',series:'2022',encodedBy:'staff'},{kind:'PAYMENT',rowId:'mi',date:'2022-02-05',amountCents:1500000,type:'INSTALLMENT',method:'CASH',receiptNumber:'MI-1',series:'2022',encodedBy:'staff'}];
  const {proposed,payments}=materialize(original,{batchId:'DP',cutoffDate:'2022-10-31',reconciliation:{historicalStatus:'ACTIVE'},rows});const ledger=calculateLedger(proposed,payments,'2022-02-05');assert.equal(ledger.balanceCents,4500000);assert.equal(ledger.schedule[0].paidCents,1200000);assert.equal(ledger.allocations['HIS-dp'][0].allocationType,'DOWN_PAYMENT');assert.equal(ledger.advanceCoveredMonths,2);assert.equal(ledger.allocations['HIS-dp'].length,1);
+});
+
+test('preparation permits valid past dates without inventing an official cutoff and retains date validation',()=>{
+ const input={kind:'PAYMENT',date:'2022-02-05',receiptNumber:'000PREP',series:'2022',type:'INSTALLMENT',method:'CASH',amount:6000};
+ assert.equal(normalizeMigrationRow(input,null,account).date,'2022-02-05');
+ assert.throws(()=>normalizeMigrationRow({...input,date:'2999-01-01'},null,account));
+ assert.throws(()=>normalizeMigrationRow({...input,date:'2021-12-31'},null,account));
+ assert.throws(()=>normalizeMigrationRow(input,'2022-02-01',account));
+ const draft={cutoffDate:null,review:{preparationMode:true,cutoffDate:null}};
+ assert.equal(migrationContext(draft,null).preparationMode,true);assert.equal(draft.cutoffDate,null);
+ const configured=migrationContext(draft,{cutoffDate:'2026-10-31'});assert.equal(configured.cutoffDate,'2026-10-31');assert.equal(configured.cutoffDateSnapshot,null);assert.equal(configured.review.preparationMode,true);
+ assert.equal(migrationContext({cutoffDate:'2026-09-30'},{cutoffDate:'2026-10-31'}).cutoffDate,'2026-09-30');
 });
