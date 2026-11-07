@@ -1,3 +1,4 @@
+import {filterInventory} from "../../../shared/inventoryFilters.js";
 import {printPropertyInventory} from "../utils/printPropertyInventory.js";
 import SearchInput from "../components/SearchInput.jsx";
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
@@ -32,6 +33,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false }
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [exporting,setExporting]=useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
@@ -178,10 +180,12 @@ export default function PropertyInventory({ project, onClose, readOnly = false }
       } finally { setBusy(false); }
     } });
   };
-  const visibleProperties = properties.filter(p =>
-    [p.propertyId,`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber}`,p.status].join(" ").toLowerCase().includes(inventoryQuery.toLowerCase()) &&
-    (!filters.phase || String(p.phaseNumber) === filters.phase) && (!filters.block || String(p.blockNumber) === filters.block) &&
-    (!filters.lot || String(p.lotNumber) === filters.lot) && (!filters.status || p.status === filters.status));
+  const visibleProperties = filterInventory(properties,{...filters,q:inventoryQuery});
+  const exportExcel=async()=>{
+    setExporting(true);
+    try{const response=await api.get(`${base}/properties/export.xlsx`,{params:{...filters,q:inventoryQuery},responseType:'blob'});const url=URL.createObjectURL(response.data),link=document.createElement('a');link.href=url;link.download=`property-inventory-${project.projectId||project._id}.xlsx`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+    catch{notify('Unable to export inventory. Please try again.',true)}finally{setExporting(false)}
+  };
   const eligibleVisible = visibleProperties.filter(deletableLot);
   const chosenLots = eligibleVisible.filter(p => selectedLots.includes(p._id));
   const toggleSelected = id => setSelectedLots(old => old.includes(id) ? old.filter(value => value !== id) : [...old, id]);
@@ -196,6 +200,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false }
       <div><h2 className="h5 fw-bold mb-1">Property Inventory — {project.projectName}</h2>
         <p className="text-secondary small mb-0">{readOnly ? "Filter and print saved lot inventory for this project." : "View existing lots below. Choose an option to add or modify inventory."}</p></div>
       <button type="button" className="btn btn-outline-primary btn-sm" disabled={loading || loadFailed || busy || changed.length > 0 || !!generator} onClick={()=>printPropertyInventory({project,rows:visibleProperties,filters,query:inventoryQuery})}>Print Inventory</button>
+      <button type="button" className="btn btn-outline-primary btn-sm" disabled={loading || loadFailed || busy || exporting || changed.length > 0 || !!generator} onClick={exportExcel}>{exporting?'Exporting...':'Export to Excel'}</button>
       {onClose && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>}
     </div>
     <CenterPopup message={message} error={error} confirm={confirmAction?.text}
@@ -328,7 +333,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false }
           <button type="button" className="btn btn-outline-secondary btn-sm" disabled={busy} onClick={() => { const discard = () => {cancelEdits();setSelectedLots([]);setLotEditing(false);setConfirmAction(null)}; if(changed.length) setConfirmAction({discard:true,text:"Discard unsaved lot changes?",action:discard}); else discard(); }}>Cancel Editing / Go Back</button>
         </div>}
       </div>
-      {changed.length > 0 && <p className="small text-secondary">Save or cancel lot edits before printing saved inventory.</p>}
+      {changed.length > 0 && <p className="small text-secondary">Save or cancel lot edits before printing or exporting saved inventory.</p>}
       <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([])}} items={properties.map(p=>({key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>

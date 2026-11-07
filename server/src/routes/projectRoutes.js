@@ -1,3 +1,4 @@
+import {exportProjectInventory} from "../controllers/inventoryExportController.js";
 import { auditMutation } from "../middleware/auditMutation.js";
 import { Router } from "express";
 import { archiveProject, createProject, getProject, listProjects, updateProject } from "../controllers/projectController.js";
@@ -19,6 +20,7 @@ router.put("/:projectId/blocks/:id", authorize("ADMIN", "STAFF"), changeBlock);
 router.delete("/:projectId/blocks/:id", authorize("ADMIN", "STAFF"), deleteBlock);
 router.post("/:projectId/properties/bulk-delete", authorize("ADMIN", "STAFF"), deleteLots);
 router.delete("/:projectId/properties/:id", authorize("ADMIN", "STAFF"), deleteLot);
+router.get("/:projectId/properties/export.xlsx", exportProjectInventory);
 router.get("/:projectId/properties", listProjectProperties);
 router.patch("/:projectId/properties/batch", authorize("ADMIN", "STAFF"), updateProjectProperties);
 router.post("/:projectId/properties/generate", authorize("ADMIN", "STAFF"), generateProjectProperties);
