@@ -6,7 +6,7 @@ import NavIcon from "../components/NavIcon.jsx";
 import {useAuth} from "../context/AuthContext.jsx";
 const groups=[
  {label:"Overview",items:[["/","Dashboard","grid"]]},
- {label:"Management",items:[["/projects","Projects","building"],["/clients","Clients","people"],["/agents","Agents","agent"]]},
+ {label:"Management",items:[["/projects","Projects","building"],["/property-inventory","Property Inventory","building"],["/clients","Clients","people"],["/agents","Agents","agent"]]},
  {label:"Finance",items:[["/payment","Payment","wallet"],["/payment-transactions","Payment Transactions","receipt"],["/commissions","Commissions","percent"],["/expenses","Expenses","expense"],["/reports","Reports","chart"]]},
  {label:"Monitoring",items:[["/payment-monitoring","Payment Reminders","bell"],["/approval-requests","Approval Requests","check","ADMIN"]]},
  {label:"Administration",items:[["/users","Users & Activity","settings","ADMIN"]]},

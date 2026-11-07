@@ -1,3 +1,4 @@
+import {printPropertyInventory} from "../utils/printPropertyInventory.js";
 import SearchInput from "../components/SearchInput.jsx";
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useEffect, useState } from "react";
@@ -16,7 +17,7 @@ const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
 const areaValue = value => value === "" || value === null ? null : Number(value);
 const positiveInteger = value => Number.isSafeInteger(value) && value > 0;
 
-export default function PropertyInventory({ project, onClose }) {
+export default function PropertyInventory({ project, onClose, readOnly = false }) {
   const [properties, setProperties] = useState([]);
   const [savedStructure, setSavedStructure] = useState({ phases: [], blocks: [] });
   const [drafts, setDrafts] = useState({});
@@ -35,7 +36,7 @@ export default function PropertyInventory({ project, onClose }) {
   const [error, setError] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
   const base = `/projects/${project._id}`;
-  const archived = project.status === "ARCHIVED";
+  const archived = readOnly || project.status === "ARCHIVED";
   const structure = mergeStructure(savedStructure, properties);
   const blockOptions = structure.blocks.filter(b => String(b.phaseNumber) === selectedPhase);
   const changed = properties.filter(p =>
@@ -193,14 +194,15 @@ export default function PropertyInventory({ project, onClose }) {
   return <section className="card border-0 shadow-sm mt-4"><div className="card-body">
     <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <div><h2 className="h5 fw-bold mb-1">Property Inventory — {project.projectName}</h2>
-        <p className="text-secondary small mb-0">View existing lots below. Choose an option to add or modify inventory.</p></div>
+        <p className="text-secondary small mb-0">{readOnly ? "Filter and print saved lot inventory for this project." : "View existing lots below. Choose an option to add or modify inventory."}</p></div>
+      <button type="button" className="btn btn-outline-primary btn-sm" disabled={loading || loadFailed || busy || changed.length > 0 || !!generator} onClick={()=>printPropertyInventory({project,rows:visibleProperties,filters,query:inventoryQuery})}>Print Inventory</button>
       {onClose && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>}
     </div>
     <CenterPopup message={message} error={error} confirm={confirmAction?.text}
       confirmTitle={confirmAction?.discard ? "Discard changes" : "Confirm deletion"} confirmLabel={confirmAction?.discard ? "Discard Changes" : "Delete"} cancelLabel={confirmAction?.discard ? "Keep Editing" : "Cancel"}
       onClose={() => { setMessage(""); setError(""); setConfirmAction(null); }} onConfirm={() => confirmAction?.action()} />
     {loading ? <p role="status">Loading inventory...</p> : loadFailed ? <p className="text-danger" role="alert">Inventory could not be loaded. Reload this page to retry.</p> : <>
-      {archived ? <p className="alert alert-secondary">This project is archived. Inventory is read-only.</p> : <div className="border rounded p-3 mb-4">
+      {archived ? <p className="alert alert-secondary">{readOnly ? "Read-only inventory. Use Manage Lots to make changes." : "This project is archived. Inventory is read-only."}</p> : <div className="border rounded p-3 mb-4">
         <h3 className="h6 fw-bold">New Lot Configuration</h3>
         <div className="d-flex flex-wrap gap-2 mb-3">
           <button type="button" className={`btn ${mode === "add" ? "btn-primary" : "btn-outline-primary"}`} disabled={busy || !!generator || changed.length > 0} onClick={() => chooseMode("add")}>Add a Phase</button>
@@ -326,6 +328,7 @@ export default function PropertyInventory({ project, onClose }) {
           <button type="button" className="btn btn-outline-secondary btn-sm" disabled={busy} onClick={() => { const discard = () => {cancelEdits();setSelectedLots([]);setLotEditing(false);setConfirmAction(null)}; if(changed.length) setConfirmAction({discard:true,text:"Discard unsaved lot changes?",action:discard}); else discard(); }}>Cancel Editing / Go Back</button>
         </div>}
       </div>
+      {changed.length > 0 && <p className="small text-secondary">Save or cancel lot edits before printing saved inventory.</p>}
       <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([])}} items={properties.map(p=>({key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>

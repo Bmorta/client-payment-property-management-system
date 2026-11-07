@@ -1,4 +1,3 @@
-const ClientAccountsPage=lazy(()=>import("./pages/ClientAccountsPage.jsx"));
 import DialogNavigation from "./components/DialogNavigation.jsx";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -10,6 +9,8 @@ import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
+const ClientAccountsPage=lazy(()=>import("./pages/ClientAccountsPage.jsx"));
+const InventoryPage=lazy(()=>import("./pages/InventoryPage.jsx"));
 const PaymentPage=lazy(()=>import("./pages/PaymentPage.jsx"));
 const ApprovalRequestsPage=lazy(()=>import("./pages/ApprovalRequestsPage.jsx"));
 const ExpensesPage=lazy(()=>import("./pages/ExpensesPage.jsx"));
@@ -44,6 +45,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/property-inventory" element={<InventoryPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId/lots" element={<ManageLotsPage />} />
               <Route path="/agents" element={<AgentsPage/>}/>
