@@ -1,3 +1,4 @@
+import {reportIdentity,brandExcel,brandPdf} from "../services/companyBranding.js";
 import PropertyAssignment from "../models/PropertyAssignment.js";
 import {commissionPipeline} from "./commissionController.js";
 import {effectivePayout} from "../utils/commissionLedger.js";
@@ -15,6 +16,7 @@ export async function exportCommissions(req,res,next){try{
  const sort=["earningDate","earnedCents","unreleasedCents","latestReleaseDate"].includes(query.sort)?query.sort:"sequence";
  const ordering=report==="DETAIL"?(sort==="sequence"?{accountId:1,agent:1,period:1,commissionId:1}:{[sort]:query.direction==="asc"?1:-1,commissionId:1}):{"agentInfo.fullName":1,"projectInfo.projectName":1,accountId:1,agent:1,period:1,commissionId:1};
  const records=await PropertyAssignment.aggregate([...commissionPipeline(query),{$sort:ordering}]);
+ const brand=await reportIdentity(req.query.project||records.map(r=>r.project).filter(Boolean));
  let columns=headers,rows=records.map(r=>[r.commissionId,r.agentInfo?.agentId,r.agentInfo?.fullName,r.projectInfo?.projectName,lot(r.propertyInfo),name(r.clientInfo),r.type,r.period,amount(r.percentageBps),amount(r.budgetCents),amount(r.earnedCents),amount(r.releasedCents),amount(r.unreleasedCents),amount(r.awaitingCents),amount(r.recoveryDueCents),r.status,r.latestReleaseDate||""]);
  if(["AGENT","PROJECT","PROPERTY"].includes(report)){
   const groups=new Map();for(const r of records){const key=report==="AGENT"?r.agent:report==="PROJECT"?String(r.project):String(r.property);const g=groups.get(key)||{name:report==="AGENT"?`${r.agentInfo?.agentId} ${r.agentInfo?.fullName}`:report==="PROJECT"?r.projectInfo?.projectName:`${r.projectInfo?.projectName} ${lot(r.propertyInfo)}`,budget:0,earned:0,released:0,unreleased:0,awaiting:0,recovery:0};for(const k of ["budget","earned","released","unreleased","awaiting"])g[k]+=r[`${k}Cents`]||0;g.recovery+=r.recoveryDueCents;groups.set(key,g)}columns=[report,"Budget PHP","Earned PHP","Released PHP","Unreleased PHP","Awaiting PHP","Recovery PHP"];rows=[...groups.values()].map(g=>[g.name,...[g.budget,g.earned,g.released,g.unreleased,g.awaiting,g.recovery].map(amount)]);
@@ -28,11 +30,11 @@ export async function exportCommissions(req,res,next){try{
   }
   rows.sort((a,b)=>String(a[report==="PAYOUTS"?5:4]).localeCompare(String(b[report==="PAYOUTS"?5:4]))||String(a[0]).localeCompare(String(b[0])));
  }
- if(format==="json")return res.json({success:true,data:{title:`Commission ${report.toLowerCase()} report`,headers:columns,rows:rows.map(row=>row.map((v,i)=>columns[i].includes("PHP")||columns[i]==="Agent %"?Number(v):v??''))}});
+ if(format==="json")return res.json({success:true,data:{...brand,title:`Commission ${report.toLowerCase()} report`,headers:columns,rows:rows.map(row=>row.map((v,i)=>columns[i].includes("PHP")||columns[i]==="Agent %"?Number(v):v??''))}});
  if(format==="xlsx"){
-  const {default:ExcelJS}=await import("exceljs");const wb=new ExcelJS.Workbook(),sheet=wb.addWorksheet("Commissions");sheet.addRow(columns);for(const row of rows)sheet.addRow(row.map((v,i)=>columns[i].includes("PHP")?Number(v):v));sheet.getRow(1).font={bold:true};sheet.columns.forEach((c,i)=>{c.width=24;if(columns[i].includes("PHP"))c.numFmt="#,##0.00"});res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");res.attachment(`commission-${report.toLowerCase()}.xlsx`);res.send(Buffer.from(await wb.xlsx.writeBuffer()));
+  const {default:ExcelJS}=await import("exceljs");const wb=new ExcelJS.Workbook(),sheet=wb.addWorksheet("Commissions");sheet.addRow([brand.companyName]);sheet.addRow(columns);for(const row of rows)sheet.addRow(row.map((v,i)=>columns[i].includes("PHP")||columns[i]==="Agent %"?Number(v):v));sheet.getRow(2).font={bold:true};brandExcel(wb,sheet,brand);sheet.columns.forEach((c,i)=>{c.width=24;if(columns[i].includes("PHP"))c.numFmt="#,##0.00"});res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");res.attachment(`commission-${report.toLowerCase()}.xlsx`);res.send(Buffer.from(await wb.xlsx.writeBuffer()));
  }else{
-  const {default:PDFDocument}=await import("pdfkit");const doc=new PDFDocument({size:"A4",layout:"landscape",margin:32});res.type("application/pdf");res.attachment(`commission-${report.toLowerCase()}.pdf`);doc.pipe(res);doc.fontSize(16).text(`Commission ${report.toLowerCase()} report`);doc.fontSize(9).text(`Generated ${new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",dateStyle:"medium",timeStyle:"short"}).format(new Date())+" PHT"} | ${rows.length} records. Amounts in PHP.`);doc.moveDown();
+  const {default:PDFDocument}=await import("pdfkit");const doc=new PDFDocument({size:"A4",layout:"landscape",margin:32});res.type("application/pdf");res.attachment(`commission-${report.toLowerCase()}.pdf`);doc.pipe(res);brandPdf(doc,brand);doc.fontSize(16).text(brand.companyName);doc.fontSize(16).text(`Commission ${report.toLowerCase()} report`);doc.fontSize(9).text(`Generated ${new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",dateStyle:"medium",timeStyle:"short"}).format(new Date())+" PHT"} | ${rows.length} records. Amounts in PHP.`);doc.moveDown();
   // One complete record per block avoids clipping a wide financial table.
   for(const row of rows){if(doc.y>480)doc.addPage();const text=columns.map((label,i)=>`${label}: ${row[i]??"—"}`).join("  |  ");doc.fontSize(9).text(text,{width:doc.page.width-64});doc.moveDown();}doc.end();
  }

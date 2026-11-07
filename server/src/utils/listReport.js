@@ -1,3 +1,4 @@
+import {brandExcel,brandPdf} from "../services/companyBranding.js";
 import {lotPrice} from "./lotPricing.js";
 import ExcelJS from 'exceljs';
 const name=r=>r.fullName||[r.firstName,r.middleName,r.lastName,r.suffix].filter(Boolean).join(' ');
@@ -31,13 +32,14 @@ export async function reportWorkbook(report){
  sheet.getRow(1).font={bold:true,size:16};sheet.getRow(4).alignment={wrapText:true};sheet.getRow(4).height=32;
  sheet.views=[{state:'frozen',ySplit:header.number}];sheet.autoFilter={from:{row:header.number,column:1},to:{row:sheet.rowCount,column:report.headers.length}};
  sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:`1:${header.number}`};
+ brandExcel(book,sheet,report);
  return Buffer.from(await book.xlsx.writeBuffer());
 }
 export async function reportPdf(report){
  const {default:PDFDocument}=await import('pdfkit');
  const doc=new PDFDocument({size:'A4',layout:'landscape',margin:32}),chunks=[];
  const done=new Promise((resolve,reject)=>{doc.on('data',c=>chunks.push(c));doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject)});
- doc.fontSize(16).text(report.companyName);doc.fontSize(13).text(report.title);doc.fontSize(9).text(`Generated ${report.generatedOn} PHT | ${report.count} matching records`);doc.text(`Filters: ${JSON.stringify(report.filters)}`);for(const [label,value] of summaryRows(report))doc.text(`${label}: ${value}`);doc.moveDown();
+ brandPdf(doc,report);doc.fontSize(16).text(report.companyName);doc.fontSize(13).text(report.title);doc.fontSize(9).text(`Generated ${report.generatedOn} PHT | ${report.count} matching records`);doc.text(`Filters: ${JSON.stringify(report.filters)}`);for(const [label,value] of summaryRows(report))doc.text(`${label}: ${value}`);doc.moveDown();
  for(const row of report.rows){if(doc.y>470)doc.addPage();doc.fontSize(9).text(report.headers.map((label,i)=>`${label}: ${row[i]??''}`).join(' | '),{width:doc.page.width-64});doc.moveDown()}
  doc.end();return done;
 }

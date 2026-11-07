@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import mongoose from 'mongoose';
+import ExcelJS from 'exceljs';
+import sharp from 'sharp';
+import app from '../src/app.js';
+import User from '../src/models/User.js';
+import Client from '../src/models/Client.js';
+import Project from '../src/models/Project.js';
+import Property from '../src/models/Property.js';
+import PropertyAssignment from '../src/models/PropertyAssignment.js';
+import Agent from '../src/models/Agent.js';
+import Company from '../src/models/Company.js';
+import ReportBrandSnapshot from '../src/models/ReportBrandSnapshot.js';
+import ActivityLog from '../src/models/ActivityLog.js';
+import {signAccessToken} from '../src/utils/jwt.js';
+import {registerColumns} from '../src/utils/paymentRegister.js';
+
+test('company permissions, safe logos, references, branding, schedule methods and register exports',{skip:!process.env.CPM_COMPANY_TEST_URI},async()=>{
+ await mongoose.connect(process.env.CPM_COMPANY_TEST_URI,{dbName:`cpm_company_test_${randomUUID().replaceAll('-','')}`});process.env.JWT_SECRET||='isolated-company-test-secret';const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const url=`http://127.0.0.1:${server.address().port}/api`;
+ try{
+  await Promise.all([Company.init(),ReportBrandSnapshot.init(),User.init(),PropertyAssignment.init(),Agent.init()]);
+  const users={},tokens={};for(const role of ['ADMIN','STAFF','VIEWER']){users[role]=await User.create({username:role.toLowerCase(),firstName:role,lastName:'Test',email:`${role}@test.local`,passwordHash:'unused',role});tokens[role]=signAccessToken(users[role])}
+  const response=async(path,method='GET',body,role='ADMIN')=>fetch(url+path,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+  const api=async(path,method='GET',body,role='ADMIN',status=200)=>{const r=await response(path,method,body,role),json=await r.json();assert.equal(r.status,status,JSON.stringify(json));return json.data};
+  const image=await sharp({create:{width:64,height:32,channels:4,background:'#235a98'}}).webp().toBuffer();
+  await api('/companies','POST',{name:'Not allowed'},'STAFF',403);await api('/companies','POST',{name:'Not allowed'},'VIEWER',403);
+  let c=await api('/companies','POST',{name:'Morta Realty',about:'Office company',logo:{base64:image.toString('base64')}},'ADMIN',201);assert.match(c.logoDataUrl,/^data:image\/png;base64,/);assert.equal((await sharp(Buffer.from(c.logoDataUrl.split(',')[1],'base64')).metadata()).width,64);assert.deepEqual(c.projects,[]);
+  assert.equal((await api('/companies','GET',null,'VIEWER')).length,1);
+  await api(`/companies/${c._id}`,'PATCH',{version:c.__v,name:'Bad logo',about:'',reason:'Malformed logo test',logo:{base64:Buffer.from('<svg/>').toString('base64')}},'ADMIN',400);assert.equal((await Company.findById(c._id)).name,'Morta Realty');
+  const p=await Project.create({projectId:'PRJ-COMP',projectName:'Company Project',projectCode:'COMP',createdBy:users.ADMIN._id}),p2=await Project.create({projectId:'PRJ-OTHER',projectName:'Other Project',projectCode:'OTHER',createdBy:users.ADMIN._id});
+  const defaultReport=await api('/list-reports/projects?format=json');assert.equal(defaultReport.companyName,'Morta Realty');assert.match(defaultReport.companyLogo,/data:image/);const identity=defaultReport.companyIdentity;
+  await api(`/companies/${c._id}`,'PATCH',{action:'DELETE',version:c.__v,confirm:true,reason:'Protect reporting identity'},'ADMIN',409);
+  c=await api(`/companies/${c._id}`,'PATCH',{version:c.__v,name:'Morta Realty Updated',about:'Updated description',reason:'Approved company name change'});assert.equal((await ReportBrandSnapshot.findById(identity.snapshotId)).companyName,'Morta Realty');
+  const replacement=await sharp({create:{width:30,height:30,channels:4,background:'#cc8855'}}).png().toBuffer();c=await api(`/companies/${c._id}`,'PATCH',{version:c.__v,name:c.name,about:c.about,reason:'Replace logo',logo:{base64:replacement.toString('base64')}});assert.notEqual(c.logoDataUrl,(await ReportBrandSnapshot.findById(identity.snapshotId)).companyLogo);c=await api(`/companies/${c._id}`,'PATCH',{version:c.__v,name:c.name,about:c.about,reason:'Remove logo',logo:{remove:true}});assert.equal(c.logoDataUrl,'');c=await api(`/companies/${c._id}`,'PATCH',{version:c.__v,name:c.name,about:c.about,reason:'Restore logo',logo:{base64:replacement.toString('base64')}});
+  await api(`/companies/${c._id}`,'PATCH',{version:0,name:'Stale',about:'',reason:'Stale update'},'ADMIN',409);
+  let other=await api('/companies','POST',{name:'Other Company'},'ADMIN',201);assert.deepEqual(other.projects,[]);assert.notEqual((await api('/list-reports/projects?format=json')).companyName,c.name,'two active companies need explicit context');
+  c=await api(`/companies/${c._id}`,'PATCH',{action:'PROJECTS',version:c.__v,projectIds:[String(p._id)],reason:'Explicit project ownership'});
+  await api(`/companies/${other._id}`,'PATCH',{action:'PROJECTS',version:other.__v,projectIds:[String(p._id)],reason:'Reject conflicting ownership'},'ADMIN',409);
+  assert.equal((await Project.findById(p._id)).company,undefined,'company creation/association does not rewrite existing projects');
+  const client=await Client.create({clientId:'CL-COMP',firstName:'Test',lastName:'Buyer',createdBy:users.ADMIN._id}),property=await Property.create({propertyId:'PROP-COMP',project:p._id,phaseNumber:1,blockNumber:2,lotNumber:3,areaSqm:100,pricePerSqm:10000,createdBy:users.ADMIN._id});
+  const a=await api(`/clients/${client._id}/assignments`,'POST',{propertyId:String(property._id),months:36,downPayment:100000,contractDate:'2026-01-01',firstDueDate:'2026-02-05'},'ADMIN',201);
+  const agent=await Agent.create({agentId:'AGT-COMP',fullName:'Agent Company',agentType:'AGENT',createdBy:users.ADMIN._id,status:'ACTIVE'});
+  await PropertyAssignment.updateOne({_id:a._id},{$set:{commissionAgreement:{version:1,termMonths:36,allocatedBps:1000,agents:[{agent:String(agent._id),agentId:agent.agentId,percentageBps:1000}]}}});
+  const pay=async(amount,date,method,type='INSTALLMENT')=>api('/finance/payments','POST',{accountId:a._id,amount,paymentDate:date,method,type,receiptNumber:`COMP-${randomUUID()}`,requestId:randomUUID()},'ADMIN',201);
+  await pay(100000,'2026-01-02','CASH','DOWN_PAYMENT');await pay(10000,'2026-01-03','CASH');await pay(15000,'2026-01-04','GCASH');await pay(50000,'2026-01-05','MAYA');
+  const before=JSON.stringify(await PropertyAssignment.findById(a._id).lean());
+  const schedules=await api(`/finance/schedule-print/preview?accounts=${a._id}`),schedule=schedules.accounts[0];assert.equal(schedule.companyName,c.name);assert.match(schedule.companyLogo,/^data:image/);assert.deepEqual(schedule.schedule.find(s=>s.installment===1).paymentMethods,['Cash','GCash']);assert.deepEqual(schedule.schedule.find(s=>s.installment===2).paymentMethods,['Maya']);assert.deepEqual(schedule.schedule.find(s=>s.installment===4).paymentMethods,[]);assert.equal(schedule.schedule.find(s=>s.installment===1).paidCents,2500000);assert.equal(schedule.contract.originalTcpCents,100000000);assert.equal(schedule.contract.tcpAfterDownPaymentCents,90000000);
+  const query=`from=2026-01-01&to=2026-01-31&project=${p._id}`,register=await api('/finance/reports/payment-register?'+query);assert.equal(register.count,4);assert.equal(register.headers[register.headers.indexOf('Previous Payment Date')+1],'Payment Count');assert.deepEqual(register.rows.map(r=>r[registerColumns.indexOf('Payment Count')]),['Down Payment','1st','1st','2nd–3rd']);assert.equal(register.summary.earnedCents,1750000);assert.equal(register.summary.releasedCents,0);assert.equal(register.summary.unreleasedCents,1750000);assert.equal(register.rows[0][registerColumns.indexOf('Original TCP')],1000000);assert.equal(register.rows[0][registerColumns.indexOf('TCP After Down Payment')],900000);assert.match(register.rows[0][registerColumns.indexOf('Agent')],/Agent Company/);
+  const r=await response('/finance/reports/payment-register.xlsx?'+query+'&expectedSnapshot='+register.snapshot);assert.equal(r.status,200);const book=new ExcelJS.Workbook();await book.xlsx.load(Buffer.from(await r.arrayBuffer()));const sheet=book.getWorksheet('Payment Records');assert.equal(sheet.getCell(2,19).value,'Payment Count');assert.equal(sheet.getCell(3,19).value,'Down Payment');assert.ok(sheet.getCell(3,2).value instanceof Date);assert.equal(sheet.getCell(3,registerColumns.indexOf('Receipt Number')+1).value,register.rows[0][registerColumns.indexOf('Receipt Number')]);assert.ok(book.model.media.length);assert.ok(book.getWorksheet('Agent Commission Ledger'));assert.equal(JSON.stringify(await PropertyAssignment.findById(a._id).lean()),before,'previews/exports do not mutate financial records');
+  const details=await api(`/commissions/accounts/${a._id}`),first=details.snapshot.records.find(r=>r.type==='MONTHLY'&&r.period===1);await api(`/commissions/accounts/${a._id}/payouts`,'POST',{expectedVersion:details.__v,confirm:true,requestId:randomUUID(),commissionId:first.commissionId,amount:1000,releaseDate:'2026-01-06',method:'CASH',reason:'Actual partial payout recorded'},'ADMIN',201);
+  const released=await api('/finance/reports/payment-register?'+query);assert.equal(released.summary.earnedCents,1750000);assert.equal(released.summary.releasedCents,100000);assert.equal(released.summary.unreleasedCents,1650000);assert.equal((await PropertyAssignment.findById(a._id)).commissionPayouts.length,1);
+  await api('/finance/reports/payment-register.xlsx?'+query+'&expectedSnapshot='+register.snapshot,'GET',null,'ADMIN',409);
+  await api(`/companies/${c._id}`,'PATCH',{action:'PROJECTS',version:c.__v,projectIds:[],reason:'Cannot discard financial ownership'},'ADMIN',409);
+  const collection=await api('/finance/reports/collections?'+query);assert.equal(collection.companyName,c.name);assert.match(collection.companyLogo,/^data:image/);
+  const pdf=await response('/finance/reports/collections?'+query+'&format=pdf');assert.equal(pdf.status,200);assert.match(Buffer.from(await pdf.arrayBuffer()).subarray(0,8).toString(),/^%PDF/);
+  const expense=await api('/finance/reports/expenses?'+query);assert.equal(expense.companyName,c.name);
+  const inventory=await api(`/list-reports/inventory?format=json&project=${p._id}`);assert.equal(inventory.companyName,c.name);assert.match(inventory.companyLogo,/^data:image/);
+  c=await api(`/companies/${c._id}`,'PATCH',{action:'ARCHIVE',version:c.__v,reason:'Archive without deleting records'});assert.equal(c.status,'ARCHIVED');assert.equal((await api(`/finance/schedule-print/preview?accounts=${a._id}`)).accounts[0].companyName,c.name);
+  const unused=await api('/companies','POST',{name:'Unused Company'},'ADMIN',201);await api(`/companies/${unused._id}`,'PATCH',{action:'DELETE',version:unused.__v,confirm:true,reason:'Remove unused test company'});assert.ok(!(await api('/companies')).some(r=>r._id===unused._id));assert.ok(await Company.findById(unused._id),'audit tombstone retained');
+  assert.ok(await ActivityLog.exists({module:'Companies',outcome:'SUCCEEDED'}));assert.equal((await PropertyAssignment.findById(a._id)).payments.length,4);assert.equal((await Property.findById(property._id)).client.toString(),client._id.toString());
+ }finally{await mongoose.connection.dropDatabase();await mongoose.disconnect();await new Promise(r=>server.close(r))}
+});

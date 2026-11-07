@@ -1,3 +1,4 @@
+import companyRoutes from "./routes/companyRoutes.js";
 import migrationRoutes from "./routes/migrationRoutes.js";
 import listReportRoutes from "./routes/listReportRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
@@ -20,6 +21,7 @@ app.use(cors({
 }));
 
 app.use("/api/projects/:projectId/map",express.json({limit:"6mb"}));
+app.use("/api/companies",express.json({limit:"4mb"}));
 app.use("/api/migration",express.json({limit:"6mb"}));
 app.use(express.json({ limit: "1mb" }));
 
@@ -35,6 +37,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/agents",agentRoutes);
+app.use("/api/companies",companyRoutes);
 app.use("/api/commissions",commissionRoutes);
 app.use("/api/finance", financeRoutes);
 app.use("/api/migration", migrationRoutes);

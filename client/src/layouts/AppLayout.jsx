@@ -9,7 +9,7 @@ const groups=[
  {label:"Management",items:[["/projects","Projects","building"],["/property-inventory","Property Inventory","building"],["/clients","Clients","people"],["/agents","Agents","agent"]]},
  {label:"Finance",items:[["/payment","Payment","wallet"],["/payment-transactions","Payment Transactions","receipt"],["/commissions","Commissions","percent"],["/expenses","Expenses","expense"],["/reports","Reports","chart"]]},
  {label:"Monitoring",items:[["/payment-monitoring","Payment Reminders","bell"],["/approval-requests","Approval Requests","check","ADMIN"]]},
- {label:"Administration",items:[["/historical-migration","Historical Data Migration","receipt"],["/users","Users & Activity","settings","ADMIN"]]},
+ {label:"Administration",items:[["/companies","Company Management","building"],["/historical-migration","Historical Data Migration","receipt"],["/users","Users & Activity","settings","ADMIN"]]},
 ];
 export default function AppLayout(){
  const {user,logout}=useAuth(),{pathname}=useLocation(),[open,setOpen]=useState(false),menuButton=useRef(null),sidebar=useRef(null);

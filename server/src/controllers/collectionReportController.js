@@ -1,3 +1,4 @@
+import {reportIdentity,brandExcel,brandPdf} from "../services/companyBranding.js";
 import {createHash} from "node:crypto";
 import mongoose from 'mongoose';
 import ExcelJS from 'exceljs';
@@ -24,12 +25,12 @@ export async function writeFinancialExport(data,format,res){
   const sheets=[['Payment Methods',['Method','Collections PHP','Expenses PHP','Net PHP'],[...(data.breakdown||[]).map(b=>[paymentMethodLabel(b.method),b.collectionsCents/100,b.expensesCents/100,b.netCents/100]),['Total',data.totalCollectionsCents/100,data.totalExpensesCents/100,data.netCollectionCents/100]]],['Collections',collectionHeaders,data.collections.map(collectionRow)],['Expenses',expenseHeaders,data.expenses.map(expenseRow)]];
   if(data.cash)sheets.push(['Office Cash Movements',['Date','Type','Reference','Signed Amount PHP'],data.cash.events.map(e=>[e.date,e.kind,e.reference,e.amountCents/100])]);
   for(const [name,headers,rows] of sheets){const s=book.addWorksheet(name);metadata(data).forEach(v=>s.addRow([v]));const header=s.addRow(headers);header.font={bold:true};header.eachCell(c=>c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE6EDF7'}});rows.forEach(r=>{const row=s.addRow(r);row.alignment={wrapText:true,vertical:'top'};row.height=Math.max(30,Math.min(120,Math.max(...r.map(v=>Math.ceil(String(v??'').length/22)))*15))});s.columns.forEach((c,i)=>{c.width=i===3?36:24;if(headers[i]?.includes('PHP'))c.numFmt='#,##0.00;[Red](#,##0.00)'});s.views=[{state:'frozen',ySplit:7}];s.autoFilter={from:{row:7,column:1},to:{row:Math.max(7,s.rowCount),column:headers.length}};s.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:7'};}
-  res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');res.attachment(`collection-cash-${data.from}-${data.to}.xlsx`);return res.send(Buffer.from(await book.xlsx.writeBuffer()));
+  res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');res.attachment(`collection-cash-${data.from}-${data.to}.xlsx`);return res.send((brandExcel(book,sheet,data),Buffer.from(await book.xlsx.writeBuffer())));
  }
  const doc=new PDFDocument({size:'A4',layout:'landscape',margin:36}),chunks=[];doc.on('data',c=>chunks.push(c));const done=new Promise((resolve,reject)=>{doc.on('end',()=>resolve(Buffer.concat(chunks)));doc.on('error',reject)});
  const bottom=doc.page.height-40,width=doc.page.width-72;
  const line=(text,size=10)=>{doc.font('Helvetica').fontSize(size);const height=doc.heightOfString(String(text),{width});if(doc.y+height>bottom)doc.addPage();doc.text(String(text),36,doc.y,{width});};
- metadata(data).forEach((v,i)=>line(v,i<2?14:9));doc.moveDown();
+ brandPdf(doc,data);metadata(data).forEach((v,i)=>line(v,i<2?14:9));doc.moveDown();
  // Measure wrapped cells before drawing. Repeat column headings after page breaks.
  const table=(headers,rows,weights)=>{
   const sum=weights.reduce((a,b)=>a+b,0),widths=weights.map(w=>width*w/sum);
@@ -53,10 +54,10 @@ export async function writeFinancialExport(data,format,res){
 }
 export async function collectionReport(req,res,next){try{
  ids(req.query);const {from,to}=dateRange(req.query),data=await loadFinancialData(to),result=buildCollectionReport(data,data.entries,{...req.query,from,to});
- result.companyName=process.env.COMPANY_NAME||'Client Payment & Property Management System';result.title='Collection & Cash Summary';result.generatedOn=today();result.scope+=`; Transactions: ${req.query.origin||'All'}`;result.collectionQuery=String(req.query.collectionQ||'');result.expenseQuery=String(req.query.expenseQ||'');
+ Object.assign(result,await reportIdentity(req.query.project||[...result.collections,...result.expenses].map(r=>r.project?._id).filter(Boolean)));result.title='Collection & Cash Summary';result.generatedOn=today();result.scope+=`; Transactions: ${req.query.origin||'All'}`;result.collectionQuery=String(req.query.collectionQ||'');result.expenseQuery=String(req.query.expenseQ||'');
  // Current ledger as of actual records, never a cash forecast for future days.
  if(to>today()){const {cashPosition}=await import('../utils/financialReporting.js');result.cash=cashPosition(data,data.entries,from,today());result.cash.scope+=`; actual records through ${today()}, no forecast`;if(from>today()){result.cash.available=false;result.cash.closingCents=null;result.cash.openingCents=null;result.cash.reasons.push('Cash on hand cannot be calculated for a future period.')}}
- result.snapshot=snapshot({from,to,methods:result.methods,project:result.project,collections:result.collections.map(r=>[...collectionRow(r),r.fundingAccount]),expenses:result.expenses.map(r=>[...expenseRow(r),r.fundingAccount,r.commissionPayoutId,r.payoutLinkChecked]),cash:result.cash});
+ result.snapshot=snapshot({companyIdentity:result.companyIdentity,from,to,methods:result.methods,project:result.project,collections:result.collections.map(r=>[...collectionRow(r),r.fundingAccount]),expenses:result.expenses.map(r=>[...expenseRow(r),r.fundingAccount,r.commissionPayoutId,r.payoutLinkChecked]),cash:result.cash});
  if(req.query.expectedSnapshot&&req.query.expectedSnapshot!==result.snapshot)fail('Transactions changed. Refresh the report before printing or exporting.',409);
  if(req.query.format)return await writeFinancialExport(result,req.query.format,res);
  if(req.query.all==='1')return res.json({success:true,data:result});
@@ -66,7 +67,8 @@ export async function transactionReport(req,res,next){try{
  if(req.query.receipt!==undefined&&(typeof req.query.receipt!=="string"||req.query.receipt.length>120))fail("Use a valid receipt-number search (up to 120 characters).");
  ids(req.query);if(req.query.status&&!["VALID","CORRECTED","VOIDED","CANCELLED","REVERSED","POSTED","DRAFT","PENDING"].includes(req.query.status))fail("Choose a valid transaction status.");const from=req.query.from||'0001-01-01',to=req.query.to||'9999-12-31';if(!validDate(from)||!validDate(to)||from>to)fail('Choose a valid transaction date range.');
  const data=await loadFinancialData(to),rows=sorted(filterPayments(data.collections,{...req.query,from,to}),req.query.sort||'date',req.query.direction||'desc'),totalCents=total(rows.filter(r=>r.posted));
- const fingerprint=snapshot(rows.map(r=>[...collectionRow(r),r.fundingAccount,r.posted]));if(req.query.expectedSnapshot&&req.query.expectedSnapshot!==fingerprint)fail('Transactions changed. Refresh the list before printing or exporting.',409);
- if(req.query.format){const result={companyName:process.env.COMPANY_NAME||'Client Payment & Property Management System',title:'Payment Transactions',from,to,methods:parseMethods(req.query.methods),project:req.query.project||'',collectionQuery:[req.query.q||'',req.query.receipt?`Receipt: ${req.query.receipt}`:''].filter(Boolean).join(' · '),scope:`Filtered ${req.query.origin||'All'} transactions; totals include valid posted payments only`,generatedOn:today(),totalCollectionsCents:totalCents,totalExpensesCents:0,netCollectionCents:totalCents,collections:rows,expenses:[],breakdown:[]};return await writeFinancialExport(result,req.query.format,res)}
- res.json({success:true,data:{...(req.query.all==='1'?{rows,count:rows.length,page:1,pageSize:rows.length}:pageRows(rows,req.query.page||1)),totalCents,methods:parseMethods(req.query.methods),snapshot:fingerprint,companyName:process.env.COMPANY_NAME||"Client Payment & Property Management System"}});
+ const brand=await reportIdentity(req.query.project||rows.map(r=>r.project?._id).filter(Boolean));
+ const fingerprint=snapshot({companyIdentity:brand.companyIdentity,rows:rows.map(r=>[...collectionRow(r),r.fundingAccount,r.posted])});if(req.query.expectedSnapshot&&req.query.expectedSnapshot!==fingerprint)fail('Transactions changed. Refresh the list before printing or exporting.',409);
+ if(req.query.format){const result={...brand,title:'Payment Transactions',from,to,methods:parseMethods(req.query.methods),project:req.query.project||'',collectionQuery:[req.query.q||'',req.query.receipt?`Receipt: ${req.query.receipt}`:''].filter(Boolean).join(' · '),scope:`Filtered ${req.query.origin||'All'} transactions; totals include valid posted payments only`,generatedOn:today(),totalCollectionsCents:totalCents,totalExpensesCents:0,netCollectionCents:totalCents,collections:rows,expenses:[],breakdown:[]};return await writeFinancialExport(result,req.query.format,res)}
+ res.json({success:true,data:{...(req.query.all==='1'?{rows,count:rows.length,page:1,pageSize:rows.length}:pageRows(rows,req.query.page||1)),totalCents,methods:parseMethods(req.query.methods),snapshot:fingerprint,...brand}});
 }catch(e){next(e)}}

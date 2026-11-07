@@ -1,3 +1,6 @@
+import {reportIdentity,brandExcel} from "../services/companyBranding.js";
+import {createHash} from "node:crypto";
+import Agent from "../models/Agent.js";
 import MigrationBatch from "../models/MigrationBatch.js";
 import {validateMonthlyArrangement} from "../../../shared/contractTerms.js";
 import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
@@ -6,7 +9,7 @@ import {expenseClassification} from "./cashLedgerController.js";
 import {transactionReport} from "./collectionReportController.js";
 import {validateReceipt,checkReceipt,receiptScope} from "../services/receiptService.js";
 import {dashboardCharts} from "../utils/dashboardCharts.js";
-import {paymentRegisterWorkbook} from "../utils/paymentRegister.js";
+import {paymentRegisterWorkbook,registerData} from "../utils/paymentRegister.js";
 import {monitoringReports,reportColumns,reportRow} from "../utils/monitoringReports.js";
 import {validateTerms,configureSchedule} from "../utils/contractMonitoring.js";
 import {attachMonitoringUpdate,reconcileAccount} from "../services/monitoringService.js";
@@ -218,9 +221,9 @@ export async function exportMonitoringReport(req,res,next){
  try{
   const {from,to}=dateRange(req.query),filter=req.query.project?{project:id(req.query.project)}:{};
   const accounts=await populate(PropertyAssignment.find(filter)).lean(),asOf=to<today()?to:today();
-  const rows=monitoringReports(accounts.filter(a=>a.contract.contractDate<=asOf),from,to,asOf);
+  const rows=monitoringReports(accounts.filter(a=>a.contract.contractDate<=asOf),from,to,asOf),brand=await reportIdentity(req.query.project||accounts.map(a=>a.project?._id).filter(Boolean));
   const {default:ExcelJS}=await import("exceljs");const workbook=new ExcelJS.Workbook();
-  for(const [name,entries]of Object.entries(rows)){const sheet=workbook.addWorksheet(name);sheet.addRow(reportColumns);for(const row of entries)sheet.addRow(reportRow(row));sheet.getRow(1).font={bold:true};sheet.columns.forEach(c=>c.width=24)}
+  for(const [name,entries]of Object.entries(rows)){const sheet=workbook.addWorksheet(name);sheet.addRow([brand.companyName]);sheet.addRow([`Monitoring ${from} to ${to}`]);sheet.addRow(reportColumns);brandExcel(workbook,sheet,brand);for(const row of entries)sheet.addRow(reportRow(row));sheet.getRow(1).font={bold:true};sheet.getRow(3).font={bold:true};sheet.columns.forEach(c=>c.width=24)}
   res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");res.setHeader("Content-Disposition",`attachment; filename="payment-monitoring-${from}-${to}.xlsx"`);res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
  }catch(e){next(e)}
 }
@@ -229,9 +232,17 @@ export async function exportPaymentRegister(req,res,next){
  try {
   const {from,to}=dateRange(req.query),project=req.query.project?id(req.query.project):null;
   const accounts=await populate(PropertyAssignment.find(project?{project}:{})).lean();
-  const workbook=paymentRegisterWorkbook(accounts,from,to);
-  res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition",`attachment; filename="payment-commission-register-${from}-${to}.xlsx"`);
+  const agentIds=[...new Set(accounts.flatMap(a=>a.commissionAgreement?.agents?.map(r=>String(r.agent))||[]))].filter(mongoose.isValidObjectId),agents=Object.fromEntries((await Agent.find({_id:{$in:agentIds}}).select('fullName').lean()).map(a=>[String(a._id),a.fullName]));
+  const options={agents,...await reportIdentity(project||accounts.filter(a=>a.payments.some(p=>p.paymentDate>=from&&p.paymentDate<=to)).map(a=>a.project?._id).filter(Boolean))},data=registerData(accounts,from,to,options);
+  const snapshot=createHash('sha256').update(JSON.stringify({from,to,project,rows:data.rows,commissionRows:data.commissionRows,companyIdentity:options.companyIdentity})).digest('hex');
+  if(req.query.expectedSnapshot&&req.query.expectedSnapshot!==snapshot)fail(409,'Register changed. Refresh the preview before printing or exporting.');
+  if(!req.path.endsWith('.xlsx')){
+   const page=Number(req.query.page||1);if(!Number.isSafeInteger(page)||page<1)fail(400,'Invalid preview page.');
+   return res.json({success:true,data:{...data,...options,title:'Payment–Commission Register',from,to,generatedOn:today(),snapshot,page,filters:{from,to,project:project||'All'},rows:req.query.all==='1'?data.rows:data.rows.slice((page-1)*20,page*20)}});
+  }
+  const workbook=paymentRegisterWorkbook(accounts,from,to,options);
+  res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition',`attachment; filename="payment-commission-register-${from}-${to}.xlsx"`);
   res.send(Buffer.from(await workbook.xlsx.writeBuffer()));
  }catch(e){next(e)}
 }

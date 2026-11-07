@@ -1,3 +1,4 @@
+import {reportIdentity} from "../services/companyBranding.js";
 import {listProjectProperties} from "./propertyController.js";
 import {getProject} from "./projectController.js";
 import {filterInventory} from "../../../shared/inventoryFilters.js";
@@ -31,8 +32,9 @@ export async function listReport(req,res,next){try{
  }
  const records=module==='commissions'?payload.data.rows:module==='inventory'?filterInventory(payload.data,filters):payload.data;
  const report=customCommission?{...makeListReport('commissions',[],filters),...payload.data,count:payload.data.rows.length}:makeListReport(module,records,filters,module==='commissions'?payload.data.summary:undefined);
+ if(!customCommission){const visibleProjects=module==='projects'?records.filter(r=>report.rows.some(row=>row[0]===r.projectId)).map(r=>r._id):records.map(r=>r.project?._id||r.project).filter(Boolean);Object.assign(report,await reportIdentity(filters.project||visibleProjects));}
  if(projectInfo)report.title=`Property Inventory — ${projectInfo.projectName} · ${projectInfo.projectId||projectInfo.projectCode||''}`;
- report.snapshot=createHash('sha256').update(JSON.stringify({title:report.title,filters:report.filters,headers:report.headers,rows:report.rows,summary:report.summary})).digest('hex');
+ report.snapshot=createHash('sha256').update(JSON.stringify({title:report.title,companyIdentity:report.companyIdentity,companyName:report.companyName,filters:report.filters,headers:report.headers,rows:report.rows,summary:report.summary})).digest('hex');
  if(req.query.expectedSnapshot&&req.query.expectedSnapshot!==report.snapshot)return res.status(409).json({success:false,message:'Records changed. Open a new preview before downloading.'});
  if(format==='pdf'){res.type('application/pdf');res.attachment('commissions.pdf');return res.send(await reportPdf(report))}
  if(format==='json')return res.json({success:true,data:report});

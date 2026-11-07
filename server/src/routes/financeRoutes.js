@@ -43,6 +43,7 @@ router.get("/expenses", listExpenses);
 router.post("/expenses", authorize("ADMIN", "STAFF"), createExpense);
 router.get("/reports/monitoring.xlsx",exportMonitoringReport);
 router.get("/reports/payment-register.xlsx",exportPaymentRegister);
+router.get("/reports/payment-register",exportPaymentRegister);
 router.get("/reports/dashboard",dashboardAnalytics);
 router.get("/reports/expenses",expenseReport);
 router.get("/reports/collections",collectionReport);
