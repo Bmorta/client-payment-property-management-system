@@ -1,3 +1,4 @@
+import {migrationPaymentGuard} from "../middleware/migrationPaymentGuard.js";
 import {schedulePrintPreview,schedulePrintChoices} from "../controllers/schedulePrintController.js";
 import {collectionReport} from "../controllers/collectionReportController.js";
 import {classifyExpense,listCashEntries,createCashEntry,voidCashEntry} from "../controllers/cashLedgerController.js";
@@ -31,9 +32,9 @@ router.get("/accounts/:id", getAccount);
 router.get("/accounts", listAccounts);
 router.patch("/accounts/:id/agreement", authorize("ADMIN"), updateAgreement);
 router.get("/payments", listPayments);
-router.post("/payments/preview", authorize("ADMIN","STAFF"), previewPayment);
+router.post("/payments/preview", authorize("ADMIN","STAFF"), migrationPaymentGuard, previewPayment);
 router.post("/accounts/:id/payments/:paymentId/corrections/preview",authorize("ADMIN","STAFF"),correctPayment);
-router.post("/payments", authorize("ADMIN", "STAFF"), acceptPayment);
+router.post("/payments", authorize("ADMIN", "STAFF"), migrationPaymentGuard, acceptPayment);
 router.patch("/expenses/:id/classification",authorize("ADMIN"),classifyExpense);
 router.get("/cash-ledger",listCashEntries);
 router.post("/cash-ledger",authorize("ADMIN"),createCashEntry);

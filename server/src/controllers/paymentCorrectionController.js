@@ -28,6 +28,8 @@ async function save(account,req,action,before) {
  req.auditDetails={action,...actor(req)};
 }
 function revision(account,payment,values,reason,req,requestId){
+ if(payment.origin==="HISTORICAL"&&values.paymentDate>account.migration?.cutoffDate)fail(409,"A historical correction must keep its effective date within the approved migration cutoff. Reclassification requires separate administrator review.");
+ if(values.type==="OTHER"&&values.allocationPlan?.length)fail(400,"Other documented charges cannot be allocated to installment or penalty principal.");
  const proposed=structuredClone(account);
  const target=proposed.payments.find(p=>p.paymentId===payment.paymentId);
  target.revisions=[...(target.revisions||[]),{values,previousValues:paymentValues(effectivePayment(payment)),reason,requestId,signature:req.correctionSignature,...actor(req)}];
@@ -55,7 +57,7 @@ export async function correctPayment(req,res,next){
   if(req.body.baseRevision!==current.revision)fail(409,"Payment changed. Refresh before correcting.");
   if(current.status==="VOIDED")fail(409,"A voided payment cannot be edited.");
   const values={...paymentValues(current),fundingAccount:validateFunding(req.body.method,req.body.fundingAccount||(req.body.method===current.method?current.fundingAccount:null),req.body.method===current.method&&!req.body.fundingAccount&&!current.fundingAccount),receiptNumber:req.body.receiptNumber===undefined||(!req.body.receiptNumber&&!current.receiptNumber)?current.receiptNumber:validateReceipt(req.body.receiptNumber),allocationPlan,amountCents:moneyCents(req.body.amount),paymentDate:req.body.paymentDate,method:req.body.method,notes:String(req.body.notes||"").trim().slice(0,500),type:req.body.type||"AUTO",voided:req.body.voided===true};
-  if(!values.amountCents||!validDate(values.paymentDate)||values.paymentDate<account.contract.contractDate||values.paymentDate>today()||!METHODS.includes(values.method)||!["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY"].includes(values.type))fail(400,"Enter a valid amount, date, method and payment type.");
+  if(!values.amountCents||!validDate(values.paymentDate)||values.paymentDate<account.contract.contractDate||values.paymentDate>today()||!METHODS.includes(values.method)||!["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY",...(payment.origin==="HISTORICAL"?["OTHER"]:[])].includes(values.type))fail(400,"Enter a valid amount, date, method and payment type.");
   if(values.receiptNumber&&values.receiptNumber!==current.receiptNumber)await checkReceipt(values.receiptNumber,payment.receiptScope||receiptScope(),account._id,payment.paymentId,requestId);
   const before=summarizeAccount(account),copy=structuredClone(account),copyPayment=copy.payments.find(p=>p.paymentId===payment.paymentId);
   revision(copy,copyPayment,values,reason,req,requestId);

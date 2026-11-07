@@ -9,6 +9,7 @@ import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
+const HistoricalMigrationPage=lazy(()=>import("./pages/HistoricalMigrationPage.jsx"));
 const ClientAccountsPage=lazy(()=>import("./pages/ClientAccountsPage.jsx"));
 const InventoryPage=lazy(()=>import("./pages/InventoryPage.jsx"));
 const PaymentPage=lazy(()=>import("./pages/PaymentPage.jsx"));
@@ -45,6 +46,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/historical-migration" element={<HistoricalMigrationPage />} />
               <Route path="/property-inventory" element={<InventoryPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId/lots" element={<ManageLotsPage />} />

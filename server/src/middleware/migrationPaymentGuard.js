@@ -1,0 +1,9 @@
+import mongoose from 'mongoose';
+import MigrationConfig from '../models/MigrationConfig.js';
+import PropertyAssignment from '../models/PropertyAssignment.js';
+export async function migrationPaymentGuard(req,res,next){try{
+ const config=await MigrationConfig.findById('OFFICE').lean();
+ if(config&&typeof req.body.paymentDate==='string'&&req.body.paymentDate<=config.cutoffDate)return res.status(409).json({success:false,message:'This date belongs to historical migration. Encode and verify it in Historical Data Migration instead of posting a live collection.'});
+ if(req.body.accountId){if(!mongoose.isValidObjectId(req.body.accountId))return res.status(400).json({success:false,message:'Invalid account.'});const a=await PropertyAssignment.findById(req.body.accountId).select('migration').lean();if(a?.migration&&['CANCELLED','FORFEITED','TRANSFERRED','FULLY_PAID'].includes(a.migration.historicalStatus))return res.status(409).json({success:false,message:'The documented historical account status prevents new collections. Administrator review is required.'})}
+ next();
+}catch(e){next(e)}}

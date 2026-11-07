@@ -1,3 +1,4 @@
+import migrationRoutes from "./routes/migrationRoutes.js";
 import listReportRoutes from "./routes/listReportRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
 import commissionRoutes from "./routes/commissionRoutes.js";
@@ -19,6 +20,7 @@ app.use(cors({
 }));
 
 app.use("/api/projects/:projectId/map",express.json({limit:"6mb"}));
+app.use("/api/migration",express.json({limit:"6mb"}));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => {
@@ -35,6 +37,7 @@ app.use("/api/clients", clientRoutes);
 app.use("/api/agents",agentRoutes);
 app.use("/api/commissions",commissionRoutes);
 app.use("/api/finance", financeRoutes);
+app.use("/api/migration", migrationRoutes);
 app.use("/api/activity-logs", activityRoutes);
 
 app.use("/api/list-reports", listReportRoutes);

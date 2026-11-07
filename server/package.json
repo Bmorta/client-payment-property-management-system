@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "test": "node --test",
     "seed:admin": "node src/scripts/seedAdmin.js",
-    "test:integration": "node --test integration/payment-flow.test.js"
+    "test:integration": "node --test integration/payment-flow.test.js",
+    "test:migration": "node --test integration/historical-migration.test.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

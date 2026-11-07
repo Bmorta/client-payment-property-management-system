@@ -1,4 +1,4 @@
-const secret = /password|token|secret|authorization|cookie|salt|credential|hash/i;
+const secret = /password|token|secret|authorization|cookie|salt|credential|hash|^base64$/i;
 export function auditValues(value, depth = 0) {
   if (depth > 12) return "[depth limit]";
   if (value == null || typeof value !== "object") return value;

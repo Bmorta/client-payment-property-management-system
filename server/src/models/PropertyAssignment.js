@@ -2,8 +2,9 @@ import mongoose from "mongoose";
 import { validTerm } from "../../../shared/paymentSchedule.js";
 const { Schema } = mongoose;
 const paymentSchema = new Schema({
+  origin:{type:String,enum:["LIVE","HISTORICAL"],default:"LIVE",immutable:true}, migrationBatchId:String, migrationRowId:String,
   fundingAccount:{type:String,enum:["CASH","NONCASH",null],default:null}, receiptScope: String, configuration: Schema.Types.Mixed,
-  type: {type:String,enum:["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY"],default:"AUTO"},
+  type: {type:String,enum:["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY","OTHER"],default:"AUTO"},
   allocations: {type:[Schema.Types.Mixed],default:[]},
   revisions: {type:[Schema.Types.Mixed],default:[]},
   agreementVersion: { type: Number, default: 1 },
@@ -34,6 +35,8 @@ const assignmentSchema = new Schema({
   commissionEvents:{type:[Schema.Types.Mixed],default:[]},
   commissionPayouts:{type:[Schema.Types.Mixed],default:[]},
   commissionRecoveries:{type:[Schema.Types.Mixed],default:[]},
+  migration: Schema.Types.Mixed,
+  historicalPenalties:{type:[Schema.Types.Mixed],default:[]},
   monitoring: Schema.Types.Mixed,
   allocationVersions: {type:[Schema.Types.Mixed],default:[]},
   penaltyLedger: {type:[Schema.Types.Mixed],default:[]},
