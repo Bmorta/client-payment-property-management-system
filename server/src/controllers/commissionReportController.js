@@ -8,11 +8,13 @@ const name=c=>[c?.firstName,c?.lastName].filter(Boolean).join(" ");
 const lot=p=>`Phase ${p?.phaseNumber} / Block ${p?.blockNumber} / Lot ${p?.lotNumber}`;
 export async function exportCommissions(req,res,next){try{
  const report=req.query.report||"DETAIL",format=req.query.format||"xlsx";
- if(!["DETAIL","AGENT","PROJECT","PROPERTY","DP","MONTHLY","RELEASED","UNRELEASED","PAYOUTS","ADJUSTMENTS"].includes(report)||!["xlsx","pdf"].includes(format))fail("Choose a valid commission report and export format.");
+ if(!["DETAIL","AGENT","PROJECT","PROPERTY","DP","MONTHLY","RELEASED","UNRELEASED","PAYOUTS","ADJUSTMENTS"].includes(report)||!["xlsx","pdf",...(req.listExport?["json"]:[])].includes(format))fail("Choose a valid commission report and export format.");
  const query={...req.query,...(["DP","MONTHLY"].includes(report)?{type:report}:report==="RELEASED"?{status:"RELEASED"}:report==="UNRELEASED"?{status:"UNRELEASED"}:{})};
  // Payout/adjustment ranges apply to their own event dates, not earning dates.
  const eventFrom=query.from,eventTo=query.to;if(["PAYOUTS","ADJUSTMENTS"].includes(report)){delete query.from;delete query.to;if(eventFrom||eventTo){if(!/^\d{4}-\d{2}-\d{2}$/.test(eventFrom)||!/^\d{4}-\d{2}-\d{2}$/.test(eventTo)||eventFrom>eventTo)fail("Choose valid report date bounds.")}}
- const records=await PropertyAssignment.aggregate([...commissionPipeline(query),{$sort:{"agentInfo.fullName":1,"projectInfo.projectName":1,accountId:1,agent:1,period:1,commissionId:1}}]);
+ const sort=["earningDate","earnedCents","unreleasedCents","latestReleaseDate"].includes(query.sort)?query.sort:"sequence";
+ const ordering=report==="DETAIL"?(sort==="sequence"?{accountId:1,agent:1,period:1,commissionId:1}:{[sort]:query.direction==="asc"?1:-1,commissionId:1}):{"agentInfo.fullName":1,"projectInfo.projectName":1,accountId:1,agent:1,period:1,commissionId:1};
+ const records=await PropertyAssignment.aggregate([...commissionPipeline(query),{$sort:ordering}]);
  let columns=headers,rows=records.map(r=>[r.commissionId,r.agentInfo?.agentId,r.agentInfo?.fullName,r.projectInfo?.projectName,lot(r.propertyInfo),name(r.clientInfo),r.type,r.period,amount(r.percentageBps),amount(r.budgetCents),amount(r.earnedCents),amount(r.releasedCents),amount(r.unreleasedCents),amount(r.awaitingCents),amount(r.recoveryDueCents),r.status,r.latestReleaseDate||""]);
  if(["AGENT","PROJECT","PROPERTY"].includes(report)){
   const groups=new Map();for(const r of records){const key=report==="AGENT"?r.agent:report==="PROJECT"?String(r.project):String(r.property);const g=groups.get(key)||{name:report==="AGENT"?`${r.agentInfo?.agentId} ${r.agentInfo?.fullName}`:report==="PROJECT"?r.projectInfo?.projectName:`${r.projectInfo?.projectName} ${lot(r.propertyInfo)}`,budget:0,earned:0,released:0,unreleased:0,awaiting:0,recovery:0};for(const k of ["budget","earned","released","unreleased","awaiting"])g[k]+=r[`${k}Cents`]||0;g.recovery+=r.recoveryDueCents;groups.set(key,g)}columns=[report,"Budget PHP","Earned PHP","Released PHP","Unreleased PHP","Awaiting PHP","Recovery PHP"];rows=[...groups.values()].map(g=>[g.name,...[g.budget,g.earned,g.released,g.unreleased,g.awaiting,g.recovery].map(amount)]);
@@ -26,6 +28,7 @@ export async function exportCommissions(req,res,next){try{
   }
   rows.sort((a,b)=>String(a[report==="PAYOUTS"?5:4]).localeCompare(String(b[report==="PAYOUTS"?5:4]))||String(a[0]).localeCompare(String(b[0])));
  }
+ if(format==="json")return res.json({success:true,data:{title:`Commission ${report.toLowerCase()} report`,headers:columns,rows:rows.map(row=>row.map((v,i)=>columns[i].includes("PHP")||columns[i]==="Agent %"?Number(v):v??''))}});
  if(format==="xlsx"){
   const {default:ExcelJS}=await import("exceljs");const wb=new ExcelJS.Workbook(),sheet=wb.addWorksheet("Commissions");sheet.addRow(columns);for(const row of rows)sheet.addRow(row.map((v,i)=>columns[i].includes("PHP")?Number(v):v));sheet.getRow(1).font={bold:true};sheet.columns.forEach((c,i)=>{c.width=24;if(columns[i].includes("PHP"))c.numFmt="#,##0.00"});res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");res.attachment(`commission-${report.toLowerCase()}.xlsx`);res.send(Buffer.from(await wb.xlsx.writeBuffer()));
  }else{

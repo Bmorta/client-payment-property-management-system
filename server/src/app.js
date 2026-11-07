@@ -1,3 +1,4 @@
+import listReportRoutes from "./routes/listReportRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
 import commissionRoutes from "./routes/commissionRoutes.js";
 import express from "express";
@@ -34,6 +35,8 @@ app.use("/api/agents",agentRoutes);
 app.use("/api/commissions",commissionRoutes);
 app.use("/api/finance", financeRoutes);
 app.use("/api/activity-logs", activityRoutes);
+
+app.use("/api/list-reports", listReportRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

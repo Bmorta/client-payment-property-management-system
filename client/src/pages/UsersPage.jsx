@@ -1,3 +1,4 @@
+import ListReportActions from "../components/ListReportActions.jsx";
 import SearchInput from "../components/SearchInput.jsx";
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
@@ -301,6 +302,7 @@ export default function UsersPage() {
             <SearchInput label="Search users" value={search} onChange={value=>{setSearch(value);}} items={users.map(u=>({key:u._id,label:u.username,detail:`${u.firstName} ${u.lastName} ${u.email} ${u.role}`}))}/>
           </div>
 
+          <ListReportActions module="users" filters={{q:search}} onRefresh={loadUsers} disabled={loading}/>
           <div className="table-responsive">
             <table className="table align-middle">
               <thead>

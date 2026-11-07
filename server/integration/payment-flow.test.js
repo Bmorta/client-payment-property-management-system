@@ -216,6 +216,20 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   await api('/finance/expenses','POST',{category:'OTHER',method:'OTHER',fundingAccount:'NONCASH',expenseDate:cashDay,amount:'10',description:'Other noncash funding confirmed',requestId:randomUUID()},'STAFF',201);
   assert.equal((await api(`/finance/reports/collections?${cashQuery}`)).data.cash.closingCents,168000);
 
+  // Preview-first list reports retain existing permissions and include every matching page.
+  await Agent.insertMany(Array.from({length:25},(_,i)=>({agentId:`AGT-PREVIEW-${i}`,fullName:`Preview Agent ${String(i).padStart(2,'0')}`,agentType:'TEST',status:'ACTIVE',createdBy:admin._id})));
+  await ActivityLog.insertMany(Array.from({length:25},(_,i)=>({action:'UPDATED',module:'Settings',description:`Preview Audit ${i}`,username:'admin',userRole:'ADMIN',userId:admin._id,updatedValues:{passwordHash:'NEVER_EXPORT_AUDIT',visible:'yes'}})));
+  for(const module of ['users','activity-logs'])for(const role of ['STAFF','VIEWER'])await api(`/list-reports/${module}`,'GET',undefined,role,403);
+  const reportQueries={projects:'',clients:'',users:'',agents:'q=Preview%20Agent','activity-logs':'q=Preview%20Audit',commissions:'report=DETAIL'};
+  for(const [module,query] of Object.entries(reportQueries)){
+   const preview=(await api(`/list-reports/${module}?${query}`)).data;assert.ok(preview.snapshot);assert.equal(preview.count,preview.rows.length);assert.ok(!JSON.stringify(preview).includes('NEVER_EXPORT_AUDIT'));assert.ok(!JSON.stringify(preview).includes('not-used'));
+   if(['agents','activity-logs'].includes(module))assert.equal(preview.count,25);
+   for(const format of ['csv','xlsx']){const exported=await fetch(url+`/list-reports/${module}?${query}&format=${format}&expectedSnapshot=${preview.snapshot}`,{headers:{Authorization:`Bearer ${users.ADMIN}`}});assert.equal(exported.status,200);const bytes=Buffer.from(await exported.arrayBuffer());if(format==='xlsx'){const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(bytes);assert.equal(workbook.worksheets[0].getCell('B5').value,preview.count)}else assert.ok(bytes.toString().includes(preview.title))}
+  }
+  const projectPreview=(await api('/list-reports/projects')).data;await Project.updateOne({_id:project._id},{$set:{projectName:'Changed after preview'}});await api(`/list-reports/projects?format=csv&expectedSnapshot=${projectPreview.snapshot}`,'GET',undefined,'ADMIN',409);await Project.updateOne({_id:project._id},{$set:{projectName:project.projectName}});
+  await api('/list-reports/projects?format=xlsx','GET',undefined,'ADMIN',400);
+  const commissionPreview=(await api('/list-reports/commissions?report=PAYOUTS')).data;const previewPdf=await fetch(url+`/list-reports/commissions?report=PAYOUTS&format=pdf&expectedSnapshot=${commissionPreview.snapshot}`,{headers:{Authorization:`Bearer ${users.ADMIN}`}});assert.equal(previewPdf.status,200);assert.equal(Buffer.from(await previewPdf.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+
   // Exercise the migration only against this disposable test database.
   const missingProjectId=new mongoose.Types.ObjectId();await Project.collection.insertOne({_id:missingProjectId,projectName:'Legacy missing ID',projectCode:'MISSING-ID',status:'ARCHIVED',createdBy:admin._id});
   const {spawnSync}=await import('node:child_process'),migrationUri=new URL(process.env.CPM_TEST_MONGO_URI);migrationUri.pathname='/'+dbName;

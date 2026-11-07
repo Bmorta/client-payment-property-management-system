@@ -17,7 +17,7 @@ export async function listActivity(req, res, next) {
       const pattern = new RegExp(escape(String(req.query.q).slice(0,100)), "i");
       filter.$or = ["username", "description", "entityId", "action", "entityType"].map(key => ({ [key]: pattern }));
     }
-    const [total, rows] = await Promise.all([ActivityLog.countDocuments(filter), ActivityLog.find(filter).populate("userId", "username").sort({ createdAt: -1, _id: -1 }).skip((page-1)*limit).limit(limit).lean()]);
+    const [total, rows] = await Promise.all([ActivityLog.countDocuments(filter), ActivityLog.find(filter).populate("userId", "username").sort({ createdAt: -1, _id: -1 }).skip(req.listExport?0:(page-1)*limit).limit(req.listExport?0:limit).lean()]);
     res.json({ success: true, data: auditValues(rows), pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total/limit)) } });
   } catch (e) { next(e); }
 }

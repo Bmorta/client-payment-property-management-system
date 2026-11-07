@@ -22,7 +22,7 @@ async function agentFields(body){
 }
 export async function listAgents(req,res,next){try{
  const page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page)||1)),filter={};if(req.query.q)filter.$or=[{agentId:new RegExp(escaped(req.query.q),"i")},{fullName:new RegExp(escaped(req.query.q),"i")}];if(req.query.status){if(!["ACTIVE","INACTIVE"].includes(req.query.status))fail(400,"Invalid agent status.");filter.status=req.query.status}if(req.query.project){const project=id(req.query.project),assigned=await PropertyAssignment.distinct("commissionSnapshot.records.agent",{project});filter.$and=[{$or:[{assignedProjects:project},{_id:{$in:assigned.map(a=>id(a))}}]}]}
- const [rows,total]=await Promise.all([Agent.find(filter).populate("assignedProjects","projectName").sort({fullName:1,_id:1}).skip((page-1)*20).limit(20).lean(),Agent.countDocuments(filter)]);res.json({success:true,data:rows,total,page,pageSize:20});
+ const [rows,total]=await Promise.all([Agent.find(filter).populate("assignedProjects","projectName").sort({fullName:1,_id:1}).skip(req.listExport?0:(page-1)*20).limit(req.listExport?0:20).lean(),Agent.countDocuments(filter)]);res.json({success:true,data:rows,total,page,pageSize:20});
 }catch(e){next(e)}}
 export async function saveAgent(req,res,next){try{
  const data=await agentFields(req.body),entry={...actor(req),reason:reason(req)};let agent;
@@ -95,7 +95,7 @@ export async function listCommissions(req,res,next){try{
  const page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page)||1)),sort=["earningDate","earnedCents","unreleasedCents","latestReleaseDate"].includes(req.query.sort)?req.query.sort:"sequence",direction=req.query.direction==="asc"?1:-1;
  const totals=Object.fromEntries(["budgetCents","earnedCents","releasedCents","recoveredCents","unreleasedCents","awaitingCents","recoveryDueCents"].map(k=>[k,{$sum:`$${k}`}])) ;
  const summaryGroup={_id:null,...totals,pendingReleases:{$sum:{$cond:[{$gt:["$unreleasedCents",0]},1,0]}}};
- const [data]=await PropertyAssignment.aggregate([...commissionPipeline(req.query),{$sort:sort==="sequence"?{accountId:1,agent:1,period:1,commissionId:1}:{[sort]:direction,commissionId:1}},{$facet:{rows:[{$skip:(page-1)*20},{$limit:20}],total:[{$count:"count"}],summary:[{$group:summaryGroup}],budgets:[{$group:{_id:"$accountId",budget:{$first:"$propertyBudgetCents"}}},{$group:{_id:null,budget:{$sum:"$budget"}}}]}}]);
+ const [data]=await PropertyAssignment.aggregate([...commissionPipeline(req.query),{$sort:sort==="sequence"?{accountId:1,agent:1,period:1,commissionId:1}:{[sort]:direction,commissionId:1}},{$facet:{rows:req.listExport?[]:[{$skip:(page-1)*20},{$limit:20}],total:[{$count:"count"}],summary:[{$group:summaryGroup}],budgets:[{$group:{_id:"$accountId",budget:{$first:"$propertyBudgetCents"}}},{$group:{_id:null,budget:{$sum:"$budget"}}}]}}]);
  const summary={...(data?.summary[0]||{}),propertyBudgetCents:data?.budgets[0]?.budget||0};
  if(Object.entries(summary).some(([k,v])=>k!=="_id"&&!Number.isSafeInteger(v)))fail(409,"Commission summary exceeds supported centavo precision.");
  res.json({success:true,data:{rows:data?.rows||[],total:data?.total[0]?.count||0,summary,page,pageSize:20}});
