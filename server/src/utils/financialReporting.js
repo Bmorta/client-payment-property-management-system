@@ -20,8 +20,8 @@ const identity=value=>String(value?._id||value||'');
 const paymentText=r=>[r.paymentId,r.receiptNumber,r.client?.clientId,r.client?.firstName,r.client?.middleName,r.client?.lastName,r.project?.projectName,r.property?.propertyId,`Phase ${r.property?.phaseNumber} Block ${r.property?.blockNumber} Lot ${r.property?.lotNumber}`,r.reference].join(' ').toLowerCase();
 const expenseText=r=>[r.expenseId,r.category,r.description,r.payee,r.project?.projectName,r.reference].join(' ').toLowerCase();
 export function filterPayments(rows,query){
- const methods=parseMethods(query.methods),q=String(query.q||'').slice(0,100).toLowerCase();
- return rows.filter(p=>(!query.from||p.paymentDate>=query.from)&&(!query.to||p.paymentDate<=query.to)&&(!methods.length||methods.includes(p.method))&&(!query.client||identity(p.client)===query.client)&&(!query.project||identity(p.project)===query.project)&&(!query.status||p.status===query.status)&&paymentText(p).includes(q));
+ const methods=parseMethods(query.methods),q=String(query.q||'').slice(0,100).toLowerCase(),receipt=String(query.receipt||'').trim().toLowerCase();
+ return rows.filter(p=>(!query.from||p.paymentDate>=query.from)&&(!query.to||p.paymentDate<=query.to)&&(!methods.length||methods.includes(p.method))&&(!query.client||identity(p.client)===query.client)&&(!query.project||identity(p.project)===query.project)&&(!query.status||p.status===query.status)&&paymentText(p).includes(q)&&String(p.receiptNumber||'').toLowerCase().includes(receipt));
 }
 export function sorted(rows,key='date',direction='desc',section='collections'){
  const keys=section==='collections'?{date:'paymentDate',amount:'amountCents',id:'paymentId',client:'client'}:{date:'expenseDate',amount:'amountCents',id:'expenseId',description:'description'};

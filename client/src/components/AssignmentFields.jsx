@@ -39,7 +39,7 @@ export default function AssignmentFields({ value, onChange, refreshKey = 0, clie
     <div className="col-sm-6"><FieldLabel className="form-label w-100">Planned down payment (₱)<RequiredMark/><input className="form-control" type="number" min="0" step="0.01" required value={value.downPayment} onChange={e => set("downPayment", e.target.value)} /></FieldLabel></div>
     <div className="col-sm-6"><FieldLabel className="form-label w-100">Contract date<RequiredMark/><input className="form-control" type="date" required max={localDate()} value={value.contractDate} onChange={e => set("contractDate", e.target.value)} /></FieldLabel></div>
     <div className="col-sm-6"><FieldLabel className="form-label w-100">First installment due<RequiredMark/><input className="form-control" type="date" required min={value.contractDate} value={value.firstDueDate} onChange={e => set("firstDueDate", e.target.value)} /></FieldLabel></div>
-    <ContractTerms value={value} onChange={onChange}/>
+    <ContractTerms totalCents={totalCents} value={value} onChange={onChange}/>
     <div className="col-12"><PaymentEstimate monitoringTerms={value.monitoringTerms} monthlyInstallment={value.monthlyInstallment} totalCents={totalCents} months={value.months} termType={value.termType} downPayment={value.downPayment} firstDueDate={value.firstDueDate} contractDate={value.contractDate} propertyLabel={lot ? `Phase ${lot.phaseNumber} / Block ${lot.blockNumber} / Lot ${lot.lotNumber}` : ""} /></div>
     <p className="small text-secondary">The down payment is scheduled, not marked paid. Record actual money received through Payment.</p>
   </div>;

@@ -1,3 +1,4 @@
+import {validateMonthlyArrangement} from "../../../shared/contractTerms.js";
 import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
 import {financialRows,isPosted} from "../utils/financialReporting.js";
 import {expenseClassification} from "./cashLedgerController.js";
@@ -60,6 +61,7 @@ export async function assignProperty(req, res, next) {
     if (contractDate > today()) fail(400, "Contract date cannot be in the future.");
     const monitoringTerms=validateTerms(req.body.monitoringTerms,contractDate);
     if(monitoringTerms&&req.body.monthlyInstallment===undefined)fail(400,"Configure the monthly installment amount.");
+    if(monitoringTerms)validateMonthlyArrangement(totalCents,downPaymentCents,months,req.body.monthlyInstallment,req.body.monthlyOverrideAcknowledged);
     const schedule=configureSchedule(buildSchedule(totalCents,months,firstDueDate,downPaymentCents,contractDate),monitoringTerms,req.body.monthlyInstallment);
     if(schedule.some(s=>s.dueDate<contractDate))fail(400,"Due day cannot move an installment before the contract date.");
     if (await PropertyAssignment.exists({ property: propertyId })) fail(409, "This lot already has an account. Use that account instead.");
@@ -124,7 +126,7 @@ async function paymentRows() {
   return financialRows(accounts,[]).collections.sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
 }
 export async function listPayments(req, res, next) {
-  if(req.query.paged||req.query.format)return transactionReport(req,res,next);
+  if(req.query.paged||req.query.format||req.query.receipt!==undefined)return transactionReport(req,res,next);
   try { res.json({ success: true, data: await paymentRows() }); } catch (e) { next(e); }
 }
 export async function listExpenses(req, res, next) {
@@ -180,6 +182,7 @@ export async function updateAgreement(req, res, next) {
     const monitoringTerms=req.body.monitoringTerms===undefined?account.contract.monitoringTerms:validateTerms(req.body.monitoringTerms,account.contract.contractDate);
     if(account.contract.monitoringTerms && !monitoringTerms)fail(400,"Disable penalties through a preserved terms revision rather than removing configured terms.");
     if(monitoringTerms&&String(req.body.reason||"").trim().length<5)fail(400,"Enter a reason for changing contractual terms.");
+    if(monitoringTerms&&req.body.monthlyInstallment!==undefined)validateMonthlyArrangement(account.contract.totalCents,downPaymentCents,months,req.body.monthlyInstallment,req.body.monthlyOverrideAcknowledged);
     const schedule=configureSchedule(buildSchedule(account.contract.totalCents,months,req.body.firstDueDate,downPaymentCents,account.contract.contractDate),monitoringTerms,req.body.monthlyInstallment??(account.contract.monthlyInstallmentCents/100));
     if(schedule.some(s=>s.dueDate<account.contract.contractDate))fail(400,"Due day cannot move an installment before the contract date.");
     const contract = { ...account.contract, monitoringTerms, monthlyInstallmentCents:schedule.find(s=>s.installment>0)?.amountCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", downPaymentCents, firstDueDate:schedule.find(s=>s.installment>0)?.dueDate||req.body.firstDueDate, schedule };

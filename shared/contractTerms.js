@@ -21,3 +21,6 @@ export function configureSchedule(schedule,terms,monthlyAmount){
  if(monthlyAmount!==undefined){const cents=moneyCents(monthlyAmount),monthly=rows.filter(s=>s.installment>0),balance=monthly.reduce((n,s)=>n+s.amountCents,0);if(cents<=0||cents*(monthly.length-1)>=balance||cents*monthly.length<balance)fail("Monthly amount must cover the principal over the chosen term; only the final installment may be smaller.");rows=rows.map(s=>s.installment>0?{...s,amountCents:s.installment===monthly.length?balance-cents*(monthly.length-1):cents}:s)}
  return rows;
 }
+
+export function computedMonthly(totalCents,downPaymentCents,months){if(![totalCents,downPaymentCents].every(Number.isSafeInteger)||!Number.isSafeInteger(months)||months<1||totalCents<=downPaymentCents||downPaymentCents<0)return null;return Number((BigInt(totalCents-downPaymentCents)+BigInt(months)-1n)/BigInt(months))}
+export function validateMonthlyArrangement(total,dp,months,amount,acknowledged){const suggested=computedMonthly(total,dp,months);if(amount===undefined||suggested==null)return;const actual=moneyCents(amount);if(!Number.isSafeInteger(actual*months))fail('Monthly schedule exceeds supported centavo precision.');if(actual!==suggested&&actual*months!==total-dp&&acknowledged!==true)fail('Confirm the final-installment balancing arrangement for the manually entered monthly amount.');}

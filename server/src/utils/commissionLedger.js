@@ -33,7 +33,7 @@ export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
   }
  }
  // Removed agents/periods with historical earnings or payouts stay traceable.
- for(const old of previous)if(!records.some(r=>r.commissionId===old.commissionId))records.push({...old,budgetCents:0,earnedCents:0,collectedCents:0,sourceAllocations:[],retired:true});
+ for(const old of previous)if(!records.some(r=>r.commissionId===old.commissionId)&&!(agreement?.prunedCommissionIds||[]).includes(old.commissionId))records.push({...old,budgetCents:0,earnedCents:0,collectedCents:0,sourceAllocations:[],retired:true});
  for(const r of records){
   const released=payouts.filter(p=>p.commissionId===r.commissionId),old=previous.find(p=>p.commissionId===r.commissionId);
   r.releasedCents=released.reduce((n,p)=>n+p.amountCents,0);r.recoveredCents=(account.commissionRecoveries||[]).filter(p=>p.commissionId===r.commissionId&&(p.recoveryDate||"0000-00-00")<=asOf).reduce((n,p)=>n+p.amountCents,0);

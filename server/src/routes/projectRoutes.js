@@ -1,4 +1,4 @@
-import {mapInfo,getMap,saveMap,prepareMapUpload} from "../controllers/projectMapController.js";
+import {deleteMap,mapInfo,getMap,saveMap,prepareMapUpload} from "../controllers/projectMapController.js";
 import {exportProjectInventory} from "../controllers/inventoryExportController.js";
 import { auditMutation } from "../middleware/auditMutation.js";
 import { Router } from "express";
@@ -13,6 +13,7 @@ const router = Router();
 router.use(authenticate,(req,res,next)=>req.method==="PUT"&&req.path.endsWith("/map")?next():auditMutation(req,res,next));
 router.get("/:projectId/map/info",mapInfo);
 router.get("/:projectId/map",getMap);
+router.delete("/:projectId/map",authorize("ADMIN","STAFF"),deleteMap);
 router.put("/:projectId/map",authorize("ADMIN","STAFF"),prepareMapUpload,auditMutation,saveMap);
 router.get("/", listProjects);
 router.get("/:projectId/structure", listStructure);

@@ -16,3 +16,5 @@ export function previewCommission(contract,agents,termMonths){
  return agents.map(a=>{const totalCents=total.get(String(a.agent)),downPaymentCents=Math.min(totalCents,dp.get(String(a.agent))),remainingCents=totalCents-downPaymentCents,periods=splitCommission(remainingCents,termMonths);return {agent:String(a.agent),totalCents,downPaymentCents,remainingCents,monthlyCents:periods[0],finalCents:periods.at(-1),periods}});
 }
 export function percentageBps(value){const text=String(value);if(!/^\d+(\.\d{1,2})?$/.test(text))throw new Error('Use a percentage with up to two decimal places.');const [whole,fraction='']=text.split('.');const bps=Number(whole)*100+Number(fraction.padEnd(2,'0'));if(!Number.isSafeInteger(bps)||bps<0||bps>10000)throw new Error('Percentage must be between 0 and 100.');return bps}
+
+export const suggestedCommissionTerm=months=>Number.isSafeInteger(Number(months))&&Number(months)>0?(Number(months)<=12?Number(months):Number(months)>=48?30:24):null;

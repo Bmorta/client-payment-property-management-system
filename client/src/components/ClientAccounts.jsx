@@ -1,3 +1,4 @@
+import PaymentSchedulePrint from "./PaymentSchedulePrint.jsx";
 import {useSearchParams} from "react-router-dom";
 import PropertyPaymentDetails from "./PropertyPaymentDetails.jsx";
 import {RequiredNote} from "./FieldLabel.jsx";
@@ -31,7 +32,7 @@ export default function ClientAccounts({ client, refreshKey = 0 }) {
       <div className="d-flex flex-wrap gap-3 my-3"><span>Contract: {pesos(a.contract.totalCents)}</span><span>Paid: {pesos(a.summary.paidCents)}</span><span>Overdue: {pesos(a.summary.overdueCents)}</span><Link to={`/payment?account=${a._id}`} className="btn btn-sm btn-primary">Accept Payment</Link></div>
       {user?.role === "ADMIN" && <button type="button" className="btn btn-sm btn-outline-primary my-2" onClick={() => setEditingAgreement(a._id)}>Edit Payment Agreement</button>}
       {editingAgreement === a._id && <AgreementEditor key={`${a._id}/${a.__v}`} account={a} onClose={() => setEditingAgreement(null)} onSaved={() => {setEditingAgreement(null);setVersion(v=>v+1);setMessage("Agreement updated. Recorded payments are unchanged.")}} />}
-      <PropertyPaymentDetails account={a}/>
+      <PaymentSchedulePrint accountId={a._id}/><PropertyPaymentDetails account={a}/>
       <AccountMonitoringDetails account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
       <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Installment</th><th>Due date</th><th>Scheduled</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{a.summary.schedule.map(s => <tr key={s.installment}><td>{s.installment === 0 ? "Down payment" : s.installment}</td><td>{s.dueDate}</td><td>{pesos(s.amountCents)}</td><td>{pesos(s.paidCents)}</td><td>{pesos(s.balanceCents)}</td><td>{!s.balanceCents ? "Paid" : s.penaltyReview ? "Overdue >10 days" : s.overdue ? "Overdue" : "Scheduled"}</td></tr>)}</tbody></table></div>
       <PropertyPaymentHistory account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
