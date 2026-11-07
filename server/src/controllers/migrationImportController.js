@@ -1,3 +1,4 @@
+import {migrationTemplate,migrationColumns} from "../utils/migrationTemplates.js";
 import MigrationConfig from '../models/MigrationConfig.js';
 import ExcelJS from 'exceljs';
 import {inflateRawSync} from 'node:zlib';
@@ -6,8 +7,7 @@ import PropertyAssignment from '../models/PropertyAssignment.js';
 import {actor,newRow,duplicates} from '../services/migrationService.js';
 import {assertVersion,normalizeMigrationRow,hash,fail,clean,migrationContext} from '../utils/migrationRules.js';
 import {moneyCents} from '../utils/accounting.js';
-const columns=['Contract Reference','Record Type','Original Date','Receipt Number','Issuing Series','Payment Type','Payment Method','Funding Account','Amount PHP','Reference Number','Remarks','Source Document Type','Document Reference','Installment','Assessment ID','Commission ID','Earned PHP','Release Date','Client ID','Contract Price PHP','Agreed DP PHP','Term Months','Contract Date','First Due Date'];
-const types={clients:'CLIENT',contracts:'CONTRACT',payments:'PAYMENT','down-payments':'PAYMENT',penalties:'PENALTY_ASSESSMENT',commissions:'COMMISSION'};
+const columns=migrationColumns;
 const iso=value=>{if(value instanceof Date)return value.toISOString().slice(0,10);return String(value??'').trim()};
 const cellText=value=>{if(value&&typeof value==='object'){if(value.formula||value.sharedFormula)fail('Formula cells are not accepted. Paste the original values.');if(value.richText)return value.richText.map(x=>x.text).join('');if(value.text)return value.text;}return value??''};
 // Inspect ZIP metadata before ExcelJS expands it to reject archive bombs,
@@ -29,16 +29,11 @@ export function validateWorkbookArchive(bytes){
   pos+=46+n+extra+comment;
  }if(pos>end)fail('Malformed Excel archive.');
 }
-export async function template(req,res,next){try{
- const type=types[req.params.type];if(!type)fail('Unknown historical template.');const book=new ExcelJS.Workbook(),guide=book.addWorksheet('Instructions');
- ['Historical staging only: uploading never posts live financial records.','Use the registered Contract Reference (CTR-...) for the account selected in migration.','One account per upload; up to 500 rows. Split workbooks by client-property contract.','Receipt numbers, issuing series and references must be text to preserve leading zeros.','Dates: YYYY-MM-DD, original effective dates on/before cutoff. Amounts: PHP, up to two decimal places.','Types: PAYMENT, PENALTY_ASSESSMENT, PENALTY_WAIVER, COMMISSION, CLIENT, CONTRACT.','Payments: DOWN_PAYMENT / INSTALLMENT / PENALTY / OTHER. Methods: CASH, GCASH, MAYA, BANK_TRANSFER, BANK_DEPOSIT, CHECK, OTHER.','CLIENT/CONTRACT sheets verify source details against registered records. Create missing clients/contracts through existing audited forms first.','Commission Amount PHP is the actual payout for that release date (0 if earned but unreleased); Earned PHP is the documented total earned for that commission period.','For waivers, Assessment ID is HPA-<staged assessment row ID>. Penalty assessment rows require installment, amount, date, document and reason.','Each commission payout needs its own row/date and document. No automatic historical payouts are invented.','Duplicate suspects require administrator review. Reused receipt + issuing series cannot be overridden.'].forEach(x=>guide.addRow([x]));guide.getColumn(1).width=120;guide.eachRow(r=>r.alignment={wrapText:true});
- const sheet=book.addWorksheet('Records');sheet.addRow(columns);sheet.getRow(1).font={bold:true};sheet.columns.forEach(c=>c.width=24);for(const c of [1,3,4,5,10,13,15,16,18,19,23,24])sheet.getColumn(c).numFmt='@';sheet.views=[{state:'frozen',ySplit:1}];sheet.autoFilter='A1:X1';sheet.getCell('B2').value=type;if(req.params.type==='down-payments')sheet.getCell('F2').value='DOWN_PAYMENT';else if(type==='PAYMENT')sheet.getCell('F2').value='INSTALLMENT';
- res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment(`historical-${req.params.type}.xlsx`).send(Buffer.from(await book.xlsx.writeBuffer()));
-}catch(e){next(e)}}
+export async function template(req,res,next){try{const book=migrationTemplate(req.params.type);res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment(`historical-${req.params.type}.xlsx`).send(Buffer.from(await book.xlsx.writeBuffer()));}catch(e){next(e)}}
 export async function parseImport(req,batch){
  const name=clean(req.body.filename,120);if(!/\.xlsx$/i.test(name))fail('Use .xlsx; .xls and macro-enabled workbooks are unsupported.');const bytes=Buffer.from(String(req.body.base64||''),'base64');validateWorkbookArchive(bytes);
  const fileHash=hash(bytes),book=new ExcelJS.Workbook();try{await book.xlsx.load(bytes)}catch{fail('Excel file could not be parsed. No records were saved.')}
- const sheet=book.getWorksheet('Records');if(!sheet||sheet.rowCount>501)fail('Use the Records sheet with no more than 500 historical rows.');
+ const sheet=book.getWorksheet('Data Entry')||book.getWorksheet('Records');if(!sheet||sheet.rowCount>501)fail('Use the Data Entry sheet with no more than 500 historical rows (legacy Records sheets are supported).');
  for(let c=1;c<=columns.length;c++)if(cellText(sheet.getRow(1).getCell(c).value)!==columns[c-1])fail(`Template column ${c} must be ${columns[c-1]}.`);
  const a=await PropertyAssignment.findById(batch.account).lean(),rows=[];
  for(let n=2;n<=sheet.rowCount;n++){

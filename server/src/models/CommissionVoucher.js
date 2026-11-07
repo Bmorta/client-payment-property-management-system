@@ -1,0 +1,3 @@
+import mongoose from 'mongoose';
+const schema=new mongoose.Schema({voucherNumber:{type:String,required:true,unique:true},requestKey:{type:String,required:true,unique:true},signature:{type:String,required:true},requestBatch:{type:String,index:true},approvalState:{type:String,enum:['DRAFT','PENDING_APPROVAL','APPROVED','CANCELLED'],default:'DRAFT'},voucherDate:String,method:String,remarks:String,agent:String,agentId:String,agentName:String,brand:mongoose.Schema.Types.Mixed,entries:[mongoose.Schema.Types.Mixed],preparedBy:mongoose.Schema.Types.Mixed,approvedBy:mongoose.Schema.Types.Mixed,history:[mongoose.Schema.Types.Mixed],paymentIntent:{type:mongoose.Schema.Types.Mixed,default:null}},{timestamps:true});
+export default mongoose.model('CommissionVoucher',schema);

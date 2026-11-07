@@ -1,3 +1,4 @@
+import CommissionVoucher from '../models/CommissionVoucher.js';
 import Company from "../models/Company.js";
 import MigrationBatch from "../models/MigrationBatch.js";
 import MigrationConfig from "../models/MigrationConfig.js";
@@ -21,7 +22,7 @@ function target(req) {
   if (base.endsWith("/companies")){model=Company;module="Companies";filter=one(parts[0]);}
   if (base.endsWith("/migration")){model=parts[0]==="config"?MigrationConfig:MigrationBatch;module="Historical Data Migration";filter=parts[0]==="config"?{_id:"OFFICE"}:one(parts[1]);}
   if (base.endsWith("/agents")){model=Agent;module="Agents";filter=one(parts[0]);}
-  if (base.endsWith("/commissions")){model=PropertyAssignment;module="Commissions";filter=one(parts[1]);}
+  if (base.endsWith("/commissions")){model=parts[0]==="vouchers"?CommissionVoucher:PropertyAssignment;module=parts[0]==="vouchers"?"Commission Vouchers":"Commissions";filter=one(parts[1]);}
   if (base.endsWith("/users")) { model = User; module = "Users"; filter = one(parts[0]); }
   if (base.endsWith("/clients")) {
     model = parts.includes("assignments") ? Property : Client; module = parts.includes("assignments") ? "Payment Agreements" : "Clients";

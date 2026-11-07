@@ -1,3 +1,4 @@
+import {printCompanyName} from "../../../shared/printIdentity.js";
 import {brandExcel,brandPdf} from "../services/companyBranding.js";
 import {lotPrice} from "./lotPricing.js";
 import ExcelJS from 'exceljs';
@@ -17,7 +18,7 @@ export function makeListReport(module,records,filters={},summary){
  const config=Object.hasOwn(reportModules,module)?reportModules[module]:null;if(!config)throw Object.assign(new Error('Unknown report.'),{statusCode:404});
  const q=module==='users'?String(filters.q||'').trim().toLowerCase():String(filters.q||'').toLowerCase();
  const matching=config.search?records.filter(r=>{const text=config.search(r);return Array.isArray(text)?text.some(v=>v.toLowerCase().includes(q)):text.toLowerCase().includes(q)}):records;
- return {title:config.title,companyName:process.env.COMPANY_NAME||'Client Payment & Property Management System',generatedOn:timestamp(new Date()),filters,count:matching.length,headers:config.headers,rows:matching.map(r=>config.row(r).map(v=>v??'')),...(summary?{summary}: {})};
+ return {title:config.title,companyName:printCompanyName(process.env.COMPANY_NAME),generatedOn:timestamp(new Date()),filters,count:matching.length,headers:config.headers,rows:matching.map(r=>config.row(r).map(v=>v??'')),...(summary?{summary}: {})};
 }
 const summaryLabels={propertyBudgetCents:'Property Commission Budget PHP',budgetCents:'Assigned Commission PHP',earnedCents:'Earned Commission PHP',releasedCents:'Released (gross) PHP',unreleasedCents:'Earned Unreleased PHP',awaitingCents:'Awaiting Buyer Payment PHP',recoveredCents:'Recovered PHP',recoveryDueCents:'Recovery Due PHP',pendingReleases:'Pending Releases'};
 export const summaryRows=report=>Object.entries(report.summary||{}).filter(([key])=>summaryLabels[key]).map(([key,value])=>[summaryLabels[key],key.endsWith('Cents')?value/100:value]);

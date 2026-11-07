@@ -1,3 +1,4 @@
+import CommissionVoucher from '../models/CommissionVoucher.js';
 import CashLedgerEntry from "../models/CashLedgerEntry.js";
 import Project from '../models/Project.js';
 import Expense from '../models/Expense.js';
@@ -8,7 +9,7 @@ import Agent from '../models/Agent.js';
 import Client from '../models/Client.js';
 import PropertyAssignment from '../models/PropertyAssignment.js';
 import SequenceCounter from '../models/SequenceCounter.js';
-const definitions={cashEntry:[CashLedgerEntry,"entryId","CSH"],project:[Project,'projectId','PRJ'],expense:[Expense,'expenseId','EXP'],phase:[Phase,'phaseId','PHS'],block:[Block,'blockId','BLK'],property:[Property,'propertyId','PROP'],contract:[PropertyAssignment,'assignmentId','CTR'],agent:[Agent,'agentId','AGT'],client:[Client,'clientId','CL'],payment:[PropertyAssignment,'payments.paymentId','PAY','payments'],commissionPayout:[PropertyAssignment,'commissionPayouts.payoutId','CPY','commissionPayouts'],request:[PropertyAssignment,'correctionRequests.requestNumber','REQ','correctionRequests']};
+const definitions={commissionVoucher:[CommissionVoucher,"voucherNumber","CV"],cashEntry:[CashLedgerEntry,"entryId","CSH"],project:[Project,'projectId','PRJ'],expense:[Expense,'expenseId','EXP'],phase:[Phase,'phaseId','PHS'],block:[Block,'blockId','BLK'],property:[Property,'propertyId','PROP'],contract:[PropertyAssignment,'assignmentId','CTR'],agent:[Agent,'agentId','AGT'],client:[Client,'clientId','CL'],payment:[PropertyAssignment,'payments.paymentId','PAY','payments'],commissionPayout:[PropertyAssignment,'commissionPayouts.payoutId','CPY','commissionPayouts'],request:[PropertyAssignment,'correctionRequests.requestNumber','REQ','correctionRequests']};
 // Reconcile legacy numeric sequences before atomic increments. Gaps are allowed;
 // archived/deleted IDs are never returned to the counter. Receipts are external.
 export async function generateRecordId(type){

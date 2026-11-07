@@ -1,0 +1,21 @@
+import ExcelJS from 'exceljs';
+import {brandExcel} from '../services/companyBranding.js';
+const headers=['Installment','Due Date','Scheduled Amount','Amount Paid','Payment Date(s)','Mode of Payment','Remaining Balance','Payment Status'];
+const date=v=>v?new Date(`${v}T00:00:00Z`):null;
+export function scheduleWorkbook(data){
+ const book=new ExcelJS.Workbook(),summary=book.addWorksheet('Summary');summary.addRow(['Client Payment Schedules',data.generatedOn]);summary.addRow(['Account','Client ID','Client','Company','Project','Property','Original TCP','Agreed DP','TCP After DP','Total Received','Principal Paid','Outstanding Principal','Outstanding Penalties']);
+ const used=new Set(['summary']);
+ for(const a of data.accounts){const c=a.contract,s=a.summary,name=[a.client?.firstName,a.client?.middleName,a.client?.lastName,a.client?.suffix].filter(Boolean).join(' '),property=`Phase ${a.property?.phaseNumber} / Block ${a.property?.blockNumber} / Lot ${a.property?.lotNumber}`;
+  summary.addRow([a.assignmentId,a.client?.clientId,name,a.companyName||'',a.project?.projectName||'',property,c.totalCents/100,c.downPaymentCents/100,c.tcpAfterDownPaymentCents/100,s.totalCollectedCents/100,s.paidCents/100,s.balanceCents/100,s.outstandingPenaltyCents/100]);
+  let base=String(a.assignmentId||'Account').replace(/[\\/*?:\[\]]/g,'_').replace(/^'+|'+$/g,'').slice(0,25)||'Account',sheetName=base,n=1;while(used.has(sheetName.toLowerCase()))sheetName=`${base.slice(0,25)}_${n++}`;used.add(sheetName.toLowerCase());
+  const sheet=book.addWorksheet(sheetName);sheet.addRow([a.companyName||'']);sheet.addRow(['Client Payment Schedule']);
+  for(const row of [['Client',name],['Client ID',a.client?.clientId],['Contact',a.client?.contactNumber||''],['Project',a.project?.projectName||''],['Property',property],['Contract / Account',a.assignmentId],['Contract Date',date(c.contractDate)],['Original TCP',c.totalCents/100],['Agreed Down Payment',c.downPaymentCents/100],['TCP After Down Payment',c.tcpAfterDownPaymentCents/100],['Monthly Installment',c.monthlyInstallmentCents/100],['Payment Term (months)',c.months],['Total Received',s.totalCollectedCents/100],['Outstanding Principal',s.balanceCents/100],['Outstanding Penalties',s.outstandingPenaltyCents/100]]){const r=sheet.addRow(row);if(typeof row[1]==='number'&&row[0]!=='Payment Term (months)')r.getCell(2).numFmt='"₱"#,##0.00';if(row[1] instanceof Date)r.getCell(2).numFmt='mmm d, yyyy'}
+  sheet.addRow([]);const header=sheet.addRow(headers),first=header.number+1;
+  for(const r of a.schedule){const dates=r.paymentDates||[r.lastPaidDate].filter(Boolean);const row=sheet.addRow([r.installment===0?'Down Payment':r.installment,date(r.dueDate),r.amountCents/100,r.paidCents/100,dates.length===1?date(dates[0]):dates.join(', '),r.paymentMethods?.join(', ')||'—',r.balanceCents/100,r.status]);row.getCell(2).numFmt='mmm d, yyyy';if(dates.length===1)row.getCell(5).numFmt='mmm d, yyyy';}
+  const last=sheet.rowCount,total=sheet.addRow(['TOTAL',null,null,null,null,null,null]);for(const col of [3,4,7])total.getCell(col).value={formula:`SUM(${String.fromCharCode(64+col)}${first}:${String.fromCharCode(64+col)}${last})`,result:a.schedule.reduce((sum,r)=>sum+[r.amountCents,r.paidCents,r.balanceCents][[3,4,7].indexOf(col)],0)/100};
+  for(const col of [3,4,7])sheet.getColumn(col).numFmt='"₱"#,##0.00';sheet.getColumn(2).width=30;sheet.getColumn(5).numFmt='mmm d, yyyy';sheet.columns.forEach((col,i)=>col.width=[4,5,7].includes(i)?34:24);
+  header.font={bold:true};header.eachCell(cell=>{cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE6EDF7'}}});sheet.eachRow((r,n)=>{r.alignment={vertical:'top',wrapText:true};if(n>=header.number)r.eachCell(cell=>cell.border={bottom:{style:'thin',color:{argb:'FFD4DCE7'}}})});
+  sheet.autoFilter={from:{row:header.number,column:1},to:{row:last,column:8}};sheet.views=[{state:'frozen',ySplit:header.number}];sheet.pageSetup={orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:`1:${header.number}`};brandExcel(book,sheet,a);
+ }
+ summary.columns.forEach((c,i)=>{c.width=i<6?30:24;if(i>=6)c.numFmt='"₱"#,##0.00'});summary.getRow(2).font={bold:true};summary.views=[{state:'frozen',ySplit:2}];summary.autoFilter={from:{row:2,column:1},to:{row:Math.max(2,summary.rowCount),column:13}};return book;
+}
