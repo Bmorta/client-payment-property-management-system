@@ -5,6 +5,7 @@ const paymentSchema = new Schema({
   origin:{type:String,enum:["LIVE","HISTORICAL"],default:"LIVE",immutable:true}, migrationBatchId:String, migrationRowId:String,
   fundingAccount:{type:String,enum:["CASH","NONCASH",null],default:null}, receiptScope: String, configuration: Schema.Types.Mixed,
   type: {type:String,enum:["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY","OTHER"],default:"AUTO"},
+  paymentIntent:Schema.Types.Mixed,submissionHash:String,batchReference:String,groupRequestId:String,batchAcknowledgment:Schema.Types.Mixed,notesMode:String,monthsToPay:Number,
   allocations: {type:[Schema.Types.Mixed],default:[]},
   revisions: {type:[Schema.Types.Mixed],default:[]},
   agreementVersion: { type: Number, default: 1 },

@@ -1,3 +1,5 @@
+import {consolidatedReport,allocationDetail,penaltyMonitoring} from '../controllers/accountReportingController.js';
+import {previewIntent,postIntent,intentContext,quoteInstallments,getBatch,intentStatus} from '../controllers/paymentIntentController.js';
 import {getPaymentContext} from '../controllers/financeController.js';
 import {propertySummary} from '../controllers/inventorySummaryController.js';
 import {migrationPaymentGuard} from "../middleware/migrationPaymentGuard.js";
@@ -16,6 +18,8 @@ import { authorize } from "../middleware/authorize.js";
 import { listAccounts, acceptPayment, listPayments, listExpenses, createExpense, report, updateAgreement, getAccount, previewPayment, exportMonitoringReport, exportPaymentRegister, dashboardAnalytics } from "../controllers/financeController.js";
 const router = Router();
 router.use(authenticate, auditMutation);
+router.get("/clients/:clientId/consolidated",consolidatedReport);router.get("/accounts/:id/payments/:paymentId/allocation",allocationDetail);router.get("/penalty-monitoring",penaltyMonitoring);
+router.get("/payment-intents/status/:requestId",intentStatus);router.get("/payment-intents/context",intentContext);router.post("/payment-intents/preview",authorize("ADMIN","STAFF"),previewIntent);router.post("/payment-intents",authorize("ADMIN","STAFF"),postIntent);router.get("/payment-batches/:reference",getBatch);router.get("/accounts/:id/installment-quote",quoteInstallments);
 router.get("/payments/context",getPaymentContext);
 router.get("/property-summary",propertySummary);
 router.get("/schedule-print/preview",schedulePrintPreview);

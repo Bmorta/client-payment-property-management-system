@@ -1,3 +1,4 @@
+import ConsolidatedClientAccount from './ConsolidatedClientAccount.jsx';
 import PaymentSchedulePrint from "./PaymentSchedulePrint.jsx";
 import {useSearchParams} from "react-router-dom";
 import PropertyPaymentDetails from "./PropertyPaymentDetails.jsx";
@@ -14,6 +15,7 @@ import CenterPopup from "./CenterPopup.jsx";
 import { pesos, clientName, lotName } from "../utils/finance.js";
 export default function ClientAccounts({ client, refreshKey = 0 }) {
   const { user } = useAuth();const [params,setParams]=useSearchParams();
+  const [allProperties,setAllProperties]=useState(false);
   const [editingAgreement,setEditingAgreement]=useState(null);
   const [accounts, setAccounts] = useState([]), [form, setForm] = useState(blankAssignment), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [error, setError] = useState(""), [version, setVersion] = useState(0);
   useEffect(() => { let cancelled = false; setLoading(true); api.get(`/finance/accounts?client=${client._id}`).then(({ data }) => { if (!cancelled) {setAccounts(data.data);if(!params.get("account")&&data.data[0])setParams({account:data.data[0]._id},{replace:true});} }).catch(e => { if (!cancelled) setError(e.response?.data?.message || "Unable to load client accounts."); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [client._id, version, refreshKey]);
@@ -24,10 +26,10 @@ export default function ClientAccounts({ client, refreshKey = 0 }) {
     catch(e) { setError(e.response?.data?.message || "Unable to assign lot. Refresh accounts before retrying."); }
     finally { setBusy(false); }
   };
-  return <section className="card border-0 shadow-sm mt-4"><div className="card-body">
+  return <section className="card border-0 shadow-sm mt-4"><div className="card-body"><div className="d-flex gap-2 mb-3"><button type="button" className={allProperties?'btn btn-outline-primary':'btn btn-primary'} onClick={()=>setAllProperties(false)}>Individual Property View</button><button type="button" className={allProperties?'btn btn-primary':'btn btn-outline-primary'} onClick={()=>setAllProperties(true)}>View All Properties / Consolidated Account</button></div>{allProperties&&<ConsolidatedClientAccount clientId={client._id} refreshKey={version+refreshKey} onSaved={m=>{setMessage(m);setVersion(v=>v+1)}}/>}
     <h2 className="h5 fw-bold">Properties & accounts — {clientName(client)}</h2>
     <CenterPopup message={message} error={error} onClose={() => { setMessage(""); setError(""); }} />
-    {loading ? <p role="status">Loading accounts...</p> : !accounts.length ? <p className="text-secondary">No assigned lots yet.</p> : accounts.map(a => <details key={a._id} className="border rounded p-3 mb-3" open={params.get("account")===a._id} onToggle={e=>{if(e.currentTarget.open&&params.get("account")!==a._id)setParams({account:a._id},{replace:true})}}>
+    {loading ? <p role="status">Loading accounts...</p> : !accounts.length ? <p className="text-secondary">No assigned lots yet.</p> : !allProperties&&accounts.map(a => <details key={a._id} className="border rounded p-3 mb-3" open={params.get("account")===a._id} onToggle={e=>{if(e.currentTarget.open&&params.get("account")!==a._id)setParams({account:a._id},{replace:true})}}>
       <summary><strong>{a.project?.projectName} — {lotName(a.property)}</strong><span className="d-block small mt-1">{a.assignmentId} · {a.contract.termType === "CUSTOM" ? "Custom " : ""}{a.contract.months} months · Balance {pesos(a.summary.balanceCents)} · {a.summary.alert.replaceAll("_", " ")}</span></summary>
       {a.migrationProgress&&!a.migration&&<p className="alert alert-warning small">Historical migration: {a.migrationProgress.status.replaceAll("_"," ")} · Cutoff {a.migrationProgress.cutoffDate}. Drafts have not been posted to this live ledger.</p>}{a.migration&&<p className="alert alert-info small">Historical migration: Completed · Cutoff {a.migration.cutoffDate} · Documented status {a.migration.historicalStatus}. Original financial dates are preserved.</p>}<div className="d-flex flex-wrap gap-3 my-3"><span>Contract: {pesos(a.contract.totalCents)}</span><span>Paid: {pesos(a.summary.paidCents)}</span><span>Overdue: {pesos(a.summary.overdueCents)}</span><Link to={`/payment?account=${a._id}`} className="btn btn-sm btn-primary">Accept Payment</Link></div>
       {user?.role === "ADMIN" && <button type="button" className="btn btn-sm btn-outline-primary my-2" onClick={() => setEditingAgreement(a._id)}>Edit Payment Agreement</button>}
