@@ -13,7 +13,7 @@ import CenterPopup from "./CenterPopup.jsx";
 import { lotName } from "../utils/finance.js";
 export default function AgreementEditor({ account, onSaved, onClose, showPaymentPolicy=false }) {
   const reasonId=useId(),editorRef=useRef(null);useEffect(()=>revealTarget(editorRef.current),[]);
-  const [form, setForm] = useState(() => ({ months: String(account.contract.months), termType: account.contract.termType === "CUSTOM" || !TERMS.includes(account.contract.months) ? "CUSTOM" : "PREDEFINED", downPayment: String(account.contract.downPaymentCents / 100), monitoringTerms:account.contract.monitoringTerms||null,monthlyInstallment:String((account.contract.monthlyInstallmentCents||account.contract.schedule.find(s=>s.installment>0)?.amountCents||0)/100),reason:"",firstDueDate: account.contract.firstDueDate }));
+  const [form, setForm] = useState(() => ({ contractDate:account.contract.contractDate,months: String(account.contract.months), termType: account.contract.termType === "CUSTOM" || !TERMS.includes(account.contract.months) ? "CUSTOM" : "PREDEFINED", downPayment: String(account.contract.downPaymentCents / 100), monitoringTerms:account.contract.monitoringTerms||null,monthlyInstallment:String((account.contract.monthlyInstallmentCents||account.contract.schedule.find(s=>s.installment>0)?.amountCents||0)/100),reason:"",firstDueDate: account.contract.firstDueDate }));
   const [confirm,setConfirm]=useState(false),[error,setError]=useState(""),[busy,setBusy]=useState(false);
   const review = e => {
     e.preventDefault();

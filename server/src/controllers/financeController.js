@@ -65,7 +65,7 @@ export async function assignProperty(req, res, next) {
     const firstDueDate = req.body.firstDueDate, contractDate = req.body.contractDate;
     const downPaymentCents = moneyCents(req.body.downPayment || 0);
     if (contractDate > today()) fail(400, "Contract date cannot be in the future.");
-    const monitoringTerms=validateTerms(req.body.monitoringTerms,contractDate);
+    const monitoringTerms=validateTerms(req.body.monitoringTerms?{...req.body.monitoringTerms,effectiveDate:contractDate}:null,contractDate);
     if(monitoringTerms&&req.body.monthlyInstallment===undefined)fail(400,"Configure the monthly installment amount.");
     if(monitoringTerms)validateMonthlyArrangement(totalCents,downPaymentCents,months,req.body.monthlyInstallment,req.body.monthlyOverrideAcknowledged);
     const schedule=configureSchedule(buildSchedule(totalCents,months,firstDueDate,downPaymentCents,contractDate),monitoringTerms,req.body.monthlyInstallment);

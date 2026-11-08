@@ -9,8 +9,8 @@ export function validateTerms(input,contractDate){
  const rate=moneyCents(input.penaltyPercentage);if(rate>10000)fail("Penalty percentage must be between 0 and 100.");
  const terms={pendingPaymentPolicy:input.pendingPaymentPolicy===true,dueDay:integer("dueDay",1,31),graceDays:integer("graceDays",0,366),penaltyRateBps:rate,penaltyPercentage:rate/100,
   forfeitureMonths:integer("forfeitureMonths",1,1200),criticalMonths:integer("criticalMonths",0,1200),reminderDays:integer("reminderDays",0,366),
-  penaltyStatus:input.penaltyStatus,penaltyBasis:input.penaltyBasis,allocationPriority:input.allocationPriority,frequency:input.frequency,effectiveDate:input.effectiveDate};
- if(terms.pendingPaymentPolicy){if(terms.penaltyStatus!=="DISABLED"||terms.penaltyBasis||terms.allocationPriority||terms.frequency!=="MONTHLY")fail("Pending payment policies must remain disabled with no invented basis or allocation priority.");terms.penaltyBasis=null;terms.allocationPriority=null;}
+  penaltyStatus:input.penaltyStatus||"ACTIVE",penaltyBasis:input.penaltyBasis,allocationPriority:input.allocationPriority,frequency:input.frequency,effectiveDate:input.effectiveDate||contractDate};
+ if(terms.pendingPaymentPolicy){if(!["ACTIVE","DISABLED"].includes(terms.penaltyStatus)||terms.penaltyBasis||terms.allocationPriority||terms.frequency!=="MONTHLY")fail("Choose a penalty basis in Payments; an unfinished policy cannot contain a basis or allocation priority.");terms.penaltyBasis=null;terms.allocationPriority=null;}
  else if(!["ACTIVE","WAIVED","DISABLED"].includes(terms.penaltyStatus)||!["FULL_INSTALLMENT","UNPAID_BALANCE"].includes(terms.penaltyBasis)||!["PRINCIPAL_FIRST","PENALTY_FIRST"].includes(terms.allocationPriority)||terms.frequency!=="MONTHLY")fail("Choose explicit penalty status, basis, monthly frequency and allocation priority.");
  if(!validDate(terms.effectiveDate)||terms.effectiveDate<contractDate||terms.criticalMonths>=terms.forfeitureMonths)fail("Check effective date and set critical months below the forfeiture review threshold.");
  return terms;

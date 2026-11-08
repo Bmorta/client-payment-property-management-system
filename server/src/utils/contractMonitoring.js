@@ -1,3 +1,4 @@
+import {penaltyPolicies} from "../../../shared/penaltyPolicy.js";
 import {monthDate} from "../../../shared/paymentSchedule.js";
 import {calendarDay,addDays} from "../../../shared/contractTerms.js";
 export {calendarDay,addDays,validateTerms,configureSchedule} from "../../../shared/contractTerms.js";
@@ -7,7 +8,7 @@ const roundedPenalty=(cents,bps)=>Number((BigInt(cents)*BigInt(bps)+5000n)/10000
 export function calculateLedger(account,payments,asOf=calendarDay()){
  const contract=account.contract,terms=contract.monitoringTerms;
  const closedHistorical=asOf>=(account.migration?.cutoffDate||"9999-12-31")&&["CANCELLED","FORFEITED","TRANSFERRED","FULLY_PAID"].includes(account.migration?.historicalStatus);
- const policies=[...(account.agreementHistory||[]).map(h=>h.contract?.monitoringTerms),terms].filter(Boolean).map((p,i)=>({...p,order:i})).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate)||a.order-b.order);
+ const policies=penaltyPolicies(account).map((p,i)=>({...p,order:i})).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate)||a.order-b.order);
  const policyAt=date=>policies.filter(p=>p.effectiveDate<=date).at(-1);
  const schedule=contract.schedule.map(s=>({...s,contractId:account.assignmentId||String(account._id||""),installmentId:`I${s.installment}`,paidCents:0,balanceCents:s.amountCents,advanceAmountCents:0}));
  const dueEvents=[];
@@ -19,7 +20,7 @@ export function calculateLedger(account,payments,asOf=calendarDay()){
   for(let n=0;n<120000;n++){
    const date=monthDate(start,n);if(date>asOf)break;
    const p=policyAt(date);
-   if(!["CANCELLED","FORFEITED","TRANSFERRED","FULLY_PAID"].includes(account.migration?.historicalStatus)&&(!account.migration?.cutoffDate||date>account.migration.cutoffDate)&&p?.penaltyStatus==="ACTIVE"&&date>addDays(s.dueDate,p.graceDays))dueEvents.push({date,kind:"ASSESS",s,p,key:`${s.installmentId}:${date}`});
+   if(!["CANCELLED","FORFEITED","TRANSFERRED","FULLY_PAID"].includes(account.migration?.historicalStatus)&&(!account.migration?.cutoffDate||date>account.migration.cutoffDate)&&p?.penaltyStatus==="ACTIVE"&&["FULL_INSTALLMENT","UNPAID_BALANCE"].includes(p.penaltyBasis)&&date>addDays(s.dueDate,p.graceDays))dueEvents.push({date,kind:"ASSESS",s,p,key:`${s.installmentId}:${date}`});
   }
  }
  const effective=payments.filter(p=>p.paymentDate<=asOf).sort((a,b)=>a.paymentDate.localeCompare(b.paymentDate)||new Date(a.createdAt||0)-new Date(b.createdAt||0)||String(a.paymentId).localeCompare(String(b.paymentId)));
@@ -35,7 +36,7 @@ export function calculateLedger(account,payments,asOf=calendarDay()){
    const {s,p,key,date}=event;if(s.balanceCents<=0)continue;
    const basisCents=p.penaltyBasis==="FULL_INSTALLMENT"?s.amountCents:s.balanceCents;
    const amountCents=roundedPenalty(basisCents,p.penaltyRateBps);
-   if(amountCents){const waivedCents=Math.min(amountCents,waivers.filter(w=>w.assessmentId===key).reduce((n,w)=>n+w.amountCents,0));assessments.push({assessmentId:key,installmentId:s.installmentId,installment:s.installment,dueDate:s.dueDate,cycleDate:date,basisCents,rateBps:p.penaltyRateBps,amountCents,waivedCents,paidCents:0,balanceCents:amountCents-waivedCents})}
+   if(amountCents){const waivedCents=Math.min(amountCents,waivers.filter(w=>w.assessmentId===key).reduce((n,w)=>n+w.amountCents,0));assessments.push({assessmentId:key,installmentId:s.installmentId,installment:s.installment,dueDate:s.dueDate,cycleDate:date,penaltyBasis:p.penaltyBasis,basisCents,rateBps:p.penaltyRateBps,amountCents,waivedCents,paidCents:0,balanceCents:amountCents-waivedCents})}
    continue;
   }
   const p=event.p,rows=[];let remaining=p.amountCents;

@@ -42,7 +42,7 @@ test('transaction allocation override is validated, audited in payment data, and
 
 test('pending policies never invent an active penalty basis or non-monthly frequency',()=>{
  const input={dueDay:5,graceDays:5,penaltyPercentage:3,forfeitureMonths:3,criticalMonths:2,reminderDays:5,effectiveDate:'2026-01-01',pendingPaymentPolicy:true,penaltyStatus:'DISABLED',penaltyBasis:null,allocationPriority:null,frequency:'MONTHLY'};
- const result=validateTerms(input,'2026-01-01');assert.equal(result.penaltyBasis,null);assert.equal(result.penaltyStatus,'DISABLED');assert.throws(()=>validateTerms({...input,penaltyStatus:'ACTIVE'},'2026-01-01'));assert.throws(()=>validateTerms({...input,frequency:'DAILY'},'2026-01-01'));
+ const result=validateTerms(input,'2026-01-01');assert.equal(result.penaltyBasis,null);assert.equal(result.penaltyStatus,'DISABLED');assert.equal(validateTerms({...input,penaltyStatus:'ACTIVE'},'2026-01-01').penaltyStatus,'ACTIVE');assert.equal(validateTerms({...input,penaltyStatus:undefined,effectiveDate:undefined},'2026-01-01').effectiveDate,'2026-01-01');assert.throws(()=>validateTerms({...input,penaltyBasis:'FULL_INSTALLMENT'},'2026-01-01'));assert.throws(()=>validateTerms({...input,frequency:'DAILY'},'2026-01-01'));
 });
 
 test('a simultaneous posting retry may see its own saved receipt without admitting a different correction target',async t=>{

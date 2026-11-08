@@ -30,6 +30,7 @@ const assignmentSchema = new Schema({
     downPaymentCents: { type: Number, default: 0 },
     schedule: [{ _id: false, installment: Number, dueDate: String, amountCents: Number }]
   },
+  paymentPenaltyPolicies:{type:[Schema.Types.Mixed],default:[]},
   commissionAgreement:Schema.Types.Mixed,
   commissionHistoricalReviews:{type:[Schema.Types.Mixed],default:[]},
   commissionAgreementHistory:{type:[Schema.Types.Mixed],default:[]},

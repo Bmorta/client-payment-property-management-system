@@ -1,3 +1,4 @@
+import {currentPenaltyPolicy} from "../../../shared/penaltyPolicy.js";
 import {default as FieldLabel,RequiredNote} from "./FieldLabel.jsx";
 import {useState} from "react";
 import {useAuth} from "../context/AuthContext.jsx";
@@ -5,7 +6,7 @@ import api from "../services/api.js";
 import CenterPopup from "./CenterPopup.jsx";
 import {pesos,submissionId} from "../utils/finance.js";
 export default function AccountMonitoringDetails({account:a,onSaved}){
- const {user}=useAuth(),admin=user.role==="ADMIN",s=a.summary,terms=a.contract.monitoringTerms;
+ const {user}=useAuth(),admin=user.role==="ADMIN",s=a.summary,terms=currentPenaltyPolicy(a);
  const [form,setForm]=useState({assessmentId:"",amount:"",reason:"",status:"UNDER_REVIEW",noticeReference:"",legalReviewConfirmed:false,requestId:submissionId()}),[confirm,setConfirm]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
  const save=async()=>{if(busy)return;setBusy(true);try{const path=confirm==="waive"?"penalties/waive":"forfeiture-review";const {data}=await api.post(`/finance/accounts/${a._id}/${path}`,{...form,expectedVersion:a.__v??0,confirm:true});setConfirm("");setForm(f=>({...f,requestId:submissionId(),reason:""}));onSaved(data.message)}catch(e){setConfirm("");setError(e.response?.data?.message||"Unable to save. Refresh the account before retrying.")}finally{setBusy(false)}};
