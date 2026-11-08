@@ -18,7 +18,7 @@ export function summarizeAccount(account, asOf = today()) {
   const missedMonths=installments.filter(s=>s.overdue).length;
   // Legacy review indicators remain until the administrator configures terms.
   const alert=allocated.category.startsWith("HISTORICAL_")?allocated.category:contract.monitoringTerms?allocated.category:missedMonths>=3?"FORFEITURE_REVIEW":missedMonths>=2?"WARNING":missedMonths?"OVERDUE":"CURRENT";
-  return {...allocated,...contractAmounts(contract),totalCollectedCents:allocated.payments.reduce((n,p)=>n+p.amountCents,0),penaltyPaidCents:allocated.assessments.reduce((n,p)=>n+p.paidCents,0),fullyPaidMonths,partialMonths:installments.filter(s=>s.paidCents>0&&s.balanceCents>0).length,remainingMonths:installments.length-fullyPaidMonths,
+  return {...allocated,...contractAmounts(contract),totalCollectedCents:allocated.payments.reduce((n,p)=>n+p.amountCents,0),penaltyPaidCents:allocated.currentPenaltySummary?.recordedPaidCents??allocated.assessments.reduce((n,p)=>n+p.paidCents,0),fullyPaidMonths,partialMonths:installments.filter(s=>s.paidCents>0&&s.balanceCents>0).length,remainingMonths:installments.length-fullyPaidMonths,
     progressPercent:installments.length?Math.round(100*fullyPaidMonths/installments.length):100,
     downPaymentPaidCents:schedule.find(s=>s.installment===0)?.paidCents||0,paidCents,
     overdueCents:schedule.filter(s=>s.overdue).reduce((n,s)=>n+s.balanceCents,0),missedMonths,alert,schedule};

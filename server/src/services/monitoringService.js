@@ -4,9 +4,11 @@ import PropertyAssignment from "../models/PropertyAssignment.js";
 import {summarizeAccount,today} from "../utils/accounting.js";
 import {addDays} from "../utils/contractMonitoring.js";
 export function monitoringMutation(account,actor={username:"system",role:"SYSTEM"},reason="Scheduled monitoring",asOf=today()){
- const summary=summarizeAccount(account,asOf),stamp=new Date(),snapshot={asOf,schedule:summary.schedule,allocations:summary.allocations,assessments:summary.assessments,
+ const summary=summarizeAccount(account,asOf),stamp=new Date(),snapshot={asOf,penaltyCalculationRule:summary.penaltyCalculationRule,currentPenaltySummary:summary.currentPenaltySummary,schedule:summary.schedule,allocations:summary.allocations,assessments:summary.assessments,
   nextUnpaidDueDate:summary.nextUnpaidDueDate,balanceCents:summary.balanceCents,outstandingPenaltyCents:summary.outstandingPenaltyCents,advanceCoveredMonths:summary.advanceCoveredMonths,advanceCoveredThrough:summary.advanceCoveredThrough,riskStatus:summary.riskStatus,category:summary.category,consecutiveUnpaidMonths:summary.consecutiveUnpaidMonths};
  const push={},set={};
+ if(summary.currentPenaltySummary){const last=account.penaltySnapshots?.at(-1),entry={kind:'NON_FINANCIAL_SNAPSHOT',asOf,period:asOf.slice(0,7),summary:summary.currentPenaltySummary};if(JSON.stringify(last?.summary)!==JSON.stringify(entry.summary))push.penaltySnapshots={...entry,...actor,timestamp:stamp}}
+
  const latest=account.allocationVersions?.at(-1);
  if(JSON.stringify(latest?.allocations)!==JSON.stringify(summary.allocations))push.allocationVersions={version:(account.allocationVersions?.length||0)+1,allocations:summary.allocations,schedule:summary.schedule,reason,...actor,timestamp:stamp};
  const previous=new Map();for(const event of account.penaltyLedger||[])previous.set(event.assessmentId,event.updatedValues);

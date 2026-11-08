@@ -1,5 +1,5 @@
 const STATUS_CLASSES = {
- CURRENT:'text-bg-success',NO_OUTSTANDING_PENALTY:'text-bg-success',PAID:'text-bg-success',DUE_SOON:'text-bg-warning',UPCOMING_DUE:'text-bg-warning',DUE_TODAY:'text-bg-warning',WITHIN_GRACE_PERIOD:'text-bg-warning',
+ CURRENT_PENALTY:'status-orange',CURRENT_PENALTY_SETTLED:'text-bg-success',NO_CURRENT_PENALTY:'text-bg-success',CURRENT:'text-bg-success',NO_OUTSTANDING_PENALTY:'text-bg-success',PAID:'text-bg-success',DUE_SOON:'text-bg-warning',UPCOMING_DUE:'text-bg-warning',DUE_TODAY:'text-bg-warning',WITHIN_GRACE_PERIOD:'text-bg-warning',
  OVERDUE:'status-orange',PENALTY_ACCRUING:'status-orange',ACCRUING:'status-orange',UNPAID:'status-orange',UNPAID_PENALTIES:'status-orange',PARTIALLY_PAID:'text-bg-warning',WAIVED_OR_SETTLED:'text-bg-secondary',
  CRITICAL:'text-bg-danger',CRITICAL_FORFEITURE_RISK:'text-bg-danger',FORFEITURE_REVIEW_REQUIRED:'text-bg-danger',PRINCIPAL_SETTLED_PENALTY_UNPAID:'status-orange',
 
