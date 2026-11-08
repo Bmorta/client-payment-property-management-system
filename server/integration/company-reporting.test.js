@@ -69,12 +69,12 @@ test('company permissions, safe logos, references, branding, schedule methods an
   await Voucher.init();
   const accountPath=`/commissions/accounts/${a._id}`,voucherPath='/commissions/vouchers';
   const d0=await api(accountPath),dp=d0.snapshot.records.find(r=>r.type==='DP');
-  const voucherBody={requestId:randomUUID(),voucherDate:'2026-01-06',method:'CASH',remarks:'Selected partial payout',reason:'Prepare documented agent payout',entries:[{accountId:a._id,commissionId:dp.commissionId,amount:500}]};
+  const voucherBody={requestId:randomUUID(),voucherDate:'2026-01-06',method:'CASH',remarks:'Selected partial payout',entries:[{accountId:a._id,commissionId:dp.commissionId,amount:500}]};
   await api(voucherPath,'POST',voucherBody,'VIEWER',403);await api(voucherPath,'POST',{...voucherBody,entries:[{...voucherBody.entries[0],amount:1000000}]},'ADMIN',409);
   const financialBefore=JSON.stringify(await PropertyAssignment.findById(a._id).lean());
   let [v]=await api(voucherPath,'POST',voucherBody,'STAFF',201);assert.equal(v.status,'DRAFT');assert.equal(v.entries.length,1);
   const same=await api(voucherPath,'POST',voucherBody,'STAFF');assert.equal(same[0]._id,v._id);assert.equal(await Voucher.countDocuments(),1);
-  const act=(v,action,role='ADMIN',status=200)=>api(`${voucherPath}/${v._id}/actions`,'POST',{action,expectedVersion:v.__v,reason:'Documented office authorization'},role,status);
+  const act=(v,action,role='ADMIN',status=200)=>api(`${voucherPath}/${v._id}/actions`,'POST',{action,expectedVersion:v.__v,...(['CANCEL','RECOVER_PENDING'].includes(action)?{reason:'Documented office authorization'}:{})},role,status);
   v=await act(v,'PRINT_REQUESTED','STAFF');v=await act(v,'PRINT_REQUESTED','STAFF');assert.equal(JSON.stringify(await PropertyAssignment.findById(a._id).lean()),financialBefore,'print/reprint must not modify account finances');
   await act(v,'APPROVE','STAFF',403);v=await act(v,'SUBMIT','STAFF');v=await act(v,'APPROVE');assert.equal(v.approvalState,'APPROVED');
   let acct=await api(accountPath);const payoutBody={expectedVersion:acct.__v,confirm:true,requestId:randomUUID(),commissionId:dp.commissionId,amount:200,releaseDate:'2026-01-06',method:'CASH',reason:'Actual documented voucher payout',voucherId:v._id,voucherEntryId:v.entries[0].entryId};

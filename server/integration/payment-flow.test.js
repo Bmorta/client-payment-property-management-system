@@ -111,7 +111,7 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   let ledgerData=(await api(`/commissions?agent=${agentA._id}&project=${project._id}&type=DP&status=UNRELEASED`)).data;
   assert.equal(ledgerData.total,1);assert.equal(ledgerData.rows[0].earnedCents,60000);assert.equal(ledgerData.summary.propertyBudgetCents,1000000);
   const dpCommission=ledgerData.rows[0];commissionDetails=(await api(`/commissions/accounts/${assignment._id}`)).data;
-  let payoutBody={commissionId:dpCommission.commissionId,amount:"200",releaseDate:"2026-11-04",method:"CASH",reference:"Agent cash payout",notes:"Partial release",reason:"Actual partial agent payout",requestId:randomUUID(),expectedVersion:commissionDetails.__v,confirm:true};
+  let payoutBody={commissionId:dpCommission.commissionId,amount:"200",releaseDate:"2026-11-04",method:"CASH",reference:"Agent cash payout",notes:"Partial release",requestId:randomUUID(),expectedVersion:commissionDetails.__v,confirm:true};
   await api(`/commissions/accounts/${assignment._id}/payouts`,"POST",payoutBody,"STAFF",403);
   await api(`/commissions/accounts/${assignment._id}/payouts`,"POST",{...payoutBody,releaseDate:"2026-01-01"},"ADMIN",400);
   const partialPayout=(await api(`/commissions/accounts/${assignment._id}/payouts`,"POST",payoutBody,"ADMIN",201)).data;

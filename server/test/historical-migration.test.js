@@ -67,3 +67,13 @@ test('preparation permits valid past dates without inventing an official cutoff 
  const configured=migrationContext(draft,{cutoffDate:'2026-10-31'});assert.equal(configured.cutoffDate,'2026-10-31');assert.equal(configured.cutoffDateSnapshot,null);assert.equal(configured.review.preparationMode,true);
  assert.equal(migrationContext({cutoffDate:'2026-09-30'},{cutoffDate:'2026-10-31'}).cutoffDate,'2026-09-30');
 });
+
+test('historical supporting references and remarks are optional while financial links, dates and receipts remain validated',()=>{
+ const other=row({type:'OTHER',documentReference:'',reference:'',remarks:''});assert.equal(other.documentReference,'');assert.equal(other.reference,'');
+ const charge=normalizeMigrationRow({kind:'PENALTY_ASSESSMENT',date:'2022-03-11',amount:180,installment:2},'2022-10-31',account);assert.equal(charge.remarks,'');assert.equal(charge.documentReference,'');
+ const waiver=normalizeMigrationRow({kind:'PENALTY_WAIVER',date:'2022-03-12',amount:80,installment:2,assessmentId:'HPA-ORIGINAL'},'2022-10-31',account);assert.equal(waiver.assessmentId,'HPA-ORIGINAL');
+ assert.throws(()=>normalizeMigrationRow({...waiver,amount:80,assessmentId:''},'2022-10-31',account),/assessment ID/);
+ const payout=normalizeMigrationRow({kind:'COMMISSION',date:'2022-02-05',releaseDate:'2022-02-06',amount:200,earned:600,commissionId:'COM-ORIGINAL',method:'CASH'},'2022-10-31',account);assert.equal(payout.documentReference,'');
+ assert.throws(()=>normalizeMigrationRow({...payout,amount:200,earned:600,releaseDate:''},'2022-10-31',account),/release date/);
+ assert.throws(()=>row({receiptNumber:''}),/receipt/i);assert.throws(()=>row({amount:-1}));
+});

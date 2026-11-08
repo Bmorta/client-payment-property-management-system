@@ -18,13 +18,12 @@ export function normalizeMigrationRow(input,cutoff,account){
  if(kind==='PAYMENT'){
   validateReceipt(row.receiptNumber);validateReceipt(row.series);
   if(!['DOWN_PAYMENT','INSTALLMENT','PENALTY','OTHER'].includes(row.type)||!METHODS.includes(row.method))fail('Select the original payment type and method.');
-  if(row.type==='OTHER'&&!row.documentReference)fail('Other historical collections require a supporting document reference.');
   if(row.method==='OTHER'&&!['CASH','NONCASH'].includes(row.fundingAccount))fail('Classify Other payment funding as CASH or NONCASH.');
  }
- if(kind.startsWith('PENALTY_')){if(!Number.isSafeInteger(row.installment)||row.installment<1||account&&!account.contract.schedule.some(s=>s.installment===row.installment))fail('Select a valid installment for the historical penalty.');if(!row.documentReference||!row.remarks)fail('Penalty records require a source document and reason.');row.assessmentId=clean(input.assessmentId,160);if(kind==='PENALTY_WAIVER'&&!row.assessmentId)fail('A waiver must reference a documented assessment ID.');}
+ if(kind.startsWith('PENALTY_')){if(!Number.isSafeInteger(row.installment)||row.installment<1||account&&!account.contract.schedule.some(s=>s.installment===row.installment))fail('Select a valid installment for the historical penalty.');row.assessmentId=clean(input.assessmentId,160);if(kind==='PENALTY_WAIVER'&&!row.assessmentId)fail('A waiver must reference a documented assessment ID.');}
  if(kind==='COMMISSION'){
   row.earnedCents=moneyCents(input.earned||0);if(!row.commissionId||!Number.isSafeInteger(row.earnedCents)||row.earnedCents<0)fail('Provide the actual commission record ID and documented earned amount.');
-  if(row.amountCents>0&&(!validDate(row.releaseDate)||(cutoff&&row.releaseDate>cutoff)||row.releaseDate>today()||row.releaseDate<row.date||!METHODS.includes(row.method)||!row.documentReference))fail('Released commissions require their original release date, method and document reference.');
+  if(row.amountCents>0&&(!validDate(row.releaseDate)||(cutoff&&row.releaseDate>cutoff)||row.releaseDate>today()||row.releaseDate<row.date||!METHODS.includes(row.method)))fail('Released commissions require their original release date and payment method.');
   if(row.method==='OTHER'&&row.amountCents>0&&!['CASH','NONCASH'].includes(row.fundingAccount))fail('Classify Other commission payout funding.');
  }
  row.fingerprint=hash({kind,date:row.date,series:row.series.toUpperCase(),receipt:row.receiptNumber.toUpperCase(),amount:row.amountCents,type:row.type,reference:row.reference.toUpperCase(),commissionId:row.commissionId,document:row.documentReference,source:row.sourceValues});return row;

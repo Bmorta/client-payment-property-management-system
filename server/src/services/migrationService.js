@@ -50,7 +50,6 @@ export async function validateBatch(batch,account,session){
  if(!validStatuses.includes(recon.historicalStatus))errors.push('Documented historical account status is required.');
  if(!Number.isSafeInteger(recon.officeBalanceCents)||recon.officeBalanceCents<0)errors.push('Enter the verified office principal balance.');
  if(!Number.isSafeInteger(recon.officePenaltyCents)||recon.officePenaltyCents<0)errors.push('Enter the verified office penalty balance.');
- if(!recon.documentReference)errors.push('Enter the reconciliation source document reference.');
  if(!recon.expectedPeriods||!Number.isSafeInteger(recon.expectedPeriods)||recon.expectedPeriods<1)errors.push('Enter the number of historical periods checked against printed records.');
  let cutoffLedger,commissions;
  if(result){

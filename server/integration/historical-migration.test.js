@@ -40,10 +40,10 @@ test('historical migration HTTP workflow, staging, reconciliation and transactio
   const prepImport=await api(prepPath+'/import','POST',prepFile,'STAFF');assert.equal(prepImport.validRows,1);
   prep=await api(prepPath+'/import','POST',{...prepFile,version:prep.__v,save:true,rowNumbers:[2]},'STAFF');assert.equal(prep.rows.length,2);
   assert.equal((await api(prepPath+'/import','POST',{...prepFile,version:prep.__v,save:true,rowNumbers:[2]},'STAFF')).alreadyImported,true);
-  prep=await api(prepPath,'PATCH',{version:prep.__v,action:'RECONCILE',reconciliation:{officeBalance:69000,officePenalty:0,historicalStatus:'ACTIVE',expectedPeriods:12,documentReference:'Provisional printed ledger',commissionReview:'NOT_APPLICABLE'}},'STAFF');
+  prep=await api(prepPath,'PATCH',{version:prep.__v,action:'RECONCILE',reconciliation:{officeBalance:69000,officePenalty:0,historicalStatus:'ACTIVE',expectedPeriods:12,commissionReview:'NOT_APPLICABLE'}},'STAFF');
   let prepPreview=await api(prepPath+'/preview');assert.equal(prepPreview.balanced,true);assert.equal(prepPreview.preparationMode,true);assert.equal(prepPreview.cutoffDate,null);assert.match(prepPreview.asOf,/^\d{4}-\d{2}-\d{2}$/);
-  prep=await api(prepPath+'/workflow','POST',{version:prep.__v,action:'SUBMIT',reason:'Preparation review'},'STAFF');prepPreview=await api(prepPath+'/preview');
-  prep=await api(prepPath+'/workflow','POST',{version:prep.__v,action:'VERIFY',reason:'Provisional verification only',token:prepPreview.token});assert.equal(prep.review.preparationMode,true);assert.equal(prep.history.at(-1).preparationMode,true);assert.equal(prep.history.at(-1).cutoffDate,null);
+  prep=await api(prepPath+'/workflow','POST',{version:prep.__v,action:'SUBMIT'},'STAFF');prepPreview=await api(prepPath+'/preview');
+  prep=await api(prepPath+'/workflow','POST',{version:prep.__v,action:'VERIFY',token:prepPreview.token});assert.equal(prep.review.preparationMode,true);assert.equal(prep.history.at(-1).preparationMode,true);assert.equal(prep.history.at(-1).cutoffDate,null);
   prepPreview=await api(prepPath+'/preview');await api(prepPath+'/workflow','POST',{version:prep.__v,action:'ACTIVATE',reason:'Must remain blocked',confirm:true,token:prepPreview.token},'ADMIN',409);
   assert.equal(JSON.stringify(await PropertyAssignment.findById(a._id).lean()),liveBefore);assert.deepEqual((await api(`/finance/reports/collections?from=${today()}&to=${today()}`)).cash,cashBefore);assert.equal(await ReceiptClaim.countDocuments(),0);
   assert.equal((await api('/finance/payments?paged=1')).count,0);assert.equal((await api('/migration')).stats.paymentCount,2);
@@ -103,16 +103,16 @@ test('historical migration HTTP workflow, staging, reconciliation and transactio
   let b3=await api('/migration/batches','POST',{accountId:String(a3._id)},'STAFF'),p3=`/migration/batches/${b3._id}`;
   async function add3(value){b3=await api(p3,'PATCH',{version:b3.__v,action:'UPSERT_ROW',row:value},'STAFF');return b3.rows.at(-1)}
   await add3({...row,series:'2022-COM',receiptNumber:'000001',amount:6000,date:'2022-02-05'});
-  const assessment=await add3({kind:'PENALTY_ASSESSMENT',date:'2022-03-11',amount:180,installment:2,remarks:'Original documented charge',documentReference:'Penalty ledger p2'});
+  const assessment=await add3({kind:'PENALTY_ASSESSMENT',date:'2022-03-11',amount:180,installment:2});
   await add3({kind:'PENALTY_WAIVER',date:'2022-03-12',amount:80,installment:2,assessmentId:`HPA-${assessment.rowId}`,remarks:'Approved historical waiver',documentReference:'Waiver note p2'});
   await add3({...row,series:'2022-COM',receiptNumber:'000002',amount:100,date:'2022-03-13',type:'PENALTY'});
   let cprev=await api(p3+'/preview');const commission=cprev.commissions.find(c=>c.period===1&&c.type==='MONTHLY');assert.equal(commission.earnedCents,60000);assert.equal(cprev.recordedPenaltyCents,0);
   const early=await add3({kind:'COMMISSION',date:'2022-02-01',releaseDate:'2022-02-01',amount:200,earned:600,commissionId:commission.commissionId,method:'CASH',documentReference:'Early payout'});
   assert.ok((await api(p3+'/preview')).errors.some(x=>x.includes('not funded')));
   b3=await api(p3,'PATCH',{version:b3.__v,action:'DELETE_ROW',rowId:early.rowId,reason:'Incorrect original release date'},'STAFF');
-  await add3({kind:'COMMISSION',date:'2022-02-05',releaseDate:'2022-02-06',amount:200,earned:600,commissionId:commission.commissionId,method:'CASH',documentReference:'Agent payout original'});
+  await add3({kind:'COMMISSION',date:'2022-02-05',releaseDate:'2022-02-06',amount:200,earned:600,commissionId:commission.commissionId,method:'CASH'});
   await add3({kind:'COMMISSION',date:'2022-02-05',releaseDate:'2022-02-07',amount:300,earned:600,commissionId:commission.commissionId,method:'CASH',documentReference:'Agent payout second'});
-  b3=await api(p3,'PATCH',{version:b3.__v,action:'RECONCILE',reconciliation:{officeBalance:66000,officePenalty:0,historicalStatus:'ACTIVE',expectedPeriods:12,documentReference:'All original documents',commissionReview:'RECONCILED'}},'STAFF');
+  b3=await api(p3,'PATCH',{version:b3.__v,action:'RECONCILE',reconciliation:{officeBalance:66000,officePenalty:0,historicalStatus:'ACTIVE',expectedPeriods:12,commissionReview:'RECONCILED'}},'STAFF');
   let pv3=await api(p3+'/preview');assert.deepEqual(pv3.errors,[]);b3=await api(p3+'/workflow','POST',{version:b3.__v,action:'SUBMIT',reason:'Reconciled'},'STAFF');pv3=await api(p3+'/preview');b3=await api(p3+'/workflow','POST',{version:b3.__v,action:'VERIFY',reason:'Reviewed',token:pv3.token});pv3=await api(p3+'/preview');
   b3=await api(p3+'/workflow','POST',{version:b3.__v,action:'ACTIVATE',reason:'Approved',confirm:true,token:pv3.token});
   const a3done=await PropertyAssignment.findById(a3._id).lean();assert.equal(a3done.commissionPayouts.length,2);assert.deepEqual(a3done.commissionPayouts.map(p=>p.releaseDate),['2022-02-06','2022-02-07']);assert.equal(a3done.commissionSnapshot.records.find(c=>c.commissionId===commission.commissionId).unreleasedCents,10000);assert.equal(a3done.commissionSnapshot.records.find(c=>c.commissionId===commission.commissionId).releasableCents,10000);assert.equal(a3done.commissionSnapshot.records.find(c=>c.commissionId===commission.commissionId).historicalVerificationCents,0);assert.equal(a3done.payments.length,2);assert.equal(a3done.historicalPenalties.length,1);assert.equal((await api(p3+'/preview')).balanced,true);

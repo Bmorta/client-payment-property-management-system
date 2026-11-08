@@ -83,7 +83,7 @@ export async function workflow(req,res,next){try{
  if(simple){const reviewed=await simpleMigrationReview(b,await account(b.account),await MigrationConfig.findById('OFFICE').lean());if(reviewed.preview.errors.length)fail(reviewed.preview.errors.join(' '),409);if(req.body.token!==reviewed.preview.token||req.body.confirm!==true)fail('Review the final summary and confirm the import.',409);b={...reviewed.batch,review:{accountVersion:reviewed.preview.accountVersion}}}
  if(action==='ACTIVATE'&&req.user.role!=='ADMIN')fail('Administrator activation required.',403);
  if(action==='ACTIVATE'&&b.status==='COMPLETED')return reply(res,b,'Already activated; no duplicate posting.');
- assertVersion(b,req.body.version);const reason=clean(req.body.reason)||(simple?'Administrator approved historical import':'');if(!reason)fail('A review reason is required.');
+ assertVersion(b,req.body.version);const reason=clean(req.body.reason);if(['RETURN','REJECT'].includes(action)&&!reason)fail('A reason is required when returning or rejecting records.');
  if(action==='RETURN'||action==='REJECT'){
   if(req.user.role!=='ADMIN')fail('Administrator review required.',403);return reply(res,await save(b,req,{status:'NEEDS_CORRECTION',review:null},action,{reason}),'Returned for correction.');
  }
