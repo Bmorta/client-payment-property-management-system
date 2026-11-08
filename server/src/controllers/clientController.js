@@ -1,3 +1,6 @@
+import PropertyAssignment from "../models/PropertyAssignment.js";
+import {clientPenaltyData} from "../utils/clientPenalties.js";
+import {today} from "../utils/accounting.js";
 import { generateRecordId } from "../utils/generateRecordId.js";
 import Client from "../models/Client.js";
 import { logActivity } from "../utils/activityLogger.js";
@@ -14,8 +17,11 @@ const normalize = (value) => typeof value === "string" ? value.trim() : value;
 
 export const listClients = async (req, res, next) => {
   try {
-    const clients = await Client.find().populate("createdBy", "firstName lastName username").sort({ lastName: 1, firstName: 1 });
-    res.json({ success: true, data: clients });
+    const q=String(req.query.q||'').trim().slice(0,100),filter=q?{$and:q.split(/\s+/).map(word=>({$or:['clientId','firstName','middleName','lastName','suffix','email','contactNumber'].map(k=>({[k]:new RegExp(escaped(word),'i')}))}))}:{};
+    const paged=req.query.limit!==undefined,page=Math.max(1,parseInt(req.query.page)||1),limit=Math.max(1,Math.min(100,parseInt(req.query.limit)||25));
+    let query=Client.find(filter).populate("createdBy", "firstName lastName username").sort({lastName:1,firstName:1,_id:1});if(paged)query=query.skip((page-1)*limit).limit(limit);const clients=await query;
+    let data=clients;if(req.query.penalties==='1'){const accounts=await PropertyAssignment.find({client:{$in:clients.map(c=>c._id)}}).lean(),grouped=new Map();for(const a of accounts){const key=String(a.client);if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(a)}const asOf=today();data=clients.map(c=>({...c.toObject({virtuals:true}),penaltySummary:clientPenaltyData(grouped.get(String(c._id))||[],asOf).summary}))}
+    res.json({success:true,data,...(paged?{total:await Client.countDocuments(filter),page,pageSize:limit}:{})});
   } catch (error) { next(error); }
 };
 

@@ -6,14 +6,15 @@ import NavIcon from "../components/NavIcon.jsx";
 import {useAuth} from "../context/AuthContext.jsx";
 const groups=[
  {label:"Overview",items:[["/","Dashboard","grid"]]},
- {label:"Management",items:[["/projects","Projects","building"],["/property-inventory","Property Inventory","building"],["/clients","Clients","people"],["/agents","Agents","agent"]]},
+ {label:"Clients & Agents",items:[["/clients","Clients","people"],["/agents","Agents","agent"]]},
+ {label:"Property Inventory",items:[["/property-inventory","Property Summary","building"],["/projects","Projects / Lots","building"]]},
  {label:"Finance",items:[["/payment","Payment","wallet"],["/payment-transactions","Payment Transactions","receipt"],["/commissions","Commissions","percent"],["/expenses","Expenses","expense"],["/reports","Reports","chart"]]},
  {label:"Monitoring",items:[["/payment-monitoring","Payment Reminders","bell"],["/approval-requests","Approval Requests","check","ADMIN"]]},
  {label:"Administration",items:[["/companies","Company Management","building"],["/historical-migration","Historical Data Migration","receipt"],["/users","Users & Activity","settings","ADMIN"]]},
 ];
 export default function AppLayout(){
  const {user,logout}=useAuth(),{pathname}=useLocation(),[open,setOpen]=useState(false),menuButton=useRef(null),sidebar=useRef(null);
- const title=pathname.startsWith("/projects/")?"Manage Lots":groups.flatMap(g=>g.items).find(([to])=>to===pathname)?.[1]||"Workspace";
+ const title=pathname.startsWith("/clients/")?"Client Workspace":pathname.startsWith("/projects/")?"Manage Lots":groups.flatMap(g=>g.items).find(([to])=>to===pathname)?.[1]||"Workspace";
  const initials=(user?.fullName||user?.username||"User").split(/\s+/).slice(0,2).map(s=>s[0]).join("").toUpperCase();
  const close=()=>{setOpen(false);menuButton.current?.focus()};
  useEffect(()=>{setOpen(false)},[pathname]);

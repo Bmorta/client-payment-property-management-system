@@ -1,4 +1,13 @@
 const shapes={
+ warning:<><path d="m12 3 10 18H2zM12 9v5m0 3v1"/></>,
+ history:<><path d="M3 11a9 9 0 1 1 3 8M3 4v7h7m2-4v6l4 2"/></>,
+ print:<><path d="M6 9V3h12v6M6 17H3V9h18v8h-3M6 14h12v7H6zM17 12h1"/></>,
+ download:<><path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/></>,
+ refresh:<><path d="M20 7A9 9 0 1 0 21 14M20 3v5h-5"/></>,
+ search:<><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></>,
+ plus:<path d="M12 4v16M4 12h16"/>,
+ edit:<><path d="m4 15 12-12 5 5L9 20l-6 1zM14 5l5 5"/></>,
+ eye:<><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7"/><circle cx="12" cy="12" r="3"/></>,
  grid:<><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
  building:<><path d="M3 21h18M6 21V4h12v17M9 8h1m4 0h1M9 12h1m4 0h1M10 21v-5h4v5"/></>,
  people:<><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2"/></>,

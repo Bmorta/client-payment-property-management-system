@@ -1,3 +1,4 @@
+import CloseButton from "../components/CloseButton.jsx";
 import {filterInventory} from "../../../shared/inventoryFilters.js";
 import ListReportActions from "../components/ListReportActions.jsx";
 import SearchInput from "../components/SearchInput.jsx";
@@ -195,7 +196,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
       <div><h2 className="h5 fw-bold mb-1">Property Inventory — {project.projectName}</h2>
         <p className="text-secondary small mb-0">{readOnly ? "Filter and print saved lot inventory for this project." : "View existing lots below. Choose an option to add or modify inventory."}</p></div>
       <ListReportActions module="inventory" filters={{project:project._id,...filters,q:inventoryQuery}} disabled={loading || loadFailed || busy || changed.length > 0 || !!generator} onRefresh={async()=>{if(busy||changed.length||generator)return notify('Save or cancel current lot changes before refreshing.',true);setLoading(true);try{await load()}catch{notify('Unable to refresh inventory.',true)}finally{setLoading(false)}}}/>
-      {onClose && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Close</button>}
+      {onClose && <CloseButton onClick={onClose}/>}
     </div>
     <CenterPopup message={message} error={error} confirm={confirmAction?.text}
       confirmTitle={confirmAction?.discard ? "Discard changes" : "Confirm deletion"} confirmLabel={confirmAction?.discard ? "Discard Changes" : "Delete"} cancelLabel={confirmAction?.discard ? "Keep Editing" : "Cancel"}
