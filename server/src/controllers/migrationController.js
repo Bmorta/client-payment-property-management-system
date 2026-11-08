@@ -1,3 +1,5 @@
+import {simpleMigrationReview} from "../services/simpleMigration.js";
+import {createRestorePoint} from "../services/restorePoint.js";
 import {calculateCommissions} from '../utils/commissionLedger.js';
 import {allocatePayments} from '../utils/paymentLedger.js';
 import {historicalFingerprint} from '../utils/commissionReconciliation.js';
@@ -27,7 +29,7 @@ export async function setConfig(req,res,next){try{
  const cutoffInput=clean(req.body.cutoffDate,100);if(cutoffInput.length>10)fail('Cutoff must be a calendar date in YYYY-MM-DD format.');const cutoffDate=cutoffInput||null;if(cutoffDate&&(!validDate(cutoffDate)||cutoffDate>=today()))fail('Cutoff must be a valid date before today.');
  const existing=await MigrationConfig.findById('OFFICE').lean();if(existing&&existing.cutoffDate&&existing.cutoffDate!==cutoffDate&&(existing.stagingStarted||await MigrationBatch.exists({})))fail('Cutoff is locked after staging begins. Administrator-led migration recovery is required to change it.',409);
  if(existing&&req.body.version!==existing.__v)fail('Configuration changed. Refresh first.',409);
- const backupReference=clean(req.body.backupReference,200),recoveryTestReference=clean(req.body.recoveryTestReference,200),reason=clean(req.body.reason);if(!reason)fail('A configuration change reason is required.');
+ const backupReference=clean(req.body.backupReference,200),recoveryTestReference=clean(req.body.recoveryTestReference,200),reason=clean(req.body.reason)||'Administrator updated migration settings';
  let result;if(existing)result=await MigrationConfig.findOneAndUpdate({_id:'OFFICE',__v:existing.__v,...(existing.cutoffDate!==cutoffDate?{stagingStarted:{$ne:true}}:{})},{$set:{cutoffDate,backupReference,recoveryTestReference},$inc:{__v:1},$push:{history:{...actor(req.user),event:'CONFIG_UPDATED',previousValues:{cutoffDate:existing.cutoffDate,backupReference:existing.backupReference,recoveryTestReference:existing.recoveryTestReference},reason}}},{new:true}).lean();else result=await MigrationConfig.create({_id:'OFFICE',cutoffDate,backupReference,recoveryTestReference,history:[{...actor(req.user),event:'CONFIG_CREATED',reason}]});
  if(!result)fail('Configuration changed. Refresh.',409);reply(res,result,'Cutoff configuration saved.');
 }catch(e){next(e)}}
@@ -66,7 +68,7 @@ export async function editBatch(req,res,next){try{
   if(b.rows.some(r=>r.rowId!==row.rowId&&r.fingerprint===row.fingerprint))fail('Identical draft already exists. Review it instead of entering it twice.',409);
   set.rows=old?b.rows.map(r=>r.rowId===old.rowId?row:r):[...b.rows,row];details={rowId:row.rowId,previousValues:old||null,updatedValues:row};
  }else if(action==='DELETE_ROW'||action==='EXCLUDE_ROW'){
-  const r=b.rows.find(r=>r.rowId===req.body.rowId);if(!r)fail('Draft row not found.',404);const reason=clean(req.body.reason);if(!reason)fail('A reason is required.');
+  const r=b.rows.find(r=>r.rowId===req.body.rowId);if(!r)fail('Draft row not found.',404);const reason=clean(req.body.reason)||'Draft corrected by encoder';
   set.rows=action==='DELETE_ROW'?b.rows.filter(x=>x.rowId!==r.rowId):b.rows.map(x=>x.rowId===r.rowId?{...x,excluded:!x.excluded,exclusionReason:reason,modifiedAt:new Date(),modifiedBy:String(req.user._id)}:x);details={previousValues:r,reason};
  }else if(action==='RESOLVE_DUPLICATE'){
   if(req.user.role!=='ADMIN')fail('Administrator duplicate review required.',403);const reason=clean(req.body.reason);if(!reason)fail('Document why this is a distinct original transaction.');const r=b.rows.find(r=>r.rowId===req.body.rowId);if(!r)fail('Row not found.');const hits=await duplicates(r,a._id,b._id);for(const other of b.rows.filter(x=>x.rowId!==r.rowId&&!x.excluded)){const {possibleDuplicate}=await import('../utils/migrationRules.js');const kind=possibleDuplicate(r,other);if(kind)hits.push({kind,source:'BATCH',reference:other.rowId})}if(hits.some(h=>h.kind==='RECEIPT_SERIES'))fail('A reused receipt/series cannot be overridden. Correct the source or exclude the duplicate.',409);set.rows=b.rows.map(x=>x.rowId===r.rowId?{...x,duplicateReview:{...actor(req.user),reason,signature:hash(hits.sort((a,b)=>a.reference.localeCompare(b.reference)||a.kind.localeCompare(b.kind)))}}:x);details={rowId:r.rowId,reason,hits};
@@ -75,42 +77,47 @@ export async function editBatch(req,res,next){try{
 }catch(e){next(e)}}
 export async function preview(req,res,next){try{const b=await load(req),a=await account(b.account);reply(res,(await validateBatch(b,a)).preview)}catch(e){next(e)}}
 export async function workflow(req,res,next){try{
- const b=await load(req),action=req.body.action;
+ let b=await load(req);const action=req.body.action,simple=action==='APPROVE_IMPORT';
+ if(simple&&req.user.role!=='ADMIN')fail('Only an administrator can approve historical imports.',403);
+ if(simple&&b.status==='COMPLETED')return reply(res,b,'Already imported. No duplicate posting.');
+ if(simple){const reviewed=await simpleMigrationReview(b,await account(b.account),await MigrationConfig.findById('OFFICE').lean());if(reviewed.preview.errors.length)fail(reviewed.preview.errors.join(' '),409);if(req.body.token!==reviewed.preview.token||req.body.confirm!==true)fail('Review the final summary and confirm the import.',409);b={...reviewed.batch,review:{accountVersion:reviewed.preview.accountVersion}}}
  if(action==='ACTIVATE'&&req.user.role!=='ADMIN')fail('Administrator activation required.',403);
  if(action==='ACTIVATE'&&b.status==='COMPLETED')return reply(res,b,'Already activated; no duplicate posting.');
- assertVersion(b,req.body.version);const reason=clean(req.body.reason);if(!reason)fail('A review reason is required.');
+ assertVersion(b,req.body.version);const reason=clean(req.body.reason)||(simple?'Administrator approved historical import':'');if(!reason)fail('A review reason is required.');
  if(action==='RETURN'||action==='REJECT'){
   if(req.user.role!=='ADMIN')fail('Administrator review required.',403);return reply(res,await save(b,req,{status:'NEEDS_CORRECTION',review:null},action,{reason}),'Returned for correction.');
  }
  if(action==='SUBMIT'){
   canEdit(b,req.user);const a=await account(b.account),{preview:p}=await validateBatch(b,a);if(p.errors.length)fail(p.errors.join(' '),409);return reply(res,await save(b,req,{status:'PENDING_VERIFICATION',review:null},'SUBMITTED',{reason,token:p.token}),'Submitted for verification.');
  }
- if(!['VERIFY','ACTIVATE'].includes(action))fail('Choose a workflow action.');if(req.user.role!=='ADMIN')fail('Only an administrator may verify or activate historical financial records.',403);
+ if(!['VERIFY','ACTIVATE','APPROVE_IMPORT'].includes(action))fail('Choose a workflow action.');if(req.user.role!=='ADMIN')fail('Only an administrator may verify or activate historical financial records.',403);
  const available=await User.exists({_id:{$ne:req.user._id},isActive:true,role:'ADMIN'}),encodedBySelf=b.rows.some(r=>String(r.encodedBy)===String(req.user._id)||String(r.modifiedBy)===String(req.user._id));
- if(encodedBySelf&&available)fail('Another active administrator must approve records you encoded.',403);
- if(encodedBySelf&&!clean(req.body.soleAdminReason))fail('A sole-administrator self-review exception requires an explicit reason.');
- if(b.verifier&&String(b.verifier)!==String(req.user._id))fail('This account is assigned to a different verifier.',403);
+ if(!simple&&encodedBySelf&&available)fail('Another active administrator must approve records you encoded.',403);
+ if(!simple&&encodedBySelf&&!clean(req.body.soleAdminReason))fail('A sole-administrator self-review exception requires an explicit reason.');
+ if(!simple&&b.verifier&&String(b.verifier)!==String(req.user._id))fail('This account is assigned to a different verifier.',403);
  if(action==='VERIFY'){
   if(b.status!=='PENDING_VERIFICATION')fail('Submit this account for verification first.',409);
   const a=await account(b.account),{preview:p}=await validateBatch(b,a);if(p.errors.length)fail(p.errors.join(' '),409);
   if(req.body.token!==p.token)fail('Reconciliation changed. Refresh and review the allocation preview.',409);
   return reply(res,await save(b,req,{status:'VERIFIED',review:{...actor(req.user),token:p.token,accountVersion:p.accountVersion,cutoffDate:b.cutoffDate||null,preparationMode:b.preparationMode,reason,soleAdminReason:clean(req.body.soleAdminReason)}},'VERIFIED',{reason,cutoffDate:b.cutoffDate||null,preparationMode:b.preparationMode}),'Verified; not yet posted.');
  }
- if(b.status!=='VERIFIED'||req.body.confirm!==true)fail('Verify the account and explicitly confirm activation.',409);
- const config=await MigrationConfig.findById('OFFICE').lean();if(!validDate(config?.cutoffDate))fail('Preparation Mode: configure the official migration cutoff before financial activation.',409);
- if(!b.review||b.cutoffDate!==config.cutoffDate||(b.review.cutoffDate??b.cutoffDateSnapshot)!==config.cutoffDate||b.review.preparationMode)fail('The official cutoff requires a fresh reconciliation and administrator verification. Return this preparation review for correction and verify again.',409);
- if(!config?.backupReference||!config?.recoveryTestReference)fail('An administrator must record a verified backup and staging recovery-test reference before activation.',409);
+ if(!simple&&(b.status!=='VERIFIED'||req.body.confirm!==true))fail('Verify the account and explicitly confirm activation.',409);
+ const config=await MigrationConfig.findById('OFFICE').lean();if(!simple&&!validDate(config?.cutoffDate))fail('Preparation Mode: configure the official migration cutoff before financial activation.',409);
+ if(!simple&&(!b.review||b.cutoffDate!==config.cutoffDate||(b.review.cutoffDate??b.cutoffDateSnapshot)!==config.cutoffDate||b.review.preparationMode))fail('The official cutoff requires a fresh reconciliation and administrator verification. Return this preparation review for correction and verify again.',409);
+ if(!simple&&(!config?.backupReference||!config?.recoveryTestReference))fail('An administrator must record a verified backup and staging recovery-test reference before activation.',409);
  // Multi-document financial posting fails closed on standalone MongoDB. No
  // financial writes occur outside this transaction; retries preserve source IDs.
- const session=await mongoose.startSession();let activated;
+ const hello=await mongoose.connection.db.admin().command({hello:1});if(simple&&!hello.setName&&hello.msg!=='isdbgrid')fail('Safe import needs transaction support. Ask the administrator to enable a MongoDB replica set; your drafts remain saved.',409);
+ const backupCollections=simple?await mongoose.connection.db.listCollections({},{nameOnly:true}).toArray().then(r=>r.map(x=>x.name).filter(n=>!n.startsWith('system.'))):[];let restorePoint;const session=await mongoose.startSession();let activated;
  try{await session.withTransaction(async()=>{
-  const stored=await MigrationBatch.findById(b._id).session(session).lean(),current=migrationContext(stored,config);if(current.status==='COMPLETED'){activated=current;return}if(current.__v!==b.__v)fail('Migration changed. Refresh.',409);
-  const a=await PropertyAssignment.findById(current.account).populate('client','clientId firstName lastName').session(session).lean();
+  const stored=await MigrationBatch.findById(b._id).session(session).lean();let current=migrationContext(stored,config);if(current.status==='COMPLETED'){activated=current;return}if(current.__v!==b.__v)fail('Migration changed. Refresh.',409);
+  const a=await PropertyAssignment.findById(current.account).populate('client','clientId firstName middleName lastName').populate('project','projectId projectName').populate('property','propertyId phaseNumber blockNumber lotNumber').session(session).lean();
   if(a.migration)fail('This account already has activated historical records.',409);
-  const {preview:p,result}=await validateBatch(current,a,session);if(p.errors.length)fail(p.errors.join(' '),409);
+  let checked;if(simple){checked=await simpleMigrationReview(current,a,config,session);current={...checked.batch,review:{accountVersion:checked.preview.accountVersion}}}else checked=await validateBatch(current,a,session);const {preview:p,result}=checked;if(p.errors.length)fail(p.errors.join(' '),409);
   if(a.__v!==current.review.accountVersion)fail('Live account changed since verification. Return and reconcile again.',409);
   if(req.body.token!==p.token)fail('Preview changed. Refresh reconciliation before activating.',409);
-  const lockedConfig=await MigrationConfig.updateOne({_id:'OFFICE',__v:config.__v,cutoffDate:current.cutoffDate},{$inc:{activationSequence:1}},{session});if(lockedConfig.matchedCount!==1)fail('Migration configuration changed. Review again.',409);
+  if(simple)restorePoint=await createRestorePoint({session,collections:backupCollections,label:'historical-import'});
+  const lockedConfig=simple?{matchedCount:1}:await MigrationConfig.updateOne({_id:'OFFICE',__v:config.__v,cutoffDate:current.cutoffDate},{$inc:{activationSequence:1}},{session});if(lockedConfig.matchedCount!==1)fail('Migration configuration changed. Review again.',409);
   for(const row of current.rows.filter(r=>r.kind==='PAYMENT'&&!r.excluded)){
    const key=createHash('sha256').update(JSON.stringify([row.series,row.receiptNumber.toUpperCase()])).digest('hex');
    await ReceiptClaim.create([{_id:key,scope:row.series,receiptNumber:row.receiptNumber,accountId:a._id,paymentId:`HIS-${row.rowId}`,requestId:`migration-${row.rowId}`}],{session});
@@ -126,7 +133,7 @@ export async function workflow(req,res,next){try{
   const event={...actor(req.user),action:'HISTORICAL_MIGRATION_ACTIVATED',batchId:current.batchId,reason,sourceRows:current.rows.filter(r=>!r.excluded).map(r=>r.rowId)};
   push.auditEvents={$each:[...(push.auditEvents?.$each||[push.auditEvents].filter(Boolean)),event]};
   const updated=await PropertyAssignment.updateOne({_id:a._id,__v:a.__v??0,migration:{$exists:false}},{$set:set,$push:push,$inc:{__v:1}},{session,runValidators:true});if(updated.modifiedCount!==1)fail('Live account changed. Reconcile again.',409);
-  activated=await MigrationBatch.findOneAndUpdate({_id:current._id,__v:current.__v},{$set:{status:'COMPLETED',activation:{...actor(req.user),reason,accountVersion:(a.__v??0)+1,paymentIds:result.payments.map(p=>p.paymentId),payoutIds:payouts.map(p=>p.payoutId)}},$inc:{__v:1},$push:{history:{...actor(req.user),event:'ACTIVATED',reason}}},{session,new:true}).lean();
+  activated=await MigrationBatch.findOneAndUpdate({_id:current._id,__v:current.__v},{$set:{status:'COMPLETED',...(simple?{reconciliation:current.reconciliation,review:{...actor(req.user),token:p.token,cutoffDate:current.cutoffDate,simpleApproval:true}}:{}),activation:{...actor(req.user),reason,restorePointId:restorePoint?.id,cutoffDate:current.cutoffDate,simpleApproval:simple,approvalSummary:{paymentCount:p.paymentCount,totalPaymentCents:p.totalPaymentCents,principalCents:p.expectedBalanceCents,penaltyCents:p.recordedPenaltyCents},accountVersion:(a.__v??0)+1,paymentIds:result.payments.map(p=>p.paymentId),payoutIds:payouts.map(p=>p.payoutId)}},$inc:{__v:1},$push:{history:{...actor(req.user),event:'ACTIVATED',reason}}},{session,new:true}).lean();
  });}catch(e){if(e.code===20||/Transaction numbers|replica set|mongos/i.test(e.message))fail('Activation requires a MongoDB replica set for atomic financial posting. Staging remains safe; ask the administrator to configure and test a replica set.',409);if(e.code===11000)fail('A receipt or transaction was already claimed. Reconcile the duplicate; nothing was partially activated.',409);throw e}finally{await session.endSession()}
  reply(res,activated,'Historical records activated in their original financial periods.');
 }catch(e){next(e)}}
@@ -145,3 +152,5 @@ export async function document(req,res,next){try{
  res.set({'Content-Type':d.mime,'Content-Disposition':'inline; filename="historical-evidence"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}).send(d.data.buffer?Buffer.from(d.data.buffer):d.data);
 }catch(e){next(e)}}
 export async function removeDocument(req,res,next){try{const b=await load(req);assertVersion(b,req.body.version);canEdit(b,req.user);const reason=clean(req.body.reason);if(!reason)fail('Document removal reason is required.');await save(b,req,{},'DOCUMENT_REMOVAL_REQUESTED',{documentId:req.params.documentId,reason});const d=await MigrationDocument.findOneAndUpdate({_id:id(req.params.documentId),batch:b._id,deleted:false},{$set:{deleted:true},$unset:{data:1},$push:{history:{...actor(req.user),event:'REMOVED',reason}}},{new:true});if(!d)fail('Document not found.',404);reply(res,null,'Evidence removed; metadata and audit history retained.')}catch(e){next(e)}}
+
+export async function simplePreview(req,res,next){try{const b=await load(req),a=await account(b.account),r=await simpleMigrationReview(b,a,await MigrationConfig.findById('OFFICE').lean());reply(res,r.preview)}catch(e){next(e)}}

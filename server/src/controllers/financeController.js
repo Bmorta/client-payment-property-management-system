@@ -1,3 +1,4 @@
+import {attachBatchCounts} from "../services/paymentBatchCounts.js";
 import {needsAllocationChoice,paymentContext} from '../utils/paymentContext.js';
 import {reportIdentity,brandExcel} from "../services/companyBranding.js";
 import {createHash} from "node:crypto";
@@ -38,12 +39,13 @@ const accountData = (account, user) => {
     correctionRequests:(correctionRequests||[]).filter(r=>user?.role==="ADMIN"||String(r.requestedBy)===String(user?._id)),summary:summarizeAccount(account) };
 };
 export async function getAccount(req,res,next) {
- try {const account=await populate(PropertyAssignment.findById(id(req.params.id))).lean();if(!account)fail(404,"Account not found.");const progress=await MigrationBatch.findOne({account:account._id}).select("status cutoffDate batchId").lean();if(progress)account.migrationProgress=progress;res.json({success:true,data:accountData(account,req.user)})}catch(e){next(e)}
+ try {const account=await populate(PropertyAssignment.findById(id(req.params.id))).lean();if(!account)fail(404,"Account not found.");await attachBatchCounts([account]);const progress=await MigrationBatch.findOne({account:account._id}).select("status cutoffDate batchId").lean();if(progress)account.migrationProgress=progress;res.json({success:true,data:accountData(account,req.user)})}catch(e){next(e)}
 }
 export async function listAccounts(req, res, next) {
   try {
     const filter = req.query.client ? { client: id(req.query.client) } : {};
     const accounts = await populate(PropertyAssignment.find(filter)).sort({ createdAt: -1 }).lean();
+    await attachBatchCounts(accounts);
     const migrations=await MigrationBatch.find({account:{$in:accounts.map(a=>a._id)}}).select("account status cutoffDate batchId").lean();
     res.json({ success: true, data: accounts.map(a=>{const progress=migrations.find(b=>String(b.account)===String(a._id));return accountData({...a,...(progress?{migrationProgress:progress}:{})},req.user)}) });
   } catch (e) { next(e); }
@@ -129,7 +131,7 @@ export async function acceptPayment(req, res, next) {
 }
 async function paymentRows() {
   const accounts = await populate(PropertyAssignment.find({ "payments.0": { $exists: true } })).lean();
-  return financialRows(accounts,[]).collections.sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  await attachBatchCounts(accounts);return financialRows(accounts,[]).collections.sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
 }
 export async function listPayments(req, res, next) {
   if(req.query.paged||req.query.format||req.query.origin!==undefined||req.query.receipt!==undefined)return transactionReport(req,res,next);

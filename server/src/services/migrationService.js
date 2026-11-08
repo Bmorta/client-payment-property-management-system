@@ -8,10 +8,10 @@ import PropertyAssignment from '../models/PropertyAssignment.js';
 import MigrationBatch from '../models/MigrationBatch.js';
 export const actor=user=>({userId:String(user._id),username:user.username,role:user.role,timestamp:new Date()});
 export function materialize(account,batch){
- const proposed=structuredClone(account),rows=batch.rows.filter(r=>!r.excluded),payments=rows.filter(r=>r.kind==='PAYMENT').map(r=>({paymentId:`HIS-${r.rowId}`,requestId:`migration-${r.rowId}`,receiptNumber:r.receiptNumber,receiptScope:r.series,type:r.type,amountCents:r.amountCents,paymentDate:r.date,method:r.method,fundingAccount:r.fundingAccount,reference:r.reference,notes:r.remarks,createdAt:r.encodedAt,createdBy:r.encodedBy,actorUsername:r.encoderUsername,actorRole:'MIGRATION',origin:'HISTORICAL',migrationBatchId:batch.batchId,migrationRowId:r.rowId,configuration:{allocationPriority:'PRINCIPAL_FIRST'},revisions:[]}));
+ const proposed=structuredClone(account),rows=batch.rows.filter(r=>!r.excluded),payments=rows.filter(r=>r.kind==='PAYMENT').map(r=>({paymentId:`HIS-${r.rowId}`,requestId:`migration-${r.rowId}`,receiptNumber:r.receiptNumber,receiptScope:r.series,type:r.type,amountCents:r.amountCents,paymentDate:r.date,method:r.method,fundingAccount:r.fundingAccount,reference:r.reference,notes:r.remarks,createdAt:r.encodedAt,postedAt:new Date(),createdBy:r.encodedBy,actorUsername:r.encoderUsername,actorRole:'MIGRATION',origin:'HISTORICAL',migrationBatchId:batch.batchId,migrationRowId:r.rowId,configuration:{allocationPriority:'PRINCIPAL_FIRST'},revisions:[]}));
  const newPayments=payments.filter(p=>!(account.payments||[]).some(old=>old.paymentId===p.paymentId));
  proposed.payments=[...(account.payments||[]),...newPayments];
- proposed.migration={batchId:batch.batchId,cutoffDate:batch.cutoffDate||today(),historicalStatus:batch.reconciliation?.historicalStatus||'ACTIVE',activatedAt:new Date()};
+ proposed.migration={batchId:batch.batchId,cutoffDate:batch.cutoffDate||today(),historicalStatus:batch.reconciliation?.historicalStatus||'ACTIVE',recalculateHistoricalPenalties:batch.simpleApproval===true,activatedAt:new Date()};
  proposed.historicalPenalties=[...(account.historicalPenalties||[]),...rows.filter(r=>r.kind==='PENALTY_ASSESSMENT'&&!(account.historicalPenalties||[]).some(a=>a.assessmentId===`HPA-${r.rowId}`)).map(r=>({assessmentId:`HPA-${r.rowId}`,installmentId:`I${r.installment}`,installment:r.installment,cycleDate:r.date,amountCents:r.amountCents,migrationBatchId:batch.batchId,documentReference:r.documentReference}))];
  proposed.penaltyWaivers=[...(account.penaltyWaivers||[]),...rows.filter(r=>r.kind==='PENALTY_WAIVER'&&!(account.penaltyWaivers||[]).some(w=>w.migrationRowId===r.rowId)).map(r=>({assessmentId:r.assessmentId,amountCents:r.amountCents,effectiveDate:r.date,reason:r.remarks,migrationRowId:r.rowId,migrationBatchId:batch.batchId}))];
  const ledger=calculateLedger(proposed,proposed.payments.map(effectivePayment),today());
@@ -32,6 +32,7 @@ export async function validateBatch(batch,account,session){
  const errors=[],warnings=[],active=batch.rows.filter(r=>!r.excluded),seen=[];
  if(!active.length)errors.push('No historical records to verify.');
  for(const r of active){
+  if(r.kind==='PENALTY_ASSESSMENT'&&active.some(other=>other!==r&&other.kind==='PENALTY_ASSESSMENT'&&other.installment===r.installment&&other.date===r.date))errors.push(`${r.rowId}: duplicate installment and penalty cycle. Keep one legitimate assessment.`);
   try {normalizeMigrationRow({...r,amount:r.amountCents/100,earned:(r.earnedCents||0)/100},batch.cutoffDate,account)}catch(e){errors.push(`${r.rowId}: ${e.message}`)}
   const hits=await duplicates(r,account._id,batch._id,session);
   for(const p of seen){const kind=possibleDuplicate(r,p);if(kind)hits.push({kind,source:'BATCH',reference:p.rowId})}seen.push(r);
@@ -62,10 +63,10 @@ export async function validateBatch(batch,account,session){
    commissions=calculateCommissions(result.proposed,cutoffLedger,{asOf});
    const docs=active.filter(r=>r.kind==='COMMISSION'),existingPayouts=account.commissionPayouts||[];
    if(account.commissionAgreement){
-    if(recon.commissionReview!=='RECONCILED')errors.push('The historical commission agreement requires documented period-by-period reconciliation.');
+    if(!batch.simpleApproval&&recon.commissionReview!=='RECONCILED')errors.push('The historical commission agreement requires documented period-by-period reconciliation.');
     for(const c of commissions.records.filter(r=>r.earnedCents>0)){
      const matches=docs.filter(r=>r.commissionId===c.commissionId);
-     if(!matches.length)errors.push(`Missing historical commission verification: ${c.commissionId}`);
+     if(!matches.length&&!batch.simpleApproval)errors.push(`Missing historical commission verification: ${c.commissionId}`);
      if(matches.some(r=>r.earnedCents!==c.earnedCents))errors.push(`Documented earned commission differs: ${c.commissionId}`);
      const released=matches.filter(r=>!existingPayouts.some(p=>p.payoutId===`HCP-${r.rowId}`)).reduce((n,r)=>n+r.amountCents,0)+existingPayouts.filter(p=>p.commissionId===c.commissionId&&!p.revisions?.at(-1)?.values?.voided).reduce((n,p)=>n+p.amountCents,0);
      if(!Number.isSafeInteger(released)||released>c.earnedCents)errors.push(`Historical commission releases exceed earned amount: ${c.commissionId}`);

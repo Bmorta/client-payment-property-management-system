@@ -43,6 +43,6 @@ export function migrationStats(batches,totalAccounts){const counts=Object.fromEn
 // A batch begun during preparation adopts the first official cutoff for review,
 // without rewriting its immutable original snapshot or authorizing activation.
 export function migrationContext(batch,config){
- const cutoffDate=batch.cutoffDate||config?.cutoffDate||null;
- return {...batch,cutoffDateSnapshot:batch.cutoffDate||null,cutoffDate,preparationMode:!validDate(config?.cutoffDate)};
+ const cutoffDate=batch.activation?.cutoffDate||batch.cutoffDate||config?.cutoffDate||null;
+ return {...batch,cutoffDateSnapshot:batch.cutoffDate||null,cutoffDate,preparationMode:batch.status==='COMPLETED'?false:!validDate(config?.cutoffDate)};
 }

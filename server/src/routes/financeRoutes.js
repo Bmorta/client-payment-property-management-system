@@ -1,3 +1,4 @@
+import {accountPenalties,bulkWaive,recalculatePenalties} from "../controllers/penaltyOperationsController.js";
 import {clientPenalties} from "../controllers/clientPenaltyController.js";
 import {paymentPenaltyPolicy} from "../controllers/paymentPenaltyPolicyController.js";
 import {consolidatedReport,allocationDetail,penaltyMonitoring} from '../controllers/accountReportingController.js';
@@ -25,6 +26,11 @@ router.get("/clients/:clientId/consolidated",consolidatedReport);router.get("/ac
 router.get("/payment-intents/status/:requestId",intentStatus);router.get("/payment-intents/context",intentContext);router.post("/payment-intents/preview",authorize("ADMIN","STAFF"),previewIntent);router.post("/payment-intents",authorize("ADMIN","STAFF"),postIntent);router.get("/payment-batches/:reference",getBatch);router.get("/accounts/:id/installment-quote",quoteInstallments);
 router.post("/accounts/:id/payment-penalty-policy/preview",authorize("ADMIN"),paymentPenaltyPolicy);
 router.patch("/accounts/:id/payment-penalty-policy",authorize("ADMIN"),paymentPenaltyPolicy);
+router.get("/accounts/:id/penalties",accountPenalties);
+router.post("/accounts/:id/penalties/bulk-waive/preview",authorize("ADMIN"),bulkWaive);
+router.post("/accounts/:id/penalties/bulk-waive",authorize("ADMIN"),bulkWaive);
+router.post("/penalties/recalculate/preview",authorize("ADMIN"),recalculatePenalties);
+router.post("/penalties/recalculate",authorize("ADMIN"),recalculatePenalties);
 router.get("/payments/context",getPaymentContext);
 router.get("/property-summary",propertySummary);
 router.get("/schedule-print/preview",schedulePrintPreview);

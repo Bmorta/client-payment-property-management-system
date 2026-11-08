@@ -1,3 +1,5 @@
+import PenaltyCycleIdentity from "./PenaltyCycleIdentity.js";
+import {createHash} from "node:crypto";
 import mongoose from "mongoose";
 import { validTerm } from "../../../shared/paymentSchedule.js";
 const { Schema } = mongoose;
@@ -5,7 +7,7 @@ const paymentSchema = new Schema({
   origin:{type:String,enum:["LIVE","HISTORICAL"],default:"LIVE",immutable:true}, migrationBatchId:String, migrationRowId:String,
   fundingAccount:{type:String,enum:["CASH","NONCASH",null],default:null}, receiptScope: String, configuration: Schema.Types.Mixed,
   type: {type:String,enum:["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY","OTHER"],default:"AUTO"},
-  paymentIntent:Schema.Types.Mixed,submissionHash:String,batchReference:String,groupRequestId:String,batchAcknowledgment:Schema.Types.Mixed,notesMode:String,monthsToPay:Number,
+  batchAccountCount:Number,postedAt:Date,paymentIntent:Schema.Types.Mixed,submissionHash:String,batchReference:String,groupRequestId:String,batchAcknowledgment:Schema.Types.Mixed,notesMode:String,monthsToPay:Number,
   allocations: {type:[Schema.Types.Mixed],default:[]},
   revisions: {type:[Schema.Types.Mixed],default:[]},
   agreementVersion: { type: Number, default: 1 },
@@ -41,6 +43,9 @@ const assignmentSchema = new Schema({
   migration: Schema.Types.Mixed,
   historicalPenalties:{type:[Schema.Types.Mixed],default:[]},
   monitoring: Schema.Types.Mixed,
+  penaltyReconciliation:Schema.Types.Mixed,
+  penaltyRecalculationRuns:{type:[Schema.Types.Mixed],default:[]},
+  penaltyWaiverBatches:{type:[Schema.Types.Mixed],default:[]},
   allocationVersions: {type:[Schema.Types.Mixed],default:[]},
   penaltyLedger: {type:[Schema.Types.Mixed],default:[]},
   penaltyWaivers: {type:[Schema.Types.Mixed],default:[]},
@@ -58,4 +63,12 @@ assignmentSchema.index({"payments.paymentId":1},{unique:true,partialFilterExpres
 assignmentSchema.index({"commissionPayouts.payoutId":1},{unique:true,partialFilterExpression:{"commissionPayouts.payoutId":{$type:"string"}}});
 assignmentSchema.index({"correctionRequests.requestNumber":1},{unique:true,partialFilterExpression:{"correctionRequests.requestNumber":{$type:"string"}}});
 assignmentSchema.index({ client: 1, createdAt: -1 });
+// Application validation plus account-version CAS guards new embedded cycle writes.
+// Audit history is append-only and intentionally may mention the same cycle more than once.
+assignmentSchema.path('historicalPenalties').validate(function(rows){const omitted=new Set(this.penaltyReconciliation?.excludedIds||[]),indexes=new Set(this.penaltyReconciliation?.excludedIndexes||[]),keys=new Set();return (rows||[]).every((r,i)=>{if(omitted.has(r.assessmentId)||indexes.has(i))return true;const key=`${r.installmentId||'I'+r.installment}:${r.cycleDate}:${r.penaltyType||'MONTHLY'}`;if(keys.has(key))return false;keys.add(key);return true})},'Duplicate historical installment/cycle assessment. Use administrator reconciliation.');
+
+// Registry keys are nonfinancial identities; the account remains the authoritative ledger.
+// All financial snapshot writes claim the unique contract/installment/cycle/type key.
+assignmentSchema.pre(['updateOne','findOneAndUpdate'],async function(){const rows=this.getUpdate()?.$set?.monitoring?.assessments,account=this.getFilter()?._id;if(!rows||!account||!rows.length)return;const seen=new Set(),session=this.getOptions().session,operations=[];for(const p of rows){const installmentId=p.installmentId||`I${p.installment}`,penaltyType=p.penaltyType||'MONTHLY',key=createHash('sha256').update(JSON.stringify([String(account),installmentId,p.cycleDate,penaltyType])).digest('hex');if(seen.has(key))throw Object.assign(new Error('Duplicate installment/cycle assessment. Use administrator recalculation.'),{statusCode:409});seen.add(key);const values={account,installmentId,cycleDate:p.cycleDate,penaltyType,assessmentId:p.assessmentId};operations.push({updateOne:{filter:{_id:key},update:{$set:values},upsert:true}})}try{await PenaltyCycleIdentity.bulkWrite(operations,{session,ordered:true})}catch(e){if(e.code===11000)throw Object.assign(new Error('This installment/cycle identity changed concurrently. Refresh and review again.'),{statusCode:409});throw e}});
+
 export default mongoose.model("PropertyAssignment", assignmentSchema);
