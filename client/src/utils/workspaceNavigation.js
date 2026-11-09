@@ -2,14 +2,14 @@ const item=(to,label,icon,roles)=>({to,label,icon,roles});
 export const workspaceGroups=[
  {id:'dashboard',label:'Dashboard',icon:'grid',items:[item('/','Dashboard','grid')]},
  {id:'property',label:'Property Management',icon:'building',items:[item('/projects','Projects & Lots','building'),item('/property-inventory','Property Inventory','building'),item('/reopen-properties','Reopen Properties','building')]},
- {id:'clients',label:'Clients & Contracts',icon:'people',items:[item('/clients','Client List','people'),item('/clients?workspace=accounts','Contracts & Accounts','receipt')]},
+ {id:'clients',label:'Clients & Contracts',icon:'people',items:[item('/clients','Client List','people'),item('/clients?workspace=accounts','Contracts & Accounts','receipt'),item('/settlements','Fully Paid & Settlement','check')]},
  {id:'payments',label:'Payments & Collections',icon:'wallet',items:[item('/payment','Record Payment','wallet',['ADMIN','STAFF']),item('/payment-transactions','Payment Transactions','receipt'),item('/payment-monitoring','Payment Monitoring','bell')]},
  {id:'agents',label:'Agents & Commissions',icon:'percent',items:[item('/agents','Agents','agent'),item('/commissions','Agreements & Register','percent'),item('/commissions?status=UNRELEASED','Commission Releases','wallet')]},
  {id:'adjustments',label:'Contract Adjustments',icon:'history',items:[item('/forfeited-accounts','Forfeited Accounts','history'),item('/clients?workspace=transfers','Lot Transfers','building'),item('/clients?workspace=cancellations','Cancellations, Credits & Refunds','history')]},
  {id:'financial',label:'Financial Management',icon:'expense',items:[item('/expenses','Expenses & Remittances','expense'),item('/payouts','Payout Management','wallet',['ADMIN','STAFF']),item('/reports?view=cash&focus=movements','Cash Management & Turnovers','wallet')]},
  {id:'reports',label:'Reports',icon:'chart',items:[item('/reports?view=general','Operational Reports','chart'),item('/reports?view=cash','Financial Reports','chart')]},
  {id:'migration',label:'Historical Data Migration',icon:'receipt',items:[item('/historical-migration','Migration Workspace','receipt',['ADMIN','STAFF'])]},
- {id:'admin',label:'Administration',icon:'settings',items:[item('/database-maintenance','Database & Backups','settings',['ADMIN']),item('/companies','Company Settings','building'),item('/users?tab=users','Users','people',['ADMIN']),item('/users?tab=activity','Activity Logs','history',['ADMIN']),item('/approval-requests','Approval Requests','check',['ADMIN','STAFF'])]},
+ {id:'admin',label:'Administration',icon:'settings',items:[item('/database-maintenance','Database & Backups','settings',['ADMIN']),item('/companies','Company Settings','building'),item('/settings/appearance','Settings · Appearance','settings'),item('/users?tab=users','Users','people',['ADMIN']),item('/users?tab=activity','Activity Logs','history',['ADMIN']),item('/approval-requests','Approval Requests','check',['ADMIN','STAFF'])]},
 ];
 export function visibleGroups(role){return workspaceGroups.map(g=>({...g,items:g.items.filter(i=>!i.roles||i.roles.includes(role))})).filter(g=>g.items.length)}
 export function activeDestination({pathname,search}){

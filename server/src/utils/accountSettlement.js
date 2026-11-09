@@ -1,0 +1,30 @@
+import {createHash} from 'node:crypto';
+import {allocatePayments,effectivePayment} from './paymentLedger.js';
+import {validDate} from '../../../shared/paymentSchedule.js';
+const closed=new Set(['CANCELLED','TRANSFERRED','FORFEITED','SUPERSEDED','CANCELLATION_PENDING','HISTORICAL_CANCELLED','HISTORICAL_TRANSFERRED','HISTORICAL_FORFEITED']);
+export const settlementLabel=status=>({PAYING:'ACTIVE / PAYING',PRINCIPAL_FULLY_PAID:'PRINCIPAL FULLY PAID — OUTSTANDING CHARGES',SETTLED:'FULLY PAID / ACCOUNT SETTLED',NOT_APPLICABLE:'CLOSED / NOT ELIGIBLE',REVIEW_REQUIRED:'SETTLEMENT REQUIRES RECONCILIATION'})[status]||status;
+const ledgerAt=(a,date)=>{const prior=(a.agreementHistory||[]).find(v=>date<new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(v.replacedAt)));return allocatePayments({...a,contract:prior?.contract||a.contract},date)};
+const isClosed=(a,l,date)=>closed.has(l.category)||a.pendingCancellation&&(!a.pendingCancellation.effectiveDate||a.pendingCancellation.effectiveDate<=date)||!l.forfeiturePeriodId&&!a.transferOut&&!a.cancellationOut&&!a.forfeiturePeriods?.length&&closed.has(a.lifecycle);
+export function accountSettlement(account,asOf,ledger=ledgerAt(account,asOf)){
+ const undatedWaivers=(account.penaltyWaivers||[]).some(w=>w.amountCents>0&&!w.effectiveDate&&!w.timestamp);
+ const applicable=!isClosed(account,ledger,asOf),unresolved=!!(undatedWaivers||ledger.currentPenaltySummary?.reviewIssues?.length||account.penaltyReconciliation?.issues?.length||account.migration?.monitoringHold||account.migration&&account.migration.activated!==true&&!account.migration.activatedAt&&account.migration.status==='DRAFT');
+ const principal=ledger.balanceCents,charges=ledger.outstandingPenaltyCents,valid=Number.isSafeInteger(principal)&&principal>=0&&Number.isSafeInteger(charges)&&charges>=0;
+ const status=!applicable?'NOT_APPLICABLE':!valid||unresolved?'REVIEW_REQUIRED':principal>0?'PAYING':charges>0?'PRINCIPAL_FULLY_PAID':'SETTLED';
+ let principalCompletionDate=null,settlementDate=null,source=null;
+ const payments=(account.payments||[]).map(effectivePayment).filter(p=>p.amountCents>0&&p.paymentDate<=asOf);
+ if(['SETTLED','PRINCIPAL_FULLY_PAID'].includes(status)){
+  const dates=[account.contract.contractDate,...payments.map(p=>p.paymentDate),account.transferIn?.effectiveDate,...(account.creditAmendments||[]).map(x=>x.effectiveDate),...(account.penaltyWaivers||[]).map(x=>x.effectiveDate||x.timestamp&&new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(x.timestamp))),...(account.historicalPenalties||[]).map(x=>x.cycleDate),...(account.reactivationPenaltyCharges||[]).map(x=>x.effectiveDate),...(account.forfeiturePeriods||[]).flatMap(x=>[x.effectiveDate,x.reactivatedAt,x.replacedAt]),account.migration?.cutoffDate,asOf];
+  for(const date of [...new Set(dates.filter(d=>validDate(d)&&d<=asOf))].sort()){
+   const l=date===asOf?ledger:ledgerAt(account,date),eligible=!isClosed(account,l,date);
+   if(eligible&&l.balanceCents===0){if(!principalCompletionDate)principalCompletionDate=date}else{principalCompletionDate=null;settlementDate=null}
+   if(eligible&&l.balanceCents===0&&l.outstandingPenaltyCents===0){if(!settlementDate)settlementDate=date}else settlementDate=null;
+  }
+  const completion=settlementDate||principalCompletionDate,last=payments.filter(p=>p.paymentDate===completion).at(-1),amendment=(account.creditAmendments||[]).find(x=>x.effectiveDate===completion);
+  source=last?{kind:'PAYMENT',paymentId:last.paymentId,receiptNumber:last.receiptNumber,amountCents:last.amountCents,date:last.paymentDate}:amendment?{kind:'APPROVED_CREDIT_OR_AMENDMENT',reference:amendment.caseId,amountCents:amendment.creditCents||0,date:completion}:account.transferIn?.effectiveDate===completion?{kind:'APPROVED_CREDIT',reference:account.transferIn.transferId,amountCents:account.transferIn.creditCents,date:completion}:{kind:'LEDGER_RECONCILIATION',date:completion,amountCents:0};
+ }
+ const principalAllocations=Object.values(ledger.allocations||{}).flat().filter(x=>['DOWN_PAYMENT','INSTALLMENT','ADVANCE'].includes(x.allocationType));
+ const finalPayment=[...payments].sort((a,b)=>a.paymentDate.localeCompare(b.paymentDate)||new Date(a.createdAt||0)-new Date(b.createdAt||0)).at(-1);
+ const result={reviewNote:undatedWaivers?'A historical waiver has no effective date. Reconcile its source before certifying settlement.':unresolved?'Historical or penalty reconciliation is pending.':'',finalPayment:finalPayment?{paymentId:finalPayment.paymentId,receiptNumber:finalPayment.receiptNumber,paymentDate:finalPayment.paymentDate,amountCents:finalPayment.amountCents}:null,status,label:settlementLabel(status),principalCompletionDate,settlementDate,finalSource:source,outstandingPrincipalCents:principal,outstandingChargesCents:charges,otherChargesCents:0,otherChargesNote:'No separate receivable charge ledger is configured. OTHER receipts are not principal credits.',recognizedPrincipalPaymentsCents:principalAllocations.reduce((n,x)=>n+x.amountCents,0),approvedCreditsCents:ledger.transferCreditCents||0,recognizedPrincipalCents:ledger.principalPaidCents,contractId:account.assignmentId,accountId:String(account._id||''),clientId:String(account.client?._id||account.client||''),propertyId:String(account.property?._id||account.property||'')};
+ const fingerprint=createHash('sha256').update(JSON.stringify({result,payments:payments.map(p=>[p.paymentId,p.receiptNumber,p.paymentDate,p.amountCents,p.revision,p.allocationPlan,p.paymentIntent]),contract:account.contract,amendments:account.creditAmendments,waivers:account.penaltyWaivers,penalties:ledger.assessments,pending:(account.correctionRequests||[]).filter(r=>r.status==='PENDING')})).digest('hex');
+ const verification=(account.settlementVerifications||[]).at(-1);return {...result,fingerprint,verification:verification?{...verification,current:verification.fingerprint===fingerprint&&status==='SETTLED'}:null};
+}

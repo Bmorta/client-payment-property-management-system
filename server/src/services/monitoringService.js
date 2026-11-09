@@ -8,6 +8,9 @@ export function monitoringMutation(account,actor={username:"system",role:"SYSTEM
  const summary=summarizeAccount(account,asOf),stamp=new Date(),snapshot={asOf,penaltyCalculationRule:summary.penaltyCalculationRule,currentPenaltySummary:summary.currentPenaltySummary,schedule:summary.schedule,allocations:summary.allocations,assessments:summary.assessments,
   nextUnpaidDueDate:summary.nextUnpaidDueDate,balanceCents:summary.balanceCents,outstandingPenaltyCents:summary.outstandingPenaltyCents,advanceCoveredMonths:summary.advanceCoveredMonths,advanceCoveredThrough:summary.advanceCoveredThrough,riskStatus:summary.riskStatus,category:summary.category,consecutiveUnpaidMonths:summary.consecutiveUnpaidMonths};
  const push={},set={};
+ const financialSettlement=Object.fromEntries(['status','label','principalCompletionDate','settlementDate','finalSource','finalPayment','recognizedPrincipalPaymentsCents','approvedCreditsCents','recognizedPrincipalCents','outstandingPrincipalCents','outstandingChargesCents'].map(k=>[k,summary.settlement[k]]));
+ if(JSON.stringify(financialSettlement)!==JSON.stringify(account.financialSettlement)){set.financialSettlement=financialSettlement;push.settlementHistory={eventId:randomUUID(),action:'FINANCIAL_SETTLEMENT_RECALCULATED',previousValues:account.financialSettlement||null,updatedValues:financialSettlement,...actor,reason,timestamp:stamp};}
+ snapshot.settlement=financialSettlement;
  if(summary.currentPenaltySummary){const last=account.penaltySnapshots?.at(-1),entry={kind:'NON_FINANCIAL_SNAPSHOT',asOf,period:asOf.slice(0,7),summary:summary.currentPenaltySummary};if(JSON.stringify(last?.summary)!==JSON.stringify(entry.summary))push.penaltySnapshots={...entry,...actor,timestamp:stamp}}
 
  const latest=account.allocationVersions?.at(-1);
@@ -44,7 +47,7 @@ export function monitoringMutation(account,actor={username:"system",role:"SYSTEM
  if(JSON.stringify(notifications)!==JSON.stringify(account.notifications||[]))set.notifications=notifications;
  if(JSON.stringify(snapshot)!==JSON.stringify(account.monitoring))set.monitoring=snapshot;
  if(!Object.keys(set).length&&!Object.keys(push).length)return {summary,changed:false};
- const compact=value=>value?Object.fromEntries(["asOf","nextUnpaidDueDate","balanceCents","outstandingPenaltyCents","advanceCoveredMonths","advanceCoveredThrough","riskStatus","category","consecutiveUnpaidMonths"].map(k=>[k,value[k]])):null;
+ const compact=value=>value?Object.fromEntries(["asOf","nextUnpaidDueDate","balanceCents","outstandingPenaltyCents","advanceCoveredMonths","advanceCoveredThrough","riskStatus","category","consecutiveUnpaidMonths","settlement"].map(k=>[k,value[k]])):null;
  push.auditEvents={action:"ACCOUNT_MONITORING_RECALCULATED",previousValues:compact(account.monitoring),updatedValues:compact(snapshot),allocationVersion:push.allocationVersions?.version,penaltyEventIds:penalties.map(p=>p.eventId),reason,...actor,timestamp:stamp};
  return {summary,changed:true,update:{$set:set,$push:push}};
 }

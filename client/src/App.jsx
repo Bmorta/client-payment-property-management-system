@@ -1,3 +1,5 @@
+import {AppearanceProvider} from './context/AppearanceContext.jsx';
+import AppearancePage from './pages/AppearancePage.jsx';
 import BackupRequirementNotice from './components/BackupRequirementNotice.jsx';
 import AppLoading from "./components/AppLoading.jsx";
 import FeedbackHost from "./components/FeedbackHost.jsx";
@@ -12,6 +14,7 @@ import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
+const SettlementPage=lazy(()=>import("./pages/SettlementPage.jsx"));
 const PropertyHistoryPage=lazy(()=>import("./pages/PropertyHistoryPage.jsx"));
 const ForfeitedAccountsPage=lazy(()=>import("./pages/ForfeitedAccountsPage.jsx"));
 const DatabaseMaintenancePage=lazy(()=>import("./pages/DatabaseMaintenancePage.jsx"));
@@ -46,7 +49,7 @@ const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
 
 export default function App() {
   return (
-    <AuthProvider>
+    <AuthProvider><AppearanceProvider>
       <BrowserRouter><BackupRequirementNotice/><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -54,7 +57,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/companies" element={<CompaniesPage/>}/>
+              <Route path="/settings/appearance" element={<AppearancePage/>}/><Route path="/settlements" element={<SettlementPage/>}/><Route path="/companies" element={<CompaniesPage/>}/>
               <Route path="/historical-migration" element={<RoleRoute roles={["ADMIN","STAFF"]}><HistoricalMigrationPage /></RoleRoute>} />
               <Route path="/property-inventory" element={<InventoryPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
@@ -79,6 +82,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense></BrowserRouter>
-    </AuthProvider>
+    </AppearanceProvider></AuthProvider>
   );
 }
