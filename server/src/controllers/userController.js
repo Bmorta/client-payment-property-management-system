@@ -1,3 +1,4 @@
+import {updateUserSafely} from "../services/userUpdateService.js";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import { logActivity } from "../utils/activityLogger.js";
@@ -87,59 +88,14 @@ export const createUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    const { userId } = req.params;
-    const { firstName, lastName, email, role, isActive, password } = req.body;
-
-    const user = await User.findById(userId).select("+passwordHash");
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found."
-      });
+    const changes = Object.fromEntries(["firstName", "lastName", "email", "role", "isActive"].filter(k => req.body[k] !== undefined).map(k => [k, req.body[k]]));
+    if (req.body.password !== undefined) {
+      const error = validatePassword(req.body.password);
+      if (error) return res.status(400).json({success: false, message: error});
+      changes.passwordHash = await bcrypt.hash(req.body.password, 12);
     }
-
-    if (req.user._id.toString() === user._id.toString() && isActive === false) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot deactivate your own account."
-      });
-    }
-
-    if (firstName !== undefined) user.firstName = firstName;
-    if (lastName !== undefined) user.lastName = lastName;
-    if (email !== undefined) user.email = email;
-    if (role !== undefined) user.role = role;
-    if (isActive !== undefined) user.isActive = isActive;
-
-    if (password !== undefined) {
-      const passwordError = validatePassword(password);
-      if (passwordError) {
-        return res.status(400).json({
-          success: false,
-          message: passwordError
-        });
-      }
-
-      user.passwordHash = await bcrypt.hash(password, 12);
-    }
-
-    await user.save();
-
-    await logActivity({
-      action: "USER_UPDATE",
-      req,
-      userId: req.user._id,
-      entityType: "User",
-      entityId: user._id.toString()
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "User updated successfully.",
-      data: user
-    });
-  } catch (error) {
-    next(error);
-  }
+    const user = await updateUserSafely(req.params.userId, req.user._id, changes);
+    await logActivity({action: "USER_UPDATE", req, userId: req.user._id, entityType: "User", entityId: user._id.toString()});
+    res.json({success: true, message: "User updated successfully.", data: user});
+  } catch (error) {next(error);}
 };

@@ -1,3 +1,4 @@
+import FeedbackMessage from "./FeedbackMessage.jsx";
 import {default as FieldLabel} from "./FieldLabel.jsx";
 import RequiredMark from "./RequiredMark.jsx";
 import { useEffect, useState } from "react";
@@ -28,7 +29,7 @@ export default function AssignmentFields({ value, onChange, refreshKey = 0, clie
   let totalCents = null;
   try { const price = lot && lotPrice(lot.areaSqm, lot.pricePerSqm); if (price != null) totalCents = moneyCents(price); } catch { /* Unsupported price remains an explicit empty preview. */ }
   return <div className="row g-3">
-    {error && <p className="text-danger" role="alert">{error}</p>}
+    <FeedbackMessage kind="error" message={error}/>
     {[["projectId", "Project", projects.map(p => [p._id, p.projectName])], ["phase", "Phase", phases.map(n => [n, `Phase ${n}`])], ["block", "Block", blocks.map(n => [n, `Block ${n}`])], ["propertyId", "Lot", options.map(p => [p._id, `Lot ${p.lotNumber} · ${p.areaSqm ?? "?"} sqm`])]].map(([key, label, choices]) => <div className="col-12 col-sm-6" key={key}>
       <FieldLabel className="form-label w-100">{label}<RequiredMark/><select aria-label={`Assignment ${label}`} className="form-select" required value={value[key]} onChange={e => set(key, e.target.value)}><option value="">Select {label.toLowerCase()}</option>{choices.map(([id, text]) => <option key={id} value={id}>{text}</option>)}</select></FieldLabel>
     </div>)}

@@ -1,3 +1,4 @@
+import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import ProjectMap from "../components/ProjectMap.jsx";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -47,7 +48,7 @@ export default function ManageLotsPage() {
     </div>
 
     {loading && <p className="text-secondary" role="status">Loading project...</p>}
-    {error && <div className="alert alert-danger" role="alert">{error}</div>}
+    <FeedbackMessage kind="error" message={error}/>
     {!loading && !error && project && <><ProjectMap project={project}/><PropertyInventory key={project._id} project={project} /></>}
   </main>;
 }

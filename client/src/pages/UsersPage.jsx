@@ -1,3 +1,4 @@
+import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import ListReportActions from "../components/ListReportActions.jsx";
 import SearchInput from "../components/SearchInput.jsx";
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
@@ -112,7 +113,7 @@ const UserModal = ({ open, editingUser, onClose, onSaved }) => {
               </div>
 
               <div className="modal-body">
-                {error && <div className="alert alert-danger">{error}</div>}
+                <FeedbackMessage kind="error" message={error}/>
 
                 <div className="row g-3">
                   <div className="col-md-6">
@@ -293,8 +294,8 @@ export default function UsersPage() {
         <button className={`nav-link ${tab === "activity" ? "active" : ""}`} role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}>User Activity Logs</button>
       </div>
       {tab === "activity" ? <Suspense fallback={<p role="status">Loading activity logs...</p>}><ActivityLogs users={users} /></Suspense> : <>
-      {pageError && <div className="alert alert-danger">{pageError}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
+      <FeedbackMessage kind="error" message={pageError}/>
+      <FeedbackMessage kind="success" message={success}/>
 
       <div className="card border-0 shadow-sm">
         <div className="card-body">

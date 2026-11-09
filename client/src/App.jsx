@@ -1,3 +1,4 @@
+import FeedbackHost from "./components/FeedbackHost.jsx";
 import DialogNavigation from "./components/DialogNavigation.jsx";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -40,7 +41,7 @@ const AdminRoute = ({ children }) => {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter><DialogNavigation/><Suspense fallback={<p className="p-4">Loading...</p>}>
+      <BrowserRouter><DialogNavigation/><FeedbackHost/><Suspense fallback={<p className="p-4">Loading...</p>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 

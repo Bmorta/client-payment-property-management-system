@@ -1,3 +1,4 @@
+import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import ListReportActions from "../components/ListReportActions.jsx";
 import SearchInput from "../components/SearchInput.jsx";
 import {revealTarget} from "../utils/navigation.js";
@@ -22,7 +23,7 @@ export default function ProjectsPage() {
   const visible=projects.filter(p=>[p.projectId,p.projectName,p.projectCode,p.location].join(" ").toLowerCase().includes(query.toLowerCase()));
   return <main className="container-fluid py-4 px-4">
     <div className="mb-4"><p className="text-uppercase small fw-semibold text-secondary mb-1">Management</p><h1 className="h3 fw-bold mb-1">Projects</h1><p className="text-secondary mb-0">Create and manage projects before assigning clients and properties.</p></div>
-    {message&&<div className="alert alert-success">{message}</div>}{error&&<div className="alert alert-danger">{error}</div>}
+    <FeedbackMessage kind="success" message={message}/><FeedbackMessage kind="error" message={error}/>
     <div className="row g-4"><div className="col-12 col-xl-4"><div className="card border-0 shadow-sm"><div className="card-body"><h2 className="h5 fw-bold">{editingId?"Edit Project":"Add Project"}</h2><form onSubmit={submit} className="mt-3"><RequiredNote/>
       {[["projectId","Project ID",false],["projectName","Project Name",true],["projectCode","Project Code",true],["location","Location",false],["startDate","Start Date",false]].map(([key,label,required])=><div className="mb-3" key={key}><FieldLabel className="form-label">{label}<input className="form-control" type={key==="startDate"?"date":"text"} value={form[key]} readOnly={key==="projectId"} placeholder={key==="projectId"?"Assigned automatically when saved":undefined} required={required} onChange={e=>setForm({...form,[key]:e.target.value})}/></FieldLabel></div>)}
       <div className="mb-3"><FieldLabel className="form-label">Status<select className="form-select" value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option>PLANNING</option><option>ACTIVE</option><option>COMPLETED</option><option>ARCHIVED</option></select></FieldLabel></div>

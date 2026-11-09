@@ -8,6 +8,7 @@ export default function FieldHelp({label,children}){
  const hide=()=>{cancel();pinned.current=false;setOpen(false)};
  const leave=()=>{cancel();timer.current=setTimeout(()=>{if(!pinned.current&&document.activeElement!==button.current)setOpen(false)},160)};
  useEffect(()=>()=>clearTimeout(timer.current),[]);
+ useEffect(()=>{const close=()=>hide();window.addEventListener("cpm:close-help",close);return()=>window.removeEventListener("cpm:close-help",close)},[]);
  useLayoutEffect(()=>{
   if(!open)return;
   const place=()=>{
