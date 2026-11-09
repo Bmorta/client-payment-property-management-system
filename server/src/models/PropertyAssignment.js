@@ -24,7 +24,8 @@ const assignmentSchema = new Schema({
   client: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
   property: { type: Schema.Types.ObjectId, ref: "Property", required: true },
-  lifecycle:{type:String,enum:["ACTIVE","TRANSFERRED","CANCELLATION_PENDING","CANCELLED"],default:"ACTIVE"},
+  lifecycle:{type:String,enum:["ACTIVE","TRANSFERRED","CANCELLATION_PENDING","CANCELLED","FORFEITED","SUPERSEDED"],default:"ACTIVE"},
+  reactivationPenaltyCharges:{type:[Schema.Types.Mixed],default:[]},forfeitureClosure:Schema.Types.Mixed,forfeiturePeriods:{type:[Schema.Types.Mixed],default:[]},forfeitureEvents:{type:[Schema.Types.Mixed],default:[]},reactivationIn:Schema.Types.Mixed,
   transferIn:Schema.Types.Mixed,transferOut:Schema.Types.Mixed,cancellationOut:Schema.Types.Mixed,pendingCancellation:Schema.Types.Mixed,creditAmendments:{type:[Schema.Types.Mixed],default:[]},
   contract: {
     transferPricing:Schema.Types.Mixed,

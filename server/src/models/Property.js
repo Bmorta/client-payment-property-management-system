@@ -12,6 +12,7 @@ const propertySchema = new mongoose.Schema(
     lotNumber: { type: Number, required: true, min: 1 },
     areaSqm: { type: Number, default: null, min: 0 },
     pricePerSqm: { type: Number, default: null, validate: { validator: validPrice, message: "Price per sqm must be non-negative with at most two decimal places." } },
+    reopeningStatus:{type:String,enum:['NONE','PENDING','REJECTED','APPROVED','REACTIVATED'],default:'NONE'},forfeitureAccount:{type:mongoose.Schema.Types.ObjectId,ref:'PropertyAssignment',default:null},history:{type:[mongoose.Schema.Types.Mixed],default:[]},
     client: { type: mongoose.Schema.Types.ObjectId, ref: "Client", default: null },
     status: {
       type: String,

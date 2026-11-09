@@ -32,7 +32,7 @@ const fail = (code, message) => { throw Object.assign(new Error(message), { stat
 const id = value => { if (typeof value !== "string" || !mongoose.isValidObjectId(value)) fail(400, "Invalid identifier."); return value; };
 const text = (value, max = 500) => { if (value != null && typeof value !== "string") fail(400, "Invalid text field."); return (value || "").trim().slice(0, max); };
 const requestKey = value => { if (typeof value !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(value)) fail(400, "Invalid submission ID. Reload the form."); return value; };
-const populate = query => query.populate("client", "clientId firstName middleName lastName suffix").populate("project", "projectId projectName projectCode").populate("property", "propertyId phaseNumber blockNumber lotNumber areaSqm");
+const populate = query => query.populate("client", "clientId firstName middleName lastName suffix").populate("project", "projectId projectName projectCode").populate("property", "propertyId phaseNumber blockNumber lotNumber areaSqm pricePerSqm status reopeningStatus forfeitureAccount");
 const accountData = (account, user) => {
   const { auditEvents, notifications, correctionRequests, ...safe } = account;
   const { allocations } = allocatePayments(account);
@@ -59,6 +59,7 @@ export async function assignProperty(req, res, next) {
     if (!client || client.status !== "ACTIVE") fail(409, "Choose an active client.");
     const property = await Property.findById(propertyId);
     if (!property) fail(404, "Lot not found.");
+    if(["PENDING","REJECTED"].includes(property.reopeningStatus))fail(409,"This lot requires administrator reopening approval before a new assignment.");
     const project = await Project.findById(property.project);
     if (!project || project.status === "ARCHIVED") fail(409, "This project cannot accept assignments.");
     if ((req.body.expectedAreaSqm !== undefined && req.body.expectedAreaSqm !== property.areaSqm) || (req.body.expectedPricePerSqm !== undefined && req.body.expectedPricePerSqm !== property.pricePerSqm)) fail(409, "This lot's area or price changed. Refresh and review the new price before assigning.");
@@ -73,9 +74,9 @@ export async function assignProperty(req, res, next) {
     if(monitoringTerms)validateMonthlyArrangement(totalCents,downPaymentCents,months,req.body.monthlyInstallment,req.body.monthlyOverrideAcknowledged);
     const schedule=configureSchedule(buildSchedule(totalCents,months,firstDueDate,downPaymentCents,contractDate),monitoringTerms,req.body.monthlyInstallment);
     if(schedule.some(s=>s.dueDate<contractDate))fail(400,"Due day cannot move an installment before the contract date.");
-    if (await PropertyAssignment.exists({ property: propertyId,lifecycle:{$nin:["TRANSFERRED","CANCELLED"]} })) fail(409, "This lot already has an account. Use that account instead.");
+    if (await PropertyAssignment.exists({ property: propertyId,lifecycle:{$nin:["TRANSFERRED","CANCELLED","FORFEITED","SUPERSEDED"]} })) fail(409, "This lot already has an account. Use that account instead.");
     await PropertyAssignment.init();
-    claimed = await Property.findOneAndUpdate({ _id: propertyId, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
+    claimed = await Property.findOneAndUpdate({ _id: propertyId, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, reopeningStatus:{$nin:["PENDING","REJECTED"]}, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
     if (!claimed) fail(409, "This lot is no longer available or is already linked to a client.");
     created = await PropertyAssignment.create({ penaltyCalculationRule:'CURRENT_OVERDUE',assignmentId: await generateRecordId("contract"), client: clientId, project: property.project, property: propertyId,
       contract: { monitoringTerms, monthlyInstallmentCents:schedule.find(s=>s.installment>0)?.amountCents, totalCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", firstDueDate:schedule.find(s=>s.installment>0)?.dueDate||firstDueDate, contractDate, downPaymentCents, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, schedule }, createdBy: req.user._id, auditEvents: [{ eventId: req.auditEvent?._id, action: "AGREEMENT_CREATED", username: req.user.username, role: req.user.role, userId: req.user._id, timestamp: new Date() }] });

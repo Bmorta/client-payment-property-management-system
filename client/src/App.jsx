@@ -12,6 +12,8 @@ import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
+const PropertyHistoryPage=lazy(()=>import("./pages/PropertyHistoryPage.jsx"));
+const ForfeitedAccountsPage=lazy(()=>import("./pages/ForfeitedAccountsPage.jsx"));
 const DatabaseMaintenancePage=lazy(()=>import("./pages/DatabaseMaintenancePage.jsx"));
 const PayoutsPage=lazy(()=>import("./pages/PayoutsPage.jsx"));
 const CompaniesPage=lazy(()=>import("./pages/CompaniesPage.jsx"));
@@ -68,6 +70,7 @@ export default function App() {
               <Route path="/payouts" element={<RoleRoute roles={["ADMIN","STAFF"]}><PayoutsPage/></RoleRoute>}/>
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/forfeited-accounts" element={<ForfeitedAccountsPage/>}/><Route path="/reopen-properties" element={<ForfeitedAccountsPage/>}/><Route path="/property-history" element={<PropertyHistoryPage/>}/>
               <Route path="/database-maintenance" element={<RoleRoute><DatabaseMaintenancePage/></RoleRoute>}/>
               <Route path="/users" element={<RoleRoute><UsersPage /></RoleRoute>} />
             </Route>

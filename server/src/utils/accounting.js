@@ -13,7 +13,7 @@ export function summarizeAccount(account, asOf = today()) {
   const contract = historical?.contract || account.contract;
   const allocated = allocatePayments({...account, contract}, asOf);
   const paidCents=allocated.principalPaidCents;
-  const schedule=allocated.schedule.map(row=>({...row,daysOverdue:Math.max(0,Math.floor((Date.parse(asOf)-Date.parse(row.dueDate))/86400000)),penaltyReview:row.overdue&&row.penaltyHistory.length>0}));
+  const schedule=allocated.schedule.map(row=>({...row,daysOverdue:Math.max(0,Math.floor((Date.parse(allocated.forfeitureEffectiveDate||asOf)-Date.parse(row.dueDate))/86400000)),penaltyReview:row.overdue&&row.penaltyHistory.length>0}));
   const installments=schedule.filter(s=>s.installment>0&&s.amountCents>0&&!s.retired),fullyPaidMonths=installments.filter(s=>s.balanceCents===0).length;
   const missedMonths=installments.filter(s=>s.overdue).length;
   // Legacy review indicators remain until the administrator configures terms.

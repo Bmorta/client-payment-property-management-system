@@ -18,7 +18,7 @@ export async function listProjectProperties(req, res, next) {
     const properties = await Property.find({ project: project._id })
       .sort({ phaseNumber: 1, blockNumber: 1, lotNumber: 1 });
     const assignments = await PropertyAssignment.find({ project: project._id }).select("property lifecycle").lean();
-    const assigned = new Set(assignments.filter(a=>!["TRANSFERRED","CANCELLED"].includes(a.lifecycle)).map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
+    const assigned = new Set(assignments.filter(a=>!["TRANSFERRED","CANCELLED","FORFEITED","SUPERSEDED"].includes(a.lifecycle)).map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
     res.json({ success: true, data: properties.map(p => {
       const lot = p.toJSON(); const hasAccount = assigned.has(String(p._id));
       return { ...lot, hasAccount, hasHistory:history.has(String(p._id)),canDelete: lot.canDelete && !history.has(String(p._id)) };
@@ -257,10 +257,11 @@ export async function updateProjectProperties(req, res, next) {
     }
     const result = await Property.bulkWrite(updates.map(update => ({
       updateOne: {
-        filter: { _id: update._id, project: project._id },
-        update: { $set: { areaSqm: update.areaSqm ?? null, status: update.status, ...(update.lotNumber !== undefined ? { lotNumber: update.lotNumber } : {}), ...(update.pricePerSqm !== undefined ? { pricePerSqm: update.pricePerSqm } : {}) } }
+        filter: { _id: update._id, project: project._id, reopeningStatus:{$nin:['PENDING','REJECTED']} },
+        update: { $inc:{__v:1}, $set: { areaSqm: update.areaSqm ?? null, status: update.status, ...(update.lotNumber !== undefined ? { lotNumber: update.lotNumber } : {}), ...(update.pricePerSqm !== undefined ? { pricePerSqm: update.pricePerSqm } : {}) } }
       }
     })), { ordered: true });
+    if(result.matchedCount!==updates.length)return res.status(409).json({success:false,message:'Some lots are protected by forfeiture review or changed concurrently. Refresh inventory; use Reopen Properties for protected lots. Other eligible edits may have been saved.'});
     res.json({ success: true, message: `${result.matchedCount} lots saved.` });
   } catch (error) {
     if (error?.code === 11000) return res.status(409).json({ success: false, message: "Lot number already exists. Some edits may have been saved; refresh inventory before retrying." });

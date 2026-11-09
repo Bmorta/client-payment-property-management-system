@@ -1,3 +1,4 @@
+import {Link} from 'react-router-dom';
 import CloseButton from "../components/CloseButton.jsx";
 import {filterInventory} from "../../../shared/inventoryFilters.js";
 import ListReportActions from "../components/ListReportActions.jsx";
@@ -355,7 +356,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
           {editMode && <td><FieldLabel compact className="guided-control">{`Select ${p.propertyId} for deletion`}<input aria-label={`Select ${p.propertyId} for deletion`} className="form-check-input" type="checkbox"
             disabled={busy || !!generator || changed.length > 0 || !deletableLot(p) || (chosenLots.length >= 100 && !selectedLots.includes(p._id))}
             checked={selectedLots.includes(p._id)} onChange={() => toggleSelected(p._id)} /></FieldLabel></td>}
-          <td>{p.propertyId}</td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{editMode ? <FieldLabel compact className="guided-control">{`Lot number for ${p.propertyId}`}<input required aria-label={`Lot number for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="1" step="1"
+          <td>{p.propertyId}<Link className="d-block small" to={`/property-history?property=${p._id}`}>History</Link></td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{editMode ? <FieldLabel compact className="guided-control">{`Lot number for ${p.propertyId}`}<input required aria-label={`Lot number for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="1" step="1"
             disabled={busy || !!generator} value={drafts[p._id]?.lotNumber ?? p.lotNumber} onChange={e => updateDraft(p._id, "lotNumber", e.target.value)} /></FieldLabel> : p.lotNumber}</td>
           <td>{editMode ? <FieldLabel compact className="guided-control">{`Area for ${p.propertyId}`}<input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0.01" step="any"
             disabled={busy || !!generator} value={drafts[p._id]?.areaSqm ?? ""} onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /></FieldLabel> : p.areaSqm ?? "—"}</td>

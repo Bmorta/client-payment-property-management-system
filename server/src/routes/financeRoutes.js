@@ -1,3 +1,4 @@
+import {previewForfeiture,postForfeiture,forfeitureAccounts,propertyLifecycleHistory} from '../controllers/forfeitureController.js';
 import {cashHistoryExport} from "../controllers/cashHistoryExportController.js";
 import {paymentAcknowledgement} from "../controllers/paymentAcknowledgementController.js";
 import {addOfficeCash} from "../controllers/cashAdditionController.js";
@@ -36,6 +37,10 @@ router.get('/cancellations/:caseId/export',cancellationExport);
 router.post('/cancellations/:caseId/finalize/preview',authorize('ADMIN'),cancellationFinalPreview);
 router.post('/cancellations/:caseId/finalize',authorize('ADMIN'),cancellationFinalize);
 router.post('/cancellations/:caseId/refunds',authorize('ADMIN'),refundPost);
+router.get('/forfeited-accounts',forfeitureAccounts);
+router.get('/properties/:propertyId/history',propertyLifecycleHistory);
+router.post('/accounts/:id/forfeiture-actions/preview',authorize('ADMIN'),previewForfeiture);
+router.post('/accounts/:id/forfeiture-actions',authorize('ADMIN'),postForfeiture);
 router.use("/accounts/:id",accountLifecycleGuard);
 router.get("/lot-transfer-options",authorize("ADMIN"),transferOptions);
 router.post("/accounts/:id/lot-transfer/preview",authorize("ADMIN"),previewLotTransfer);
