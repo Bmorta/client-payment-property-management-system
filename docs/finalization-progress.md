@@ -20,3 +20,9 @@ Implemented administrator-only correction/void with a server-generated preview t
 Validation: backend suite 218 discovered, 210 passed, 8 environment-gated skips, zero failures. Expense HTTP integration passed on standalone and replica set: preview read-only behavior, role checks, invalid inputs, retries, concurrency, original/history preservation, corrected/voided expense and cash totals, and payout-link double-deduction prevention. UI checks verify review-before-save, explicit confirmation, refresh and viewer restrictions. Production build passed.
 
 Remaining checklist work includes notification read-state isolation/history, convenience restore/deactivate controls, migration draft controls, broader role/accessibility/device checks, and large-data/report/backup improvements. No production-readiness claim is made from these groups alone.
+
+## Group 3 — independent notification reads and accessible history
+
+Notification read state now lives in a separate per-user/account/notification collection. Legacy readBy flags remain honored; no automatic rewrite of existing accounts is needed. Marking one alert read is account-scoped, including identical alert IDs on different accounts. Mark-all covers permitted older pages. The bell opens a centered, searchable, paginated history instead of a clipped dropdown. Live unread updates and role restrictions remain intact.
+
+Validation: notification HTTP tests passed on standalone and replica set with 132 alerts. Reads left the complete account document unchanged and preserved a financial recalculation preview token. Tests cover legacy read flags, pagination beyond 100 entries, roles, same-ID account isolation, repeated reads and mark-all. UI check passed for centered history, paging and scoped read/navigation. Backend suite: 219 discovered, 210 passed, 9 environment-gated skips, zero failures. Frontend build passed.
