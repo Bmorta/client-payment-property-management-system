@@ -257,3 +257,10 @@ button, input, select, textarea { font: inherit; }
 @media print { .desktop-collapse { display:none !important; } }
 .nav-category .nav-icon { flex-shrink:0; }
 @media (min-width:1200px) { .sidebar-compact .sidebar-brand { padding-left:16px; padding-right:16px; } }
+.rems-icon { display:inline-block; object-fit:contain; flex-shrink:0; vertical-align:middle; }
+.rems-loading { min-height:45vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px; color:inherit; }
+.rems-loading > span { color:var(--office-muted,#64748b); }
+.map-print-modal { background:#0f172a99; z-index:1500; }
+.map-print-modal .modal-dialog { max-width:min(1280px,96vw); }
+.map-print-frame { display:block; width:100%; height:55vh; min-height:260px; border:1px solid var(--office-border,#cbd5e1); background:#e5e7eb; }
+@media(max-width:767px) { .map-print-frame { height:45vh; }.map-print-modal .modal-dialog { max-width:100%; } }

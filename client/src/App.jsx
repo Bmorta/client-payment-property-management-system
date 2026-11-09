@@ -1,3 +1,4 @@
+import AppLoading from "./components/AppLoading.jsx";
 import FeedbackHost from "./components/FeedbackHost.jsx";
 import DialogNavigation from "./components/DialogNavigation.jsx";
 import { lazy, Suspense } from "react";
@@ -41,7 +42,7 @@ const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter><DialogNavigation/><FeedbackHost/><Suspense fallback={<p className="p-4">Loading...</p>}>
+      <BrowserRouter><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 

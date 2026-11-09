@@ -1,3 +1,4 @@
+import REMSIcon from "../components/REMSIcon.jsx";
 import {useEffect,useRef,useState} from "react";
 import {Link,NavLink,Outlet,useLocation} from "react-router-dom";
 import NotificationBell from "../components/NotificationBell.jsx";
@@ -39,7 +40,7 @@ export default function AppLayout(){
   <a className="skip-link" href="#workspace-content">Skip to content</a>
   {open&&<button type="button" className="sidebar-backdrop" tabIndex={-1} aria-label="Close navigation overlay" onClick={close}/>}
   <aside ref={sidebar} id="workspace-navigation" className="app-sidebar" role={open?"dialog":undefined} aria-modal={open?true:undefined} aria-label="Main navigation" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget))setPeek(false)}}>
-   <div className="sidebar-brand"><NavLink to="/" className="brand-link" onClick={()=>setOpen(false)}><span className="brand-symbol"><NavIcon name="building"/></span><span className="brand-copy">REMS<span className="brand-subtitle">Real Estate Management System</span></span></NavLink><button type="button" className="icon-button sidebar-close" aria-label="Close navigation" onClick={close}><NavIcon name="close"/></button></div>
+   <div className="sidebar-brand"><NavLink to="/" className="brand-link" onClick={()=>setOpen(false)}><REMSIcon size={40} decorative/><span className="brand-copy">REMS<span className="brand-subtitle">Real Estate Management System</span></span></NavLink><button type="button" className="icon-button sidebar-close" aria-label="Close navigation" onClick={close}><NavIcon name="close"/></button></div>
    <button type="button" className="desktop-collapse" aria-label={compact?'Expand sidebar':'Collapse sidebar'} aria-pressed={compact} onClick={()=>{setPeek(false);setCompact(v=>!v)}}><NavIcon name="menu"/><span>{compact?'Expand':'Collapse sidebar'}</span></button>
    <nav className="sidebar-nav" aria-label="Workspace modules">{groups.map(group=>{
     const isOpen=expanded[group.id]??group.id===activeGroup?.id;

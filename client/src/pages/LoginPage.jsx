@@ -1,3 +1,4 @@
+import REMSIcon from "../components/REMSIcon.jsx";
 import FeedbackMessage from '../components/FeedbackMessage.jsx';
 import {safeReturnPath} from '../utils/sessionRecovery.js';
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
@@ -50,7 +51,7 @@ export default function LoginPage() {
           <div className="col-12 col-md-8 col-lg-5">
             <div className="card border-0 shadow-sm">
               <div className="card-body p-4 p-md-5">
-                <div className="mb-4">
+                <div className="mb-4"><REMSIcon size={96} className="mb-3" decorative/>
                   <p className="text-uppercase small fw-semibold text-secondary mb-2">
                     REMS · Secure workspace
                   </p>
