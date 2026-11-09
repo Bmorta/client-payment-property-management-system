@@ -1,3 +1,4 @@
+import CancellationReviewHold from './CancellationReviewHold.jsx';
 import ForfeitureActions from './ForfeitureActions.jsx';
 import CancellationWorkspace from './CancellationWorkspace.jsx';
 import LotTransfer from './LotTransfer.jsx';
@@ -40,7 +41,7 @@ export default function ClientAccounts({ client, refreshKey = 0 }) {
       {editingAgreement === a._id && <AgreementEditor key={`${a._id}/${a.__v}`} account={a} onClose={() => setEditingAgreement(null)} onSaved={() => {setEditingAgreement(null);setVersion(v=>v+1);setMessage("Agreement updated. Recorded payments are unchanged.")}} />}
       <PaymentSchedulePrint accountId={a._id}/><PropertyPaymentDetails account={a}/><LotTransfer account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
       <ForfeitureActions account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
-      <SettlementReview account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/><AccountMonitoringDetails account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
+      <CancellationReviewHold account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/><SettlementReview account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/><AccountMonitoringDetails account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
       <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Installment</th><th>Due date</th><th>Scheduled</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>{a.summary.schedule.map(s => <tr key={s.installment}><td>{s.installment === 0 ? "Down payment" : s.installment}</td><td>{s.dueDate}</td><td>{pesos(s.amountCents)}</td><td>{pesos(s.paidCents)}</td><td>{pesos(s.balanceCents)}</td><td>{["FORFEITED","SUPERSEDED"].includes(a.lifecycle)&&s.balanceCents>0?"Historical — closed":!s.balanceCents ? "Paid" : s.penaltyReview ? "Overdue with penalty" : s.overdue ? "Overdue" : "Scheduled"}</td></tr>)}</tbody></table></div>
       <PropertyPaymentHistory account={a} onSaved={message=>{setMessage(message);setVersion(v=>v+1)}}/>
     </details>)}

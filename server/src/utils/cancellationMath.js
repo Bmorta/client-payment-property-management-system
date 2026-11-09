@@ -1,6 +1,6 @@
+import {commissionWorkflowReview} from './commissionWorkflowWarnings.js';
 import {moneyCents,validDate,monthDate,validTerm} from '../../../shared/paymentSchedule.js';
 import {allocatePayments} from './paymentLedger.js';
-import {calculateCommissions} from './commissionLedger.js';
 import {currentPenaltyPolicy} from '../../../shared/penaltyPolicy.js';
 import {fail} from './financialReporting.js';
 export const amount=v=>moneyCents(v??0);
@@ -20,7 +20,7 @@ export function sourceEntitlement(account,input,effectiveDate){
  if(legal.minimumAmount===undefined||legal.minimumAmount==='')fail('Record the reviewed minimum cancellation entitlement, including an explicit zero when applicable.');
  if(!['APPLIES','NOT_APPLICABLE','VOLUNTARY_SETTLEMENT'].includes(legal.basis))fail('Record the legal/contractual review basis.');
  const legalReference=note(legal.reference,'Legal/contractual review reference');if(netCents<legalMinimumCents)fail('The proposed net entitlement is below the reviewed required minimum. Revise the policy amount or penalty decision.');
- const commissions=calculateCommissions(account,ledger,{asOf:effectiveDate});if(commissions.records.some(r=>r.recoveryDueCents>0||r.historicalVerificationCents>0))fail('Resolve commission recovery or historical verification before approving cancellation.');
+ const commissions=commissionWorkflowReview(account,ledger,{asOf:effectiveDate});
  if(input.commissionDecision!=='RETAIN_ACTUAL_EARNED')fail('Explicitly approve retaining original actual earnings and payouts; no automatic reversal is permitted.');
  return {accountId:String(account._id),assignmentId:account.assignmentId,project:account.project,property:account.property,originalPriceCents:account.contract.totalCents,principalCents,downPaymentPaidCents:ledger.schedule.find(s=>s.installment===0)?.paidCents||0,oldBalanceCents:ledger.balanceCents,penaltyCents,option:input.option,percentage,grossCents,penaltyDeductionCents,netCents,retainedByPolicyCents:principalCents-grossCents,justification,penaltyDecision:input.penaltyDecision,legalReview:{basis:legal.basis,minimumCents:legalMinimumCents,reference:legalReference,refundInstallmentsAllowed:legal.refundInstallmentsAllowed===true},commissionDecision:input.commissionDecision,commissions,schedule:ledger.schedule,payments:account.payments||[],beforeLedger:ledger,clearanceRequested:input.clearance===true,clearanceReason:note(input.clearanceReason,'Inventory clearance',input.clearance===true)};
 }
@@ -41,7 +41,7 @@ export function receivingAmendment(account,input,effectiveDate){
  for(let i=0;i<months;i++){const d=new Date(Date.UTC(y,m-1+i,1)),day=Math.min(dueDay,new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate());newRows.push({installment:maxId+i+1,dueDate:d.toISOString().slice(0,7)+'-'+String(day).padStart(2,'0'),amountCents:i===months-1?monthlyBalance-monthly*(months-1):monthly});}
  if(remainingDpCents)newRows.unshift({installment:0,dueDate:firstDueDate,amountCents:remainingDpCents});
  if(newRows.reduce((n,r)=>n+r.amountCents,0)!==ledger.balanceCents-creditCents)fail('Amended schedule does not reconcile to the receiving balance.',409);
- const commissionReview=calculateCommissions(account,ledger,{asOf:effectiveDate});if(commissionReview.records.some(r=>r.recoveryDueCents>0||r.historicalVerificationCents>0))fail('Resolve receiving-account commission recovery/verification before amendment.',409);
+ const commissionReview=commissionWorkflowReview(account,ledger,{asOf:effectiveDate});
  return {commissionReview,beforeContract:account.contract,monitoringTerms:{...currentPenaltyPolicy(account),dueDay,effectiveDate},accountId:String(account._id),assignmentId:account.assignmentId,project:account.project,property:account.property,creditCents,dpCreditCents,mode:input.mode,months,monthlyCents:monthly||0,firstDueDate,dueDay,oldBalanceCents:ledger.balanceCents,newBalanceCents:ledger.balanceCents-creditCents,oldSchedule:ledger.schedule,newSchedule:newRows,beforeLedger:ledger,reason:note(input.reason,'Schedule amendment reason')};
 }
 export function distributeEntitlements(sources,targets,refundSchedule,disposition){

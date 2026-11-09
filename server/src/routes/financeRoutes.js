@@ -1,3 +1,4 @@
+import {cancellationCommissionReview} from '../controllers/commissionReviewController.js';
 import {reviewSettlement,verifySettlement,settlementCertificate,settlementReport} from '../controllers/settlementController.js';
 import {previewForfeiture,postForfeiture,forfeitureAccounts,propertyLifecycleHistory} from '../controllers/forfeitureController.js';
 import {cashHistoryExport} from "../controllers/cashHistoryExportController.js";
@@ -38,6 +39,7 @@ router.get('/cancellations/:caseId/export',cancellationExport);
 router.post('/cancellations/:caseId/finalize/preview',authorize('ADMIN'),cancellationFinalPreview);
 router.post('/cancellations/:caseId/finalize',authorize('ADMIN'),cancellationFinalize);
 router.post('/cancellations/:caseId/refunds',authorize('ADMIN'),refundPost);
+router.post('/accounts/:id/cancellation-review',authorize('ADMIN'),cancellationCommissionReview);
 router.get('/settlements',settlementReport);
 router.get('/accounts/:id/settlement',reviewSettlement);
 router.post('/accounts/:id/settlement/verify',authorize('ADMIN'),verifySettlement);

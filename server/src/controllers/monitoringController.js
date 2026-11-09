@@ -1,3 +1,4 @@
+import {commissionHoldEvents} from '../utils/commissionHold.js';
 import mongoose from "mongoose";
 import PropertyAssignment from "../models/PropertyAssignment.js";
 import {calendarDay} from "../utils/contractMonitoring.js";
@@ -53,7 +54,7 @@ export async function reviewForfeiture(req,res,next){
   if(status==="FORFEITED"&&last?.status!=="APPROVED_FOR_FORFEITURE")fail(409,"Administrator approval for forfeiture must be recorded first.");
   if(status==="RESOLVED_REINSTATED"&&summary.consecutiveUnpaidMonths>0)fail(409,"Unpaid overdue installments remain. Keep the account under review or update its payments.");
   const entry={requestId:req.body.requestId,status,noticeReference:notice,reason:String(req.body.reason).trim(),...actor(req),timestamp:new Date(),riskSnapshot:{riskStatus:summary.riskStatus,consecutiveUnpaidMonths:summary.consecutiveUnpaidMonths,nextUnpaidDueDate:summary.nextUnpaidDueDate,advanceCoveredThrough:summary.advanceCoveredThrough}};
-  const update=attachMonitoringUpdate(a,{$push:{forfeitureReviews:entry,notifications:{$each:["ADMIN","STAFF"].map(recipient=>({id:`review:${a._id}:${a.forfeitureReviews?.length||0}:${recipient}`,recipient,monitoringAlert:true,eventOnly:true,status:"FORFEITURE_REVIEW_STATUS_CHANGED",message:`${a.assignmentId}: review status ${status.replaceAll("_"," ")}`,createdAt:new Date(),readBy:[]}))},auditEvents:{action:"FORFEITURE_REVIEW_UPDATED",previousValues:last||null,updatedValues:entry,...actor(req),timestamp:new Date()}},$inc:{__v:1}},actor(req),entry.reason);
+  const update={$push:{forfeitureReviews:entry,commissionHoldHistory:{$each:commissionHoldEvents(a,{...a,forfeitureReviews:[...(a.forfeitureReviews||[]),entry]},actor(req),entry.reason)},notifications:{$each:["ADMIN","STAFF"].map(recipient=>({id:`review:${a._id}:${a.forfeitureReviews?.length||0}:${recipient}`,recipient,monitoringAlert:true,eventOnly:true,status:"FORFEITURE_REVIEW_STATUS_CHANGED",message:`${a.assignmentId}: review status ${status.replaceAll("_"," ")}`,createdAt:new Date(),readBy:[]}))},auditEvents:{action:"FORFEITURE_REVIEW_UPDATED",previousValues:last||null,updatedValues:entry,...actor(req),timestamp:new Date()}},$inc:{__v:1}};
   // Merge notifications into the same document update; never release/reassign the lot.
   if(update.$set?.notifications){const additions=update.$push.notifications.$each;update.$set.notifications.push(...additions);delete update.$push.notifications}
   const result=await PropertyAssignment.findOneAndUpdate({_id:a._id,__v:a.__v},update,{new:true,runValidators:true}).lean();if(!result)fail(409,"Account changed. Refresh and recheck risk.");

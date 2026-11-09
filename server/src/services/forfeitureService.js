@@ -1,3 +1,5 @@
+import {commissionWorkflowReview} from '../utils/commissionWorkflowWarnings.js';
+import {commissionHoldEvents} from '../utils/commissionHold.js';
 import {CLOSED_CONTRACTS} from '../../../shared/contractLifecycle.js';
 import mongoose from 'mongoose';
 import {createHash,randomUUID} from 'node:crypto';
@@ -6,7 +8,7 @@ import Property from '../models/Property.js';
 import Project from '../models/Project.js';
 import MigrationBatch from '../models/MigrationBatch.js';
 import {allocatePayments,effectivePayment} from '../utils/paymentLedger.js';
-import {calculateCommissions,effectivePayout} from '../utils/commissionLedger.js';
+import {effectivePayout} from '../utils/commissionLedger.js';
 import {currentPenaltyPolicy} from '../../../shared/penaltyPolicy.js';
 import {buildSchedule,monthDate,validTerm,moneyCents,validDate,today} from '../utils/accounting.js';
 import {validateTerms,configureSchedule} from '../../../shared/contractTerms.js';
@@ -14,7 +16,7 @@ import {lotPrice} from '../utils/lotPricing.js';
 import {generateRecordId} from '../utils/generateRecordId.js';
 import {voucherGuard} from './cancellationService.js';
 import {inspectActiveContracts} from './activeContractUpgrade.js';
-import {backupRequirement,databaseReadinessFail} from './backupRequirement.js';
+import {contractIndexRequirement,databaseReadinessFail} from './backupRequirement.js';
 const fail=message=>{throw Object.assign(new Error(message),{statusCode:409})};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const q=(query,session)=>query.session(session||null);
@@ -47,8 +49,9 @@ export function reactivationPlan(account,property,input){
  return {mode,computation,effectiveDate:input.effectiveDate,priceBasis,originalPriceCents:account.contract.totalCents,totalCents,oldBalanceCents:old.balanceCents,eligibleCreditCents,creditCents,dpCreditCents,principalCreditCents,downPaymentCents,remainingDownPaymentCents:netDp,financedCents,remainingBalanceCents:netTotal,months,firstDueDate,dueDay:terms.dueDay,monthlyCents:schedule.find(r=>r.installment>0)?.amountCents||0,finalMonthlyCents:schedule.at(-1)?.amountCents||0,schedule,monitoringTerms:terms,penaltyCents,penaltyDecision:penaltyCents?input.penaltyDecision:'NONE',penaltyReason:String(input.penaltyReason||''),creditReason:String(input.creditReason||''),unusedDisposition:String(input.unusedDisposition||''),overrideReason:String(input.overrideReason||''),cashSources,commissionDecision:input.commissionDecision,priorDispositionsConfirmed:input.priorDispositionsConfirmed===true,reason:note(input.reason,'Reactivation reason'),beforeContract:period.beforeContract,oldSchedule:old.schedule};
 }
 async function load(accountId,session){const account=await q(PropertyAssignment.findById(id(accountId)),session).lean();if(!account)fail('Contract not found.');const property=await q(Property.findById(account.property),session).lean();if(!property)fail('Property not found.');return {account,property}}
-async function common(account,property,input,session){
+async function common(account,property,input,session,metadataOnly=false){
  if(!validDate(input.effectiveDate)||input.effectiveDate<account.contract.contractDate||input.effectiveDate>today())fail('Choose an effective date between the original contract date and today.');
+ if(!metadataOnly){
  if((account.payments||[]).map(effectivePayment).some(p=>p.paymentDate>input.effectiveDate)||(account.commissionPayouts||[]).map(effectivePayout).some(p=>p.releaseDate>input.effectiveDate)||(account.commissionRecoveries||[]).some(p=>p.recoveryDate>input.effectiveDate))fail('The effective date cannot precede recorded payments, payouts or recoveries.');
  if((account.forfeitureEvents||[]).filter(e=>['FORFEIT','REOPEN','REACTIVATE'].includes(e.action)).some(e=>e.effectiveDate>input.effectiveDate))fail('The effective date cannot precede an approved lifecycle decision.');
  if(account.migration?.cutoffDate&&input.effectiveDate<=account.migration.cutoffDate)fail('Lifecycle decisions within the activated historical cutoff require migration reconciliation. Choose a later effective date.');
@@ -57,31 +60,32 @@ async function common(account,property,input,session){
  if((account.correctionRequests||[]).some(r=>r.status==='PENDING'))fail('Resolve pending payment correction approvals first.');
  if(account.pendingCancellation||account.transferOut||account.cancellationOut)fail('Resolve existing cancellation or transfer workflows first.');
  if(await q(MigrationBatch.exists({account:account._id,status:{$nin:['COMPLETED','CANCELLED']}}),session))fail('Complete or cancel staged historical migration before this action.');
+ }
  const project=await q(Project.findById(account.project),session).lean();if(!project||project.status==='ARCHIVED')fail('Restore the project before changing its property contracts.');
- await voucherGuard(account,session);const ledger=allocatePayments(account,input.effectiveDate),commissions=calculateCommissions(account,ledger,{asOf:input.effectiveDate});if(commissions.records.some(r=>r.recoveryDueCents>0||r.historicalVerificationCents>0))fail('Resolve agent recovery balances and historical commission verification first.');
- if(ledger.currentPenaltySummary?.reviewIssues?.length)fail('Resolve existing penalty reconciliation issues first.');return {ledger,commissions};
+ const voucherWarnings=await voucherGuard(account,session);const ledger=allocatePayments(account,input.effectiveDate),commissions=commissionWorkflowReview(account,ledger,{asOf:input.effectiveDate});commissions.warnings.push(...voucherWarnings);
+ if(!metadataOnly&&ledger.currentPenaltySummary?.reviewIssues?.length)fail('Resolve existing penalty reconciliation issues first.');return {ledger,commissions};
 }
 export async function forfeiturePreview(accountId,input,session=null){
  const {account,property}=await load(accountId,session),action=input.action;if(!['MARK_REVIEW','REJECT','CANCEL_REVIEW','FORFEIT','REOPEN','REJECT_REOPEN','RETURN_REOPEN','REACTIVATE'].includes(action))fail('Choose a supported forfeiture action.');const reason=note(input.reason,'Administrator reason');let plan={};
  if(['MARK_REVIEW','REJECT','CANCEL_REVIEW','FORFEIT'].includes(action)){
-  if(account.lifecycle&&account.lifecycle!=='ACTIVE')fail('Choose an active contract for forfeiture review.');const {ledger,commissions}=await common(account,property,input,session);plan={ledger,commissions};
+  if(account.lifecycle&&account.lifecycle!=='ACTIVE')fail('Choose an active contract for forfeiture review.');const {ledger,commissions}=await common(account,property,input,session,['MARK_REVIEW','REJECT','CANCEL_REVIEW'].includes(action));plan={ledger,commissions};
   if(['MARK_REVIEW','FORFEIT'].includes(action)&&ledger.riskStatus!=='FORFEITURE_REVIEW_REQUIRED')fail('Actual unpaid allocations do not meet the configured forfeiture threshold.');
   if(action==='FORFEIT'){if(!currentPenaltyPolicy(account)||currentPenaltyPolicy(account).pendingPaymentPolicy)fail('Review the actual penalty basis and contract policy before forfeiture.');if(!['UNDER_REVIEW','NOTICE_ISSUED','APPROVED_FOR_FORFEITURE','FORFEITED'].includes(account.forfeitureReviews?.at(-1)?.status))fail('Mark and review this contract before final forfeiture approval.');if(input.reviewConfirmed!==true)fail('Confirm review of contractual requirements and supporting records before forfeiture.');note(input.documentReference,'Supporting document / review reference');if(String(property.client)!==String(account.client)||!['RESERVED','SOLD','FOR_ASSUME'].includes(property.status))fail('Property assignment/status no longer matches this contract.');}
  }else{
   if(account.lifecycle!=='FORFEITED')fail('Select an actually forfeited contract, not a review label or superseded contract.');const period=account.forfeiturePeriods?.at(-1);if(!period)fail('Missing forfeiture history requires administrator reconciliation.');
-  if(input.effectiveDate<period.effectiveDate)fail('This action cannot predate the forfeiture.');await common(account,property,input,session);
+  if(input.effectiveDate<period.effectiveDate)fail('This action cannot predate the forfeiture.');const financialReview=await common(account,property,input,session);plan.commissionWarnings=financialReview.commissions.warnings;
   if(await q(PropertyAssignment.exists({property:property._id,_id:{$ne:account._id},lifecycle:{$nin:CLOSED_CONTRACTS}}),session))fail('Another active contract owns this lot. Reopening/reactivation is blocked.');
   const otherContracts=await q(PropertyAssignment.find({property:property._id,_id:{$ne:account._id}}),session).select('lifecycle contract.contractDate transferOut cancellationOut forfeiturePeriods migration').lean();for(const other of otherContracts){const ended=other.transferOut?.effectiveDate||other.cancellationOut?.effectiveDate||other.forfeiturePeriods?.at(-1)?.effectiveDate||other.migration?.cutoffDate;if(!ended||ended>input.effectiveDate)fail('This effective date overlaps another buyer’s recorded property history. Review a later date or reconcile that history first.');}
   if(property.client&&String(property.client)!==String(account.client))fail('This lot is assigned to another client.');
   if(['REOPEN','REJECT_REOPEN','RETURN_REOPEN'].includes(action)&&(property.status!=='UNAVAILABLE'||period.endedAt||!['PENDING','REJECTED'].includes(property.reopeningStatus)||String(property.forfeitureAccount)!==String(account._id)))fail('A valid pending reopening request is required.');
-  if(action==='REACTIVATE'){if(!['UNAVAILABLE','AVAILABLE'].includes(property.status))fail('This lot is unavailable for reactivation.');if(property.status==='UNAVAILABLE'&&String(property.forfeitureAccount)!==String(account._id))fail('A different forfeiture controls this property.');plan=reactivationPlan(account,property,input);}
+  if(action==='REACTIVATE'){if(!['UNAVAILABLE','AVAILABLE'].includes(property.status))fail('This lot is unavailable for reactivation.');if(property.status==='UNAVAILABLE'&&String(property.forfeitureAccount)!==String(account._id))fail('A different forfeiture controls this property.');plan={...reactivationPlan(account,property,input),commissionWarnings:financialReview.commissions.warnings};}
  }
  const token=hash({accountId:String(account._id),version:account.__v,propertyVersion:property.__v,input,plan});return {account,property,plan,action,reason,token};
 }
-async function readiness(){const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')databaseReadinessFail('Forfeiture and inventory decisions require MongoDB transactions. Open Database & Backups.');const status=await inspectActiveContracts(mongoose.connection.db);if(status.legacyAccounts||status.legacyIndexes.length||!status.activeIndexPresent||status.conflicts.length||status.invalidLifecycles)throw backupRequirement('Complete the reviewed active-contract index upgrade before forfeiture, reopening or reactivation.','active-contract-index');}
+async function readiness(){const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')databaseReadinessFail('Forfeiture and inventory decisions require MongoDB transactions. Open Database & Backups.');const status=await inspectActiveContracts(mongoose.connection.db);if(status.legacyAccounts||status.legacyIndexes.length||!status.activeIndexPresent||status.conflicts.length||status.invalidLifecycles||status.namedIndexConflict)throw contractIndexRequirement(status.conflicts.length?'Conflicting active contracts were found. Review the listed contracts in Database & Backups; no contract changes were applied.':'A one-time active-contract index upgrade is required for inventory-changing approvals. Review its preview in Database & Backups. This is database maintenance, not a routine backup requirement.');}
 export async function approveForfeitureAction(accountId,body,actor){
- if(body.confirm!==true||!/^[A-Za-z0-9_-]{16,100}$/.test(body.requestId||''))fail('A valid submission ID and explicit administrator confirmation are required.');await readiness();const signature=hash(body.input),session=await mongoose.startSession();let result;
- try{await session.withTransaction(async()=>{
+ if(body.confirm!==true||!/^[A-Za-z0-9_-]{16,100}$/.test(body.requestId||''))fail('A valid submission ID and explicit administrator confirmation are required.');const metadataOnly=['MARK_REVIEW','REJECT','CANCEL_REVIEW'].includes(body.input?.action);if(!metadataOnly)await readiness();const signature=hash(body.input),session=metadataOnly?null:await mongoose.startSession();let result;
+ try{const execute=async()=>{
   const prior=await q(PropertyAssignment.findById(id(accountId)),session).select('forfeitureEvents').lean(),done=prior?.forfeitureEvents?.find(e=>e.requestId===body.requestId);if(done){if(done.signature!==signature)fail('This submission ID was used for another action.');result={...done.result,alreadyApplied:true};return;}
   const p=await forfeiturePreview(accountId,body.input,session);if(p.token!==body.token)fail('Account, allocations or inventory changed. Review a fresh preview.');const {account:a,property,plan,action}=p,stamp=new Date(),event={eventId:randomUUID(),requestId:body.requestId,signature,action,effectiveDate:body.input.effectiveDate,reason:p.reason,documentReference:String(body.input.documentReference||''),reviewConfirmed:body.input.reviewConfirmed===true,...actor,timestamp:stamp},set={},push={},unset={},lotSet={},periods=structuredClone(a.forfeiturePeriods||[]);let replacementId;
   if(action==='MARK_REVIEW'||action==='REJECT'||action==='CANCEL_REVIEW')push.forfeitureReviews={...event,status:action==='MARK_REVIEW'?'UNDER_REVIEW':action==='REJECT'?'REJECTED':'CANCELLED'};
@@ -97,7 +101,7 @@ export async function approveForfeitureAction(accountId,body,actor){
    if(plan.mode==='ORIGINAL'){
     const before=structuredClone(period.beforeLedger);if(plan.penaltyCents&&plan.penaltyDecision==='WAIVE'){before.assessments=before.assessments.map(r=>({...r,waivedCents:(r.waivedCents||0)+r.balanceCents,balanceCents:0}));before.outstandingPenaltyCents=0;before.totalOutstandingCents=before.balanceCents;if(before.currentPenaltySummary)before.currentPenaltySummary={...before.currentPenaltySummary,remainingCents:0,waivedCents:(before.currentPenaltySummary.waivedCents||0)+plan.penaltyCents};}
     if(plan.penaltyDecision==='CARRY'){before.assessments=before.assessments.map(r=>({...r,reactivationCarryTo:penaltyCarry.find(c=>c.sourceAssessmentId===r.assessmentId)?.assessmentId,balanceCents:0}));before.outstandingPenaltyCents=0;before.totalOutstandingCents=before.balanceCents;if(before.currentPenaltySummary)before.currentPenaltySummary={...before.currentPenaltySummary,remainingCents:0};}
-    const max=Math.max(0,...before.schedule.map(r=>r.installment)),newSchedule=plan.schedule.map(r=>({...r,installment:r.installment===0?0:max+r.installment}));set.lifecycle='ACTIVE';unset.forfeitureClosure=1;set['contract.months']=plan.months;set['contract.monthlyInstallmentCents']=plan.monthlyCents;set['contract.firstDueDate']=plan.firstDueDate;
+    const max=Math.max(0,...before.schedule.map(r=>r.installment)),newSchedule=plan.schedule.map(r=>({...r,installment:r.installment===0?0:max+r.installment}));push.forfeitureReviews={...event,status:'REACTIVATED'};set.lifecycle='ACTIVE';unset.forfeitureClosure=1;set['contract.months']=plan.months;set['contract.monthlyInstallmentCents']=plan.monthlyCents;set['contract.firstDueDate']=plan.firstDueDate;
     push.creditAmendments={caseId:event.eventId,penaltyCarry,effectiveDate:event.effectiveDate,mode:'FORFEITURE_REACTIVATION',months:plan.months,monthlyCents:plan.monthlyCents,dueDay:plan.dueDay,creditCents:0,dpCreditCents:0,newBalanceCents:plan.remainingBalanceCents,newSchedule,beforeLedger:before,beforeContract:a.contract,monitoringTerms:plan.monitoringTerms,...actor,timestamp:stamp};
    }else{
     replacementId=new mongoose.Types.ObjectId();const assignmentId=await generateRecordId('contract');period.replacementId=replacementId;set.lifecycle='SUPERSEDED';set.forfeitureClosure={...a.forfeitureClosure,replacementId,assignmentId};const allocations=[];let remaining=plan.creditCents;for(const source of plan.cashSources){const amount=Math.min(remaining,source.amountCents);if(amount)allocations.push({...source,amountCents:amount});remaining-=amount;}period.creditDisposition={creditCents:plan.creditCents,untransferredCents:plan.eligibleCreditCents-plan.creditCents,allocations,reason:plan.creditReason,disposition:plan.unusedDisposition};
@@ -106,8 +110,9 @@ export async function approveForfeitureAction(accountId,body,actor){
   }
   event.periodId=periods.at(-1)?.periodId;
   result={...result,action,originalAccountId:String(a._id),propertyId:property.propertyId};event.result=result;push.forfeitureEvents=event;push.auditEvents=event;
+  const next={...a,...set,forfeitureReviews:push.forfeitureReviews?[...(a.forfeitureReviews||[]),push.forfeitureReviews]:a.forfeitureReviews};const holdEvents=commissionHoldEvents(a,next,actor,p.reason);if(holdEvents.length)push.commissionHoldHistory={$each:holdEvents};
   const update={$set:{...set,notifications:(a.notifications||[]).map(n=>n.monitoringAlert?{...n,active:false,resolvedAt:stamp}:n)},$push:{...push,notifications:{$each:[]}},$inc:{__v:1}};delete update.$push.notifications;update.$set.notifications.push(...['ADMIN','STAFF'].map(recipient=>({id:event.eventId+':'+recipient,recipient,contractLifecycleAlert:true,eventOnly:true,status:action,message:`${a.assignmentId}: ${action.replaceAll('_',' ')}`,href:'/clients/'+a.client+'/accounts?account='+String(replacementId||a._id),createdAt:stamp,readBy:[]})));if(Object.keys(unset).length)update.$unset=unset;
   const saved=await PropertyAssignment.updateOne({_id:a._id,__v:a.__v,'forfeitureEvents.requestId':{$ne:body.requestId}},update,{session,runValidators:true});if(saved.modifiedCount!==1)fail('Contract changed. No coordinated changes were committed.');
   if(Object.keys(lotSet).length){const changed=await Property.updateOne({_id:property._id,__v:property.__v},{$set:lotSet,$push:{history:{...event,contractId:a.assignmentId,client:a.client}},$inc:{__v:1}},{session,runValidators:true});if(changed.modifiedCount!==1)fail('Lot availability changed. Entire approval rolled back.');}
- });return result;}finally{await session.endSession()}
+ };if(session)await session.withTransaction(execute);else await execute();return result;}finally{if(session)await session.endSession()}
 }
