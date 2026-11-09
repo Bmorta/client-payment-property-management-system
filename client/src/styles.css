@@ -230,7 +230,7 @@ button, input, select, textarea { font: inherit; }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; } }
 @media print { .client-tabs,.action-toolbar,.pagination-bar,.dialog-close { display:none !important; }.penalty-selection-total { position:static; } }
 
-/* REMS navigation, with an expanding desktop icon rail on hover or focus. */
+/* REMS navigation: collapse stays closed until a category is explicitly opened. */
 .nav-group + .nav-group { margin-top:7px; }
 .nav-category { width:100%; display:flex; align-items:center; gap:10px; padding:10px 12px; border:0; border-radius:8px; background:transparent; color:#bac9de; text-align:left; font-size:.79rem; font-weight:600; }
 .nav-category:hover,.nav-category:focus-visible { background:#ffffff12; color:white; }
@@ -245,12 +245,12 @@ button, input, select, textarea { font: inherit; }
 @media (min-width:1200px) {
  .sidebar-compact .app-sidebar { width:76px; }
  .sidebar-compact .app-workspace { margin-left:76px; }
- .sidebar-compact .app-sidebar:not(:hover):not(:focus-within) .brand-copy,
- .sidebar-compact .app-sidebar:not(:hover):not(:focus-within) .sidebar-user,
- .sidebar-compact .app-sidebar:not(:hover):not(:focus-within) .desktop-collapse span,
- .sidebar-compact .app-sidebar:not(:hover):not(:focus-within) .nav-category span,
- .sidebar-compact .app-sidebar:not(:hover):not(:focus-within) .nav-items { display:none; }
- .sidebar-compact .app-sidebar:hover,.sidebar-compact .app-sidebar:focus-within { width:var(--sidebar-width); box-shadow:12px 0 30px #0f172a30; }
+ .sidebar-compact:not(.sidebar-peek) .app-sidebar .brand-copy,
+ .sidebar-compact:not(.sidebar-peek) .app-sidebar .sidebar-user,
+ .sidebar-compact:not(.sidebar-peek) .app-sidebar .desktop-collapse span,
+ .sidebar-compact:not(.sidebar-peek) .app-sidebar .nav-category span,
+ .sidebar-compact:not(.sidebar-peek) .app-sidebar .nav-items { display:none; }
+ .sidebar-compact.sidebar-peek .app-sidebar { width:var(--sidebar-width); box-shadow:12px 0 30px #0f172a30; }
  .sidebar-compact .sidebar-account { flex-wrap:wrap; }
 }
 @media (max-width:1199.98px) { .desktop-collapse { display:none; } }
