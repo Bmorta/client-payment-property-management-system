@@ -1,3 +1,4 @@
+import {expiredSessionToken} from '../utils/sessionRecovery.js';
 import axios from "axios";
 
 const api = axios.create({
@@ -17,4 +18,10 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(response=>response,error=>{
+  const token=expiredSessionToken(error,localStorage.getItem('cpm_access_token'));
+  if(token)window.dispatchEvent(new CustomEvent('cpm:session-expired',{detail:{token}}));
+  // Never replay a financial mutation after a network/authentication failure.
+  return Promise.reject(error);
+});
 export default api;

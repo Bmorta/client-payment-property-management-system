@@ -1,11 +1,13 @@
+import FeedbackMessage from '../components/FeedbackMessage.jsx';
+import {safeReturnPath} from '../utils/sessionRecovery.js';
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate,useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function LoginPage() {
-  const { user, login } = useAuth();
-  const navigate = useNavigate();
+  const { user, login,sessionNotice } = useAuth();
+  const navigate = useNavigate(),location=useLocation(),returnTo=safeReturnPath(location.state?.from);
 
   const [form, setForm] = useState({
     identifier: "",
@@ -15,7 +17,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={returnTo} replace />;
   }
 
   const handleSubmit = async (event) => {
@@ -30,11 +32,11 @@ export default function LoginPage() {
     try {
       setSubmitting(true);
       await login(form.identifier, form.password);
-      navigate("/", { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err) {
       setError(
         err.response?.data?.message ||
-          "Unable to sign in. Please check your credentials and try again."
+          (err.response?"Unable to sign in. Check the message and try again.":"Unable to reach the server. Check the backend or connection, then try again.")
       );
     } finally {
       setSubmitting(false);
@@ -61,11 +63,8 @@ export default function LoginPage() {
                 </div>
 
                 <form onSubmit={handleSubmit} noValidate><RequiredNote/>
-                  {error && (
-                    <div className="alert alert-danger" role="alert">
-                      {error}
-                    </div>
-                  )}
+                  <FeedbackMessage kind="error" message={error}/>
+                  {sessionNotice&&<p className="alert alert-warning" role="status">{sessionNotice}</p>}
 
                   <div className="mb-3">
                     <FieldLabel className="form-label" htmlFor="identifier">
