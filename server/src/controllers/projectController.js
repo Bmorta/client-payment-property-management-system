@@ -6,7 +6,9 @@ const allowedStatuses = ["PLANNING", "ACTIVE", "COMPLETED", "ARCHIVED"];
 
 export const listProjects = async (req, res, next) => {
   try {
-    const projects = await Project.find().populate("createdBy", "firstName lastName username").sort({ createdAt: -1 });
+    const status=req.query?.status;
+    if(status&&!allowedStatuses.includes(status))return res.status(400).json({success:false,message:"Choose a valid project status."});
+    const projects = await Project.find(status?{status}:{}).populate("createdBy", "firstName lastName username").sort({ createdAt: -1 });
     res.json({ success: true, data: projects });
   } catch (error) {
     next(error);

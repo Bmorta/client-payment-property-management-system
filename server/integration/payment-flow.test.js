@@ -53,7 +53,7 @@ test("isolated MongoDB payment corrections, permissions, notifications and persi
   const persisted=await PropertyAssignment.findById(assignment._id).lean();assert.equal(persisted.payments[0].amountCents,1200000);assert.equal(persisted.payments[0].revisions.length,1);assert.equal(persisted.payments[0].externalCommissionMetadata.amountCents,1234);assert.equal(persisted.contract.externalCommissionMetadata.agent,"legacy-agent");
   await api(decisionPath,"POST",{decision:"APPROVED",confirm:true});assert.equal((await PropertyAssignment.findById(assignment._id)).payments[0].revisions.length,1);
   let staffNotifications=(await api("/finance/notifications","GET",undefined,"STAFF")).data;assert.equal(staffNotifications.unread,1);
-  await api(`/finance/notifications/${encodeURIComponent(adminNotifications.data.rows[0].id)}/read`,"POST",{},"STAFF");assert.equal((await api("/finance/notifications")).data.unread,1);
+  await api(`/finance/notifications/${encodeURIComponent(adminNotifications.data.rows[0].id)}/read`,"POST",{},"STAFF",404);assert.equal((await api("/finance/notifications")).data.unread,1);
   staffNotifications=(await api("/finance/notifications/read-all","POST",{},"STAFF")).data;assert.equal(staffNotifications.unread,0);
   const nextRequest=await api(path,"POST",{...correction,baseRevision:1,requestId:randomUUID(),amount:"15000"},"STAFF",201);
   await api(path,"POST",{...correction,baseRevision:1,requestId:randomUUID(),amount:"16000",confirm:true});

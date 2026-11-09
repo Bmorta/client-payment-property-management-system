@@ -18,6 +18,7 @@ const normalize = (value) => typeof value === "string" ? value.trim() : value;
 export const listClients = async (req, res, next) => {
   try {
     const q=String(req.query.q||'').trim().slice(0,100),filter=q?{$and:q.split(/\s+/).map(word=>({$or:['clientId','firstName','middleName','lastName','suffix','email','contactNumber'].map(k=>({[k]:new RegExp(escaped(word),'i')}))}))}:{};
+    if(req.query.status){if(!["ACTIVE","INACTIVE"].includes(req.query.status))return res.status(400).json({success:false,message:"Choose a valid client status."});filter.status=req.query.status;}
     const paged=req.query.limit!==undefined,page=Math.max(1,parseInt(req.query.page)||1),limit=Math.max(1,Math.min(100,parseInt(req.query.limit)||25));
     let query=Client.find(filter).populate("createdBy", "firstName lastName username").sort({lastName:1,firstName:1,_id:1});if(paged)query=query.skip((page-1)*limit).limit(limit);const clients=await query;
     let data=clients;if(req.query.penalties==='1'){const accounts=await PropertyAssignment.find({client:{$in:clients.map(c=>c._id)}}).lean(),grouped=new Map();for(const a of accounts){const key=String(a.client);if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(a)}const asOf=today();data=clients.map(c=>({...c.toObject({virtuals:true}),penaltySummary:clientPenaltyData(grouped.get(String(c._id))||[],asOf).summary}))}

@@ -4,7 +4,7 @@ const keyFor = ({kind,message}) => JSON.stringify([kind,message]);
 function emit() {
   const keys = new Set([...sources.values()].map(keyFor));
   for (const key of dismissed) if (!keys.has(key)) dismissed.delete(key);
-  snapshot = [...sources.values()].filter(value => !dismissed.has(keyFor(value))).sort((a,b) => b.sequence-a.sequence)[0] || null;
+  snapshot = [...sources.values()].filter(value => !dismissed.has(keyFor(value))).sort((a,b) => ({error:3,warning:2,success:1}[b.kind]||0)-({error:3,warning:2,success:1}[a.kind]||0)||b.sequence-a.sequence)[0] || null;
   for (const listener of listeners) listener();
 }
 export function registerFeedback(source, kind, message) {

@@ -1,3 +1,4 @@
+import {escapeSearch} from "../utils/searchText.js";
 import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
 import mongoose from 'mongoose';
 import CashLedgerEntry from '../models/CashLedgerEntry.js';
@@ -28,7 +29,15 @@ export async function classifyExpense(req,res,next){try{
  const updated=await Expense.findOneAndUpdate({_id:old._id,__v:old.__v===undefined?{$exists:false}:old.__v},{$set:classification,$push:{classificationHistory:event},$inc:{__v:1}},{new:true,runValidators:true});if(!updated)fail('Expense changed. Reload before classifying.',409);
  await logActivity({req,action:'EXPENSE_CLASSIFIED',entityType:'Expense',entityId:String(old._id),metadata:event});res.json({success:true,data:updated,message:'Expense classification saved with its history.'});
 }catch(e){if(e.code===11000)return res.status(409).json({success:false,message:'This commission payout is already linked to another expense.'});next(e)}}
-export async function listCashEntries(req,res,next){try{res.json({success:true,data:await CashLedgerEntry.find().sort({effectiveDate:-1,entryId:-1}).limit(200).lean()})}catch(e){next(e)}}
+export async function listCashEntries(req,res,next){try{
+ if(req.query?.paged!=='1')return res.json({success:true,data:await CashLedgerEntry.find().sort({effectiveDate:-1,entryId:-1}).limit(200).lean()});
+ const page=Number(req.query.page||1),limit=Number(req.query.limit||25),from=req.query.from||'0001-01-01',to=req.query.to||today(),status=req.query.status||'ALL';
+ if(!Number.isSafeInteger(page)||page<1||page>100000||![10,25,50,100].includes(limit)||!validDate(from)||!validDate(to)||from>to||!['ALL','POSTED','VOIDED'].includes(status))fail('Choose valid cash-history dates, status and pagination.');
+ const filter={effectiveDate:{$gte:from,$lte:to}};if(status==='POSTED')filter.$and=[{$or:[{status:'POSTED'},{status:{$exists:false}}]}];else if(status==='VOIDED')filter.status='VOIDED';
+ if(req.query.q){const q=new RegExp(escapeSearch(String(req.query.q).slice(0,100)),'i');filter.$or=['entryId','kind','reason','reference'].map(k=>({[k]:q}))}
+ const [count,rows]=await Promise.all([CashLedgerEntry.countDocuments(filter),CashLedgerEntry.find(filter).sort({effectiveDate:-1,entryId:-1}).skip((page-1)*limit).limit(limit).lean()]);
+ res.json({success:true,data:{rows,count,page,pageSize:limit}});
+}catch(e){next(e)}}
 export async function createCashEntry(req,res,next){try{
  const {kind,effectiveDate,requestId}=req.body,amountCents=moneyCents(req.body.amount),reason=String(req.body.reason||'').trim(),reference=String(req.body.reference||'').trim().slice(0,160);
  if(!['OPENING','INFLOW','OUTFLOW','BANK_DEPOSIT','BANK_WITHDRAWAL'].includes(kind)||!validDate(effectiveDate)||effectiveDate>today()||(!amountCents&&kind!=='OPENING')||reason.length<5||reason.length>500||req.body.confirm!==true||req.body.coverageConfirmed!==true||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{16,100}$/.test(requestId))fail('Confirm a valid amount/date, reason, and cash-ledger coverage. Only an opening balance may be zero.');

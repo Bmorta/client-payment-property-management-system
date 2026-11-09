@@ -15,7 +15,9 @@ const validatePassword = (password) => {
 
 export const listUsers = async (_req, res, next) => {
   try {
-    const users = await User.find()
+    const status=_req.query?.status;
+    if(status&&!["ACTIVE","INACTIVE"].includes(status))return res.status(400).json({success:false,message:"Choose a valid user status."});
+    const users = await User.find(status?{isActive:status==="ACTIVE"}:{})
       .select(USER_FIELDS)
       .sort({ createdAt: -1 });
 

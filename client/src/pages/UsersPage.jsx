@@ -1,3 +1,4 @@
+import CenterPopup from "../components/CenterPopup.jsx";
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import ListReportActions from "../components/ListReportActions.jsx";
 import SearchInput from "../components/SearchInput.jsx";
@@ -230,6 +231,7 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [statusFilter,setStatusFilter]=useState(""),[statusTarget,setStatusTarget]=useState(null),[statusBusy,setStatusBusy]=useState(false);
 
   const loadUsers = async () => {
     try {
@@ -250,14 +252,15 @@ export default function UsersPage() {
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return users;
+    const scoped=users.filter(u=>!statusFilter||(statusFilter==="ACTIVE"?u.isActive:!u.isActive));
+    if (!term) return scoped;
 
-    return users.filter((item) =>
+    return scoped.filter((item) =>
       [item.username, item.fullName, item.email, item.role]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(term))
     );
-  }, [users, search]);
+  }, [users, search, statusFilter]);
 
   const openCreate = () => {
     setEditingUser(null);
@@ -303,7 +306,7 @@ export default function UsersPage() {
             <SearchInput label="Search users" value={search} onChange={value=>{setSearch(value);}} items={users.map(u=>({key:u._id,label:u.username,detail:`${u.firstName} ${u.lastName} ${u.email} ${u.role}`}))}/>
           </div>
 
-          <ListReportActions module="users" filters={{q:search}} onRefresh={loadUsers} disabled={loading}/>
+          <FieldLabel>Status<select className="form-select mb-3" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="">All users</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></select></FieldLabel><ListReportActions module="users" filters={{q:search,status:statusFilter}} onRefresh={loadUsers} disabled={loading}/>
           <div className="table-responsive">
             <table className="table align-middle">
               <thead>
@@ -340,6 +343,7 @@ export default function UsersPage() {
                         <button className="btn btn-sm btn-outline-secondary" onClick={() => openEdit(item)}>
                           Edit
                         </button>
+                        {String(item._id)!==String(currentUser?._id)&&<button className="btn btn-sm btn-outline-secondary ms-2" disabled={statusBusy} onClick={()=>setStatusTarget(item)}>{item.isActive?"Deactivate":"Activate"}</button>}
                       </td>
                     </tr>
                   ))
@@ -361,6 +365,7 @@ export default function UsersPage() {
         onSaved={handleSaved}
       />
       </>}
+      <CenterPopup confirm={statusTarget?`${statusTarget.isActive?'Deactivate':'Activate'} ${statusTarget.username}? Deactivation blocks access immediately; user identity and audit history remain preserved.`:''} confirmTitle="Confirm user status" confirmLabel={statusBusy?'Saving…':'Confirm Status Change'} onClose={()=>{if(!statusBusy)setStatusTarget(null)}} onConfirm={async()=>{if(statusBusy)return;setStatusBusy(true);const chosen=statusTarget;try{const r=await api.patch(`/users/${chosen._id}`,{isActive:!chosen.isActive});setStatusTarget(null);setSuccess(r.data.message);await loadUsers()}catch(e){setStatusTarget(null);setPageError(e.response?.data?.message||'Unable to change user status.')}finally{setStatusBusy(false)}}}/>
     </main>
   );
 }
