@@ -1,3 +1,6 @@
+import {cashHistoryExport} from "../controllers/cashHistoryExportController.js";
+import {paymentAcknowledgement} from "../controllers/paymentAcknowledgementController.js";
+import {addOfficeCash} from "../controllers/cashAdditionController.js";
 import {cancellationPreview,cancellationApprove,cancellationFinalPreview,cancellationFinalize,refundPost,cancellationList,cancellationDetails,cancellationExport} from '../controllers/cancellationController.js';
 import {accountLifecycleGuard} from '../middleware/accountLifecycleGuard.js';
 import {transferOptions,previewLotTransfer,postLotTransfer,transferHistory,exportLotTransfer} from '../controllers/lotTransferController.js';
@@ -41,7 +44,7 @@ router.get("/accounts/:id/lot-transfers",transferHistory);
 router.get("/lot-transfers/:transferId/export",exportLotTransfer);
 router.get("/clients/:clientId/penalties",clientPenalties);
 router.get("/clients/:clientId/consolidated",consolidatedReport);router.get("/accounts/:id/payments/:paymentId/allocation",allocationDetail);router.get("/penalty-monitoring",penaltyMonitoring);
-router.get("/payment-intents/status/:requestId",intentStatus);router.get("/payment-intents/context",intentContext);router.post("/payment-intents/preview",authorize("ADMIN","STAFF"),previewIntent);router.post("/payment-intents",authorize("ADMIN","STAFF"),postIntent);router.get("/payment-batches/:reference",getBatch);router.get("/accounts/:id/installment-quote",quoteInstallments);
+router.get("/payment-intents/status/:requestId",intentStatus);router.get("/payment-intents/context",intentContext);router.post("/payment-intents/preview",authorize("ADMIN","STAFF"),previewIntent);router.post("/payment-intents",authorize("ADMIN","STAFF"),postIntent);router.get("/payment-batches/:reference",getBatch);router.get("/accounts/:id/payments/:paymentId/acknowledgement",paymentAcknowledgement);router.get("/accounts/:id/installment-quote",quoteInstallments);
 router.post("/accounts/:id/payment-penalty-policy/preview",authorize("ADMIN"),paymentPenaltyPolicy);
 router.patch("/accounts/:id/payment-penalty-policy",authorize("ADMIN"),paymentPenaltyPolicy);
 router.get("/accounts/:id/penalties",accountPenalties);
@@ -73,7 +76,9 @@ router.post("/payments/preview", authorize("ADMIN","STAFF"), migrationPaymentGua
 router.post("/accounts/:id/payments/:paymentId/corrections/preview",authorize("ADMIN","STAFF"),correctPayment);
 router.post("/payments", authorize("ADMIN", "STAFF"), migrationPaymentGuard, acceptPayment);
 router.patch("/expenses/:id/classification",authorize("ADMIN"),classifyExpense);
+router.get("/cash-ledger/export",authorize("ADMIN"),cashHistoryExport);
 router.get("/cash-ledger",listCashEntries);
+router.post("/cash-ledger/add-cash",authorize("ADMIN"),addOfficeCash);
 router.post("/cash-ledger",authorize("ADMIN"),createCashEntry);
 router.post("/cash-ledger/:id/correct",authorize("ADMIN"),correctCashTurnover);
 router.post("/cash-ledger/:id/void",authorize("ADMIN"),voidCashEntry);

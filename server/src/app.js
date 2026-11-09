@@ -1,3 +1,4 @@
+import officePayoutRoutes from "./routes/officePayoutRoutes.js";
 import companyRoutes from "./routes/companyRoutes.js";
 import migrationRoutes from "./routes/migrationRoutes.js";
 import listReportRoutes from "./routes/listReportRoutes.js";
@@ -40,6 +41,7 @@ app.use("/api/agents",agentRoutes);
 app.use("/api/companies",companyRoutes);
 app.use("/api/commissions",commissionRoutes);
 app.use("/api/finance", financeRoutes);
+app.use("/api/office-payouts",officePayoutRoutes);
 app.use("/api/migration", migrationRoutes);
 app.use("/api/activity-logs", activityRoutes);
 

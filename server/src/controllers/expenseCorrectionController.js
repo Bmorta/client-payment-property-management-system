@@ -17,7 +17,7 @@ export async function expenseDetails(req,res,next){try{
 }catch(e){next(e)}}
 
 export async function correctExpense(req,res,next){try{
- const old=await Expense.findById(oid(req.params.id)).lean();if(!old)fail('Expense not found.',404);
+ const old=await Expense.findById(oid(req.params.id)).lean();if(!old)fail('Expense not found.',404);if(old.businessPayoutId)fail('Correct or void the linked release from Payout Management.',409);
  const {requestId,action,reason:rawReason}=req.body;
  if(typeof requestId!=='string'||!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)||!['CORRECT','VOID'].includes(action))fail('Choose a correction or void with a valid submission ID.');
  const reason=text(rawReason||'',500);if(reason.length<5)fail('Enter a correction or void reason of 5–500 characters.');

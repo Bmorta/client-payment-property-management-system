@@ -1,3 +1,4 @@
+import OfficePayout from "../models/OfficePayout.js";
 import CancellationCase from '../models/CancellationCase.js';
 import CommissionVoucher from '../models/CommissionVoucher.js';
 import Company from "../models/Company.js";
@@ -20,6 +21,7 @@ function target(req) {
   const parts = req.path.split("/").filter(Boolean), base = req.baseUrl;
   let model, module, filter = {};
   const one = id => /^[a-fA-F0-9]{24}$/.test(String(id || "")) ? { _id: id } : { _id: null };
+  if (base.endsWith("/office-payouts")){model=OfficePayout;module="Office Payouts";filter=one(parts[0]);}
   if (base.endsWith("/companies")){model=Company;module="Companies";filter=one(parts[0]);}
   if (base.endsWith("/migration")){model=parts[0]==="config"?MigrationConfig:MigrationBatch;module="Historical Data Migration";filter=parts[0]==="config"?{_id:"OFFICE"}:one(parts[1]);}
   if (base.endsWith("/agents")){model=Agent;module="Agents";filter=one(parts[0]);}

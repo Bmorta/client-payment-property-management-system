@@ -1,3 +1,4 @@
+import OfficePayout from "../src/models/OfficePayout.js";
 import Phase from "../src/models/Phase.js";
 import Block from "../src/models/Block.js";
 import test from "node:test";
@@ -17,7 +18,7 @@ test.beforeEach(t=>{for(const model of [Phase,Block,Property])t.mock.method(mode
 const response = () => ({ code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
 const req = (body = {}) => ({ params: { projectId }, body, user: { _id: projectId } });
 const next = error => { throw error; };
-test.beforeEach(t => { t.mock.method(PropertyAssignment, "exists", async () => null); });
+test.beforeEach(t => { t.mock.method(PropertyAssignment, "exists", async () => null);t.mock.method(OfficePayout,"exists",async()=>null); });
 
 // No MongoDB connection: mock persistence and assert that unsafe requests never delete.
 for (const [name, lots, code] of [
@@ -175,3 +176,5 @@ test("unique-index race returns a recoverable duplicate response", async t => {
   await updateProjectProperties(req({ updates: [{ _id: ids[0], lotNumber: 2, status: "AVAILABLE" }] }), res, next);
   assert.equal(res.code, 409); assert.match(res.body.message, /refresh inventory/);
 });
+
+test('a supplier/landowner payout reference protects an otherwise available lot',async t=>{t.mock.method(Project,'findById',async()=>({_id:projectId,status:'ACTIVE'}));t.mock.method(Property,'find',()=>({lean:async()=>ids.map(_id=>({_id,status:'AVAILABLE',client:null}))}));t.mock.method(OfficePayout,'exists',async()=>({_id:'linked-payout'}));t.mock.method(Property,'deleteMany',async()=>{throw Error('Protected lot must not be deleted')});const res=response();await deleteLots(req({ids}),res,next);assert.equal(res.code,409)});

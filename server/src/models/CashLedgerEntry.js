@@ -3,6 +3,7 @@ const schema=new mongoose.Schema({
  entryId:{type:String,required:true,unique:true,immutable:true},requestId:{type:String,required:true,unique:true,immutable:true},
  kind:{type:String,enum:['OPENING','INFLOW','OUTFLOW','BANK_DEPOSIT','BANK_WITHDRAWAL','OWNER_TURNOVER'],required:true,immutable:true},
  effectiveDate:{type:String,required:true,immutable:true},amountCents:{type:Number,min:0,required:true,immutable:true},
+ businessPayoutId:{type:String,default:null,immutable:true},payoutReleaseId:{type:String,default:null,immutable:true},sourceOfFunds:{type:String,default:'',immutable:true},remarks:{type:String,default:'',immutable:true},receivedBy:{type:String,default:'',immutable:true},authorizedBy:{type:String,default:'',immutable:true},
  recipient:{type:String,default:'',immutable:true},
  reason:{type:String,required:function(){return this.kind!=='OWNER_TURNOVER'},default:'',immutable:true},reference:{type:String,default:'',immutable:true},
  status:{type:String,enum:['POSTED','VOIDED'],default:'POSTED'},ledger:{type:String,default:'OFFICE',immutable:true},

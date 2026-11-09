@@ -1,3 +1,4 @@
+import {Link} from "react-router-dom";
 import ExpenseManagement from "../components/ExpenseManagement.jsx";
 import {useAuth} from "../context/AuthContext.jsx";
 import FundingAccountField from "../components/FundingAccountField.jsx";
@@ -16,7 +17,7 @@ export default function ExpensesPage(){
  const set=(key,value)=>setForm(old=>({...old,...(key==="method"?{fundingAccount:""}:{}),[key]:value}));
  const submit=async e=>{e.preventDefault();setBusy(true);try{const {data}=await api.post("/finance/expenses",form);setMessage(data.message);setForm(blank());setVersion(v=>v+1)}catch(e){setError(e.response?.data?.message||"Expense result is uncertain. Review the list before retrying; the submission ID was retained.")}finally{setBusy(false)}};
  const [reportPeriod,setReportPeriod]=useState("all"),[reportRange,setReportRange]=useState({from:"0001-01-01",to:localDate()}),[reportProject,setReportProject]=useState("");
- return <main className="container-fluid p-4"><h1 className="h3 fw-bold">Expenses</h1><p className="text-secondary">Record office, project and other expenses.</p><CenterPopup message={message} error={error} onClose={()=>{setMessage("");setError("")}}/>
+ return <main className="container-fluid p-4"><h1 className="h3 fw-bold">Expenses & Remittances</h1>{canRecord&&<Link className="btn btn-outline-primary mb-3" to="/payouts">Supplier & Landowner Payouts</Link>}<p className="text-secondary">Record office, project and other expenses.</p><CenterPopup message={message} error={error} onClose={()=>{setMessage("");setError("")}}/>
  <div className="row g-4"><div className="col-xl-4"><div className="card border-0 shadow-sm"><div className="card-body"><h2 className="h5">Record expense</h2>{!canRecord&&<p>Read-only access. Contact authorized staff to record an expense.</p>}<form onSubmit={submit}><RequiredNote/><fieldset disabled={busy||!canRecord}>
  <FieldLabel className="form-label w-100">Category<select className="form-select" value={form.category} onChange={e=>set("category",e.target.value)}>{["OFFICE","PROJECT","OTHER"].map(c=><option key={c}>{c}</option>)}</select></FieldLabel>
  {form.category==="PROJECT"&&<FieldLabel className="form-label w-100">Project<select className="form-select" required value={form.projectId} onChange={e=>set("projectId",e.target.value)}><option value="">Select project</option>{projects.filter(p=>p.status!=="ARCHIVED").map(p=><option key={p._id} value={p._id}>{p.projectName}</option>)}</select></FieldLabel>}

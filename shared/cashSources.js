@@ -1,0 +1,1 @@
+export const CASH_SOURCES={OWNER_ADDITION:'Additional cash from company owner',REPLENISHMENT:'Cash fund replenishment',BANK_WITHDRAWAL:'Bank cash withdrawal',RETURNED_ADVANCE:'Return of unused cash advance',OTHER:'Other authorized cash source'};

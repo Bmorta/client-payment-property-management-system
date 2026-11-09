@@ -1,3 +1,4 @@
+import OfficePayout from "../models/OfficePayout.js";
 import mongoose from "mongoose";
 import Project from "../models/Project.js";
 import Phase from "../models/Phase.js";
@@ -138,8 +139,8 @@ async function removeLots(req, res, next, ids) {
     }
     const lots = await Property.find({ _id: { $in: ids }, project: project._id }).lean();
     if (lots.length !== ids.length) return fail(res, 404, "One or more lots were not found in this project. No lots deleted.");
-    if (lots.some(lot => lot.status !== "AVAILABLE" || lot.client != null) || await PropertyAssignment.exists({ property: { $in: ids } })) {
-      return fail(res, 409, "Only AVAILABLE lots with no connected client can be deleted. No lots deleted.");
+    if (lots.some(lot => lot.status !== "AVAILABLE" || lot.client != null) || await PropertyAssignment.exists({ property: { $in: ids } }) || await OfficePayout.exists({property:{$in:ids}})) {
+      return fail(res, 409, "Only AVAILABLE lots with no client, contract or payout reference can be deleted. No lots deleted.");
     }
     const result = await Property.deleteMany({ _id: { $in: ids }, project: project._id, status: "AVAILABLE", client: null });
     res.json({ success: true, deletedCount: result.deletedCount,

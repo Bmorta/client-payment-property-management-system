@@ -11,6 +11,7 @@ import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
+const PayoutsPage=lazy(()=>import("./pages/PayoutsPage.jsx"));
 const CompaniesPage=lazy(()=>import("./pages/CompaniesPage.jsx"));
 const HistoricalMigrationPage=lazy(()=>import("./pages/HistoricalMigrationPage.jsx"));
 const ClientAccountsPage=lazy(()=>import("./pages/ClientAccountsPage.jsx"));
@@ -62,6 +63,7 @@ export default function App() {
               <Route path="/payment-monitoring" element={<PaymentMonitoringPage />} />
               <Route path="/approval-requests" element={<RoleRoute roles={["ADMIN","STAFF"]}><ApprovalRequestsPage /></RoleRoute>} />
               <Route path="/payment" element={<PaymentPage />} />
+              <Route path="/payouts" element={<RoleRoute roles={["ADMIN","STAFF"]}><PayoutsPage/></RoleRoute>}/>
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/users" element={<RoleRoute><UsersPage /></RoleRoute>} />
