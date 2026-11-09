@@ -8,7 +8,7 @@ import {today} from '../utils/accounting.js';
 // A shared write guard prevents simultaneous cash movements spending the same balance.
 export async function supportsCashTransactions(){const hello=await mongoose.connection.db.admin().command({hello:1});return !!hello.setName||hello.msg==='isdbgrid'}
 export async function cashMutation(work){
- if(!await supportsCashTransactions())fail('Cash turnover and corrections require MongoDB transaction support (replica set). No changes were applied.',409);
+ if(!await supportsCashTransactions())fail('Cash movements, refund releases and protected corrections require MongoDB transaction support (replica set). No changes were applied.',409);
  await CashLedgerEntry.init();await AdministrationGuard.updateOne({_id:'office-cash'},{$setOnInsert:{revision:0}},{upsert:true});
  const session=await mongoose.startSession();let result;
  try{await session.withTransaction(async()=>{await AdministrationGuard.updateOne({_id:'office-cash'},{$inc:{revision:1}},{session});result=await work(session)});return result}finally{await session.endSession()}

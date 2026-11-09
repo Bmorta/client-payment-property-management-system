@@ -7,7 +7,9 @@ export const intentFail=(message,statusCode=400)=>{throw Object.assign(new Error
 export const intentHash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export function installmentQuote(account,date,months){const n=Number(months);if(!Number.isSafeInteger(n)||n<1||n>1200)intentFail('Enter a whole number of installment periods (1–1,200).');const ledger=allocatePayments(account,date),rows=ledger.schedule.filter(r=>r.installment>0&&r.balanceCents>0).slice(0,n);if(rows.length!==n)intentFail('The requested periods exceed the remaining unpaid installment schedule.');return {periods:rows.map(r=>({installment:r.installment,dueDate:r.dueDate,balanceCents:r.balanceCents})),amountCents:rows.reduce((s,r)=>s+r.balanceCents,0)}}
 export function preparePaymentIntent(account,input){
+ if(account.pendingCancellation||account.lifecycle==='CANCELLED')intentFail('This contract is cancelled or reserved for cancellation. Open its case history; use other active contracts for payments.',409);
  if(account.lifecycle==='TRANSFERRED')intentFail('This contract was transferred. Use its replacement account.',409);
+ if(account.creditAmendments?.length&&input.paymentDate<account.creditAmendments.at(-1).effectiveDate)intentFail('Payments cannot predate the latest approved credit amendment.',409);
  if(input.monthsToPay!=null&&input.monthsToPay!==''&&(!Number.isSafeInteger(Number(input.monthsToPay))||Number(input.monthsToPay)<1||Number(input.monthsToPay)>1200))intentFail('Enter a valid optional number of months (1–1,200).');
  if(currentPenaltyPolicy(account)?.pendingPaymentPolicy)intentFail("Choose and save the penalty basis in Payments before posting this account payment.");
  const date=input.paymentDate;if(!validDate(date)||date<account.contract.contractDate||date>today())intentFail('Choose a valid effective payment date within the contract.');

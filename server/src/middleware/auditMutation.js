@@ -1,3 +1,4 @@
+import CancellationCase from '../models/CancellationCase.js';
 import CommissionVoucher from '../models/CommissionVoucher.js';
 import Company from "../models/Company.js";
 import MigrationBatch from "../models/MigrationBatch.js";
@@ -45,6 +46,7 @@ function target(req) {
     module = parts[0] === "cash-ledger" ? "Cash Ledger" : parts.includes("corrections") || parts.includes("requests") ? "Payment Corrections" : parts[0] === "notifications" ? "Notifications" : parts[0] === "expenses" ? "Expenses" : parts[0] === "accounts" ? "Payment Agreements" : "Payment Transactions";
     filter = one(["accounts","expenses","cash-ledger"].includes(parts[0]) ? parts[1] : req.body?.accountId);
   }
+  if(base.endsWith('/finance')&&parts.includes('cancellations')){model=CancellationCase;module=parts.includes('refunds')?'Client Refunds':'Contract Cancellations';filter=parts[0]==='cancellations'?one(parts[1]):req.body?.requestId?{requestId:req.body.requestId}:{_id:null};}
   const action = req.path.endsWith("/archive") ? "ARCHIVED" : req.method === "DELETE" || req.path.endsWith("/bulk-delete") ? "DELETED" : req.method === "POST" ? "CREATED" : "UPDATED";
   return { model, module, filter, action };
 }

@@ -1,0 +1,4 @@
+import mongoose from 'mongoose';
+const schema=new mongoose.Schema({inputHash:{type:String,required:true},releaseId:{type:String,unique:true,required:true},requestId:{type:String,unique:true,required:true},case:{type:mongoose.Schema.Types.ObjectId,ref:'CancellationCase',required:true},client:{type:mongoose.Schema.Types.ObjectId,ref:'Client',required:true},date:{type:String,required:true},amountCents:{type:Number,required:true,min:1},method:{type:String,required:true},fundingAccount:{type:String,enum:['CASH','NONCASH'],required:true},recipient:{type:String,required:true},reference:String,remarks:String,actor:mongoose.Schema.Types.Mixed,sourceAllocations:{type:[mongoose.Schema.Types.Mixed],default:[]},status:{type:String,default:'POSTED',enum:['POSTED']}},{timestamps:true});
+schema.index({date:1,case:1});
+export default mongoose.model('RefundRelease',schema);

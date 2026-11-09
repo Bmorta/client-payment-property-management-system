@@ -18,7 +18,7 @@ export async function listProjectProperties(req, res, next) {
     const properties = await Property.find({ project: project._id })
       .sort({ phaseNumber: 1, blockNumber: 1, lotNumber: 1 });
     const assignments = await PropertyAssignment.find({ project: project._id }).select("property lifecycle").lean();
-    const assigned = new Set(assignments.filter(a=>a.lifecycle!=="TRANSFERRED").map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
+    const assigned = new Set(assignments.filter(a=>!["TRANSFERRED","CANCELLED"].includes(a.lifecycle)).map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
     res.json({ success: true, data: properties.map(p => {
       const lot = p.toJSON(); const hasAccount = assigned.has(String(p._id));
       return { ...lot, hasAccount, hasHistory:history.has(String(p._id)),canDelete: lot.canDelete && !history.has(String(p._id)) };

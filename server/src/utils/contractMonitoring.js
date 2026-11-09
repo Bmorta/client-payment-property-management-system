@@ -1,3 +1,4 @@
+import {amendedLedger,verifyFrozenPayments} from './amendedLedger.js';
 import {penaltyPolicies} from "../../../shared/penaltyPolicy.js";
 import {monthDate} from "../../../shared/paymentSchedule.js";
 import {calendarDay,addDays} from "../../../shared/contractTerms.js";
@@ -5,8 +6,14 @@ export {calendarDay,addDays,validateTerms,configureSchedule} from "../../../shar
 const roundedPenalty=(cents,bps)=>Number((BigInt(cents)*BigInt(bps)+5000n)/10000n);
 // Single chronological ledger: assessment cycles run at the start of their PHT
 // calendar date, then payments on that date. No interest-on-interest is applied.
-export function calculateLedger(account,payments,asOf=calendarDay()){if(account.transferOut&&asOf>=account.transferOut.effectiveDate){const ledger=calculateLedgerEngine({...account,transferOut:null},payments,account.transferOut.effectiveDate,account.penaltyCalculationRule==='CURRENT_OVERDUE');return {...ledger,transferClosure:account.transferOut,balanceAtTransferCents:ledger.balanceCents,balanceCents:0,totalOutstandingCents:0,outstandingPenaltyCents:0,nextUnpaidDueDate:null,consecutiveUnpaidMonths:0,riskStatus:'NORMAL',category:'TRANSFERRED',schedule:ledger.schedule.map(s=>({...s,overdue:false,status:s.balanceCents>0?'TRANSFERRED':s.status})),assessments:ledger.assessments.map(a=>({...a,balanceCents:0})),currentPenaltySummary:ledger.currentPenaltySummary?{...ledger.currentPenaltySummary,grossCents:0,remainingCents:0,overdueInstallments:0,overdueInstallmentMonths:[],calculationLines:[]}:undefined};}return calculateLedgerEngine(account,payments,asOf,account.penaltyCalculationRule==='CURRENT_OVERDUE')}
-export function calculateRecurringLedger(account,payments,asOf=calendarDay()){return calculateLedgerEngine(account,payments,asOf,false)}
+export function calculateLedger(account,payments,asOf=calendarDay()){
+ const engine=(a,p,d)=>calculateLedgerEngine(a,p,d,a.penaltyCalculationRule==='CURRENT_OVERDUE');
+ const close=account.cancellationOut||account.transferOut,pending=account.pendingCancellation;
+ if(close&&asOf>=close.effectiveDate){if(close.beforeLedger)verifyFrozenPayments(close.beforeLedger,payments);const ledger=close.beforeLedger||amendedLedger({...account,transferOut:null,cancellationOut:null,pendingCancellation:null},payments,close.effectiveDate,engine),category=account.cancellationOut?'CANCELLED':'TRANSFERRED';return {...ledger,transferClosure:close,balanceAtTransferCents:ledger.balanceCents,balanceCents:0,totalOutstandingCents:0,outstandingPenaltyCents:0,nextUnpaidDueDate:null,consecutiveUnpaidMonths:0,riskStatus:'NORMAL',category,schedule:ledger.schedule.map(s=>({...s,overdue:false,status:s.balanceCents>0?category:s.status})),assessments:ledger.assessments.map(a=>({...a,...(account.cancellationOut&&a.balanceCents>0?{cancellationSettlement:{caseId:close.caseId,decision:close.penaltyDecision,amountCents:a.balanceCents},...(close.penaltyDecision==='WAIVE'?{waivedCents:a.waivedCents+a.balanceCents}:{})}:{}),balanceCents:0})),currentPenaltySummary:ledger.currentPenaltySummary?{...ledger.currentPenaltySummary,grossCents:0,remainingCents:0,overdueInstallments:0,overdueInstallmentMonths:[],calculationLines:[]}:undefined};}
+ const frozen=pending&&asOf>=pending.effectiveDate,ledger=amendedLedger(account,payments,frozen?pending.effectiveDate:asOf,engine);
+ return frozen?{...ledger,category:'CANCELLATION_PENDING',riskStatus:'UNDER_REVIEW',nextUnpaidDueDate:null,consecutiveUnpaidMonths:0,schedule:ledger.schedule.map(s=>({...s,overdue:false,status:s.balanceCents>0?'CANCELLATION_PENDING':s.status}))}:ledger;
+}
+export function calculateRecurringLedger(account,payments,asOf=calendarDay()){return account.creditAmendments?.length||account.cancellationOut||account.pendingCancellation?calculateLedger(account,payments,asOf):calculateLedgerEngine(account,payments,asOf,false)}
 function calculateLedgerEngine(account,payments,asOf,currentMode){
  const contract=account.contract,terms=contract.monitoringTerms;
  const closedHistorical=asOf>=(account.migration?.cutoffDate||"9999-12-31")&&["CANCELLED","FORFEITED","TRANSFERRED","FULLY_PAID"].includes(account.migration?.historicalStatus);
