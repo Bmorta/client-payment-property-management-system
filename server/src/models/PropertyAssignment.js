@@ -23,8 +23,11 @@ const assignmentSchema = new Schema({
   assignmentId: { type: String, unique: true, required: true },
   client: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
-  property: { type: Schema.Types.ObjectId, ref: "Property", unique: true, required: true },
+  property: { type: Schema.Types.ObjectId, ref: "Property", required: true },
+  lifecycle:{type:String,enum:["ACTIVE","TRANSFERRED"],default:"ACTIVE"},
+  transferIn:Schema.Types.Mixed,transferOut:Schema.Types.Mixed,
   contract: {
+    transferPricing:Schema.Types.Mixed,
     totalCents: { type: Number, required: true, min: 1 }, months: { type: Number, validate: validTerm, required: true }, termType: { type: String, enum: ["PREDEFINED", "CUSTOM"], default: "PREDEFINED" },
     monitoringTerms: {type:Schema.Types.Mixed,default:null},
     monthlyInstallmentCents:Number,
@@ -61,6 +64,7 @@ const assignmentSchema = new Schema({
   payments: { type: [paymentSchema], default: [] },
   createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true }
 }, { timestamps: true });
+assignmentSchema.index({property:1},{name:"active_property_contract",unique:true,partialFilterExpression:{lifecycle:"ACTIVE"}});
 assignmentSchema.path('commissionSnapshot').validate(value=>!value?.records||new Set(value.records.map(r=>r.commissionId)).size===value.records.length,'Duplicate commission period keys.');
 assignmentSchema.index({"commissionSnapshot.records.agent":1,project:1});
 assignmentSchema.index({"payments.paymentId":1},{unique:true,partialFilterExpression:{"payments.paymentId":{$type:"string"}}});

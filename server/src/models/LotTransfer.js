@@ -1,0 +1,3 @@
+import mongoose from 'mongoose';
+const schema=new mongoose.Schema({transferId:{type:String,unique:true,required:true},requestId:{type:String,unique:true,required:true},source:{type:mongoose.Schema.Types.ObjectId,ref:'PropertyAssignment',required:true,unique:true},replacement:{type:mongoose.Schema.Types.ObjectId,ref:'PropertyAssignment',required:true},effectiveDate:{type:String,required:true},approvedBy:{type:mongoose.Schema.Types.ObjectId,ref:'User',required:true},username:String,approval:{type:mongoose.Schema.Types.Mixed,required:true},snapshot:{type:mongoose.Schema.Types.Mixed,required:true},history:{type:[mongoose.Schema.Types.Mixed],default:[]}},{timestamps:true});
+export default mongoose.model('LotTransfer',schema);

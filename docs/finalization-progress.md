@@ -34,3 +34,11 @@ Added confirmed project archive/status restoration, client deactivate/reactivate
 Validation: backend suite 221 discovered, 211 passed, 10 environment-gated skips, zero failures. New lifecycle/cash/draft integration passed on standalone and replica set. Existing payment workflow and historical migration integration passed. UI checks passed for confirmation-before-write, status-only client changes, agent reactivation, viewer restrictions and draft deletion. Production build passed with the existing large-chunk advisory. No live office database was accessed or changed.
 
 Remaining review items include large-data backup/report reliability, authentication/session recovery, unsaved-edit handling, broader mobile/LAN/accessibility acceptance, and business-approved contract closure/reinstatement workflows. This is incremental finalization, not a declaration of production readiness.
+
+## Group 5 — office cash retention/turnovers and administrator lot transfers
+
+Cash movements now distinguish owner turnovers from expenses/revenue, accept a zero initial baseline, automatically carry balances by date, validate concurrent/backdated movements, retain corrections and provide daily/detail Print/PDF/Excel breakdowns. See `collection-cash-summary.md`.
+
+Lot transfers add administrator previews and approvals, configurable principal credits and residual terms, linked noncash adjustments, retained original contracts/receipts/payouts, penalty resolution, transactional inventory changes, history and matching transfer exports. Existing global lot-account uniqueness requires an explicit backed-up index upgrade; the feature blocks financial approval until it is completed. No live database upgrade was run. See `lot-transfers.md` for setup, safeguards, validation and deliberate amendment/reversal restrictions.
+
+Validation: 232 backend tests discovered, 219 passed, 13 environment-gated skips, zero failures; separate disposable-database integrations passed for transfer/legacy index upgrade, payment workflow, historical migration and owner turnovers. Cash and transfer UI checks and frontend production build passed. Prior broader voucher-concurrency intermittency remains documented separately; this update does not claim to resolve it. No new dependencies, automatic deployment or live office-data mutations.

@@ -20,7 +20,7 @@ export function monitoringMutation(account,actor={username:"system",role:"SYSTEM
  }
  if(penalties.length)push.penaltyLedger={$each:penalties};
  const notifications=structuredClone(account.notifications||[]),active=new Map(),terms=account.contract.monitoringTerms;
- if(terms&&!account.migration?.monitoringHold&&!["CANCELLED","FORFEITED","TRANSFERRED","FULLY_PAID"].includes(account.migration?.historicalStatus)){
+ if(account.lifecycle!=="TRANSFERRED"&&terms&&!account.migration?.monitoringHold&&!["CANCELLED","FORFEITED","TRANSFERRED","FULLY_PAID"].includes(account.migration?.historicalStatus)){
   for(const s of summary.schedule.filter(s=>s.balanceCents>0)){
    let status=s.overdue?(s.penaltyHistory.some(a=>a.balanceCents>0)?"OVERDUE_WITH_PENALTY":"OVERDUE"):asOf===s.dueDate?"DUE_TODAY":asOf>s.dueDate?"WITHIN_GRACE_PERIOD":asOf>=addDays(s.dueDate,-terms.reminderDays)?"UPCOMING_DUE":null;
    if(s.overdue)active.set(`grace:${s.installmentId}:${s.graceEnd}`,{status:"GRACE_PERIOD_EXPIRED",message:`${account.assignmentId}: grace expired for installment ${s.installment} after ${s.graceEnd}`});

@@ -73,7 +73,7 @@ export async function assignProperty(req, res, next) {
     if(monitoringTerms)validateMonthlyArrangement(totalCents,downPaymentCents,months,req.body.monthlyInstallment,req.body.monthlyOverrideAcknowledged);
     const schedule=configureSchedule(buildSchedule(totalCents,months,firstDueDate,downPaymentCents,contractDate),monitoringTerms,req.body.monthlyInstallment);
     if(schedule.some(s=>s.dueDate<contractDate))fail(400,"Due day cannot move an installment before the contract date.");
-    if (await PropertyAssignment.exists({ property: propertyId })) fail(409, "This lot already has an account. Use that account instead.");
+    if (await PropertyAssignment.exists({ property: propertyId,lifecycle:{$ne:"TRANSFERRED"} })) fail(409, "This lot already has an account. Use that account instead.");
     await PropertyAssignment.init();
     claimed = await Property.findOneAndUpdate({ _id: propertyId, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
     if (!claimed) fail(409, "This lot is no longer available or is already linked to a client.");

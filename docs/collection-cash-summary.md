@@ -14,7 +14,7 @@ Total Collections includes valid posted, effective buyer payments only. Cancelle
 
 Cash cards and the cash formula always use the **complete office physical-cash ledger**, independently of method, project and detail-search filters. A buyer's GCash, Maya, bank transfer/deposit or check does not increase physical cash. Other contributes only when explicitly classified as physical cash.
 
-Closing cash = derived period opening + physical cash collections + other inflows/withdrawals/recoveries − cash expenses − cash deposited to bank − other outflows/unlinked commission payouts.
+Closing cash = derived period opening + physical cash collections + other inflows/withdrawals/recoveries − cash expenses − cash deposited to bank − owner turnovers − other outflows/unlinked commission payouts.
 
 Commission payouts remain separate actual disbursements unless represented by an expense. Linking an expense to a payout requires matching amount, date, method and physical-funding classification, plus project for a project expense. A unique index prevents linking the same payout to two expenses. A linked payout is excluded from the additional cash outflow because the expense already represents it. Net Collection still subtracts the actual expense once. A payout with no expense affects physical cash separately; it is not silently added to Total Expenses. Actual commission recoveries are cash inflows only when cash-funded. Transfers are neither revenue nor expense.
 
@@ -71,3 +71,28 @@ Final verification: 124 regular backend tests passed, 1 optional isolated scenar
 Collection/cash PDFs now use wrapped, measured table cells and repeat column headings after page breaks. Sample A4 pages were rendered and reviewed. A 32-payment pagination check retained every payment ID exactly once. Excel summary sheets have landscape print settings and frozen metadata; detail rows wrap long descriptions and property labels. Financial calculation and dataset selection are unchanged.
 
 Fresh verification: 124 backend tests passed (1 optional integration skipped by the default command), isolated HTTP/MongoDB integration passed separately, client build passed, and collection/cash, office-workflow and commission DOM checks passed. Browser binary download failed, so real-browser responsive acceptance remains pending. No office database was changed and nothing was committed or pushed.
+
+
+## Owner turnovers and automatic carry-forward
+
+Use **Reports → Collection & Cash Summary → Administrator: Opening Balance & Cash Movements**. Record the physical opening count once (₱0.00 is valid). Select the actual starting date; this is not a daily opening entry. Cash received through Payments is already included automatically. Never encode it again as an inflow.
+
+Choose **Cash turnover to owner** to record a partial or full handover. Amount, effective date, recipient and confirmation are required; reference and remarks are optional. A turnover reduces physical cash held by the office, but never reduces collection revenue or creates an expense. The daily table shows opening, cash collections, owner turnovers, other net cash movements and ending cash. The next day's opening is the previous day's ending, including days without transactions.
+
+History supports recipient/reference/remarks search, type/status/date filters and pagination. Administrators can correct a posted turnover's amount, date, recipient, reference or remarks with a required correction reason and confirmation. The same entry ID is retained, with before/after values and actor/time in append-only history. Stale corrections are rejected. Voids retain original records.
+
+Turnover posting and protected corrections/voids use replica-set MongoDB transactions plus a shared cash-movement write guard. Duplicate submission IDs cannot post twice. Validation uses actual valid Payments, Expenses, commission payouts/recoveries and cash entries, checking every daily ending from the initial baseline through today. An amount exceeding available cash, an entry before the baseline, incomplete cash classification, or a backdated correction creating a later negative day is rejected and rolled back. Standalone MongoDB returns an actionable transaction-support error without changing financial records. No database configuration is automatically changed.
+
+Balances use Asia/Manila contractual date strings and integer centavos. Availability is based on end-of-day records (no intraday sequence is recorded). Existing source-payment, expense and payout corrections automatically change subsequent computed daily balances; if those source records make the cash ledger incomplete/negative, the report flags cash as unavailable for reconciliation rather than inventing a balance. Migration drafts remain excluded and existing verified historical-cutoff protections remain enforced.
+
+Print, PDF and Excel use the report's identical snapshot, daily breakdown and detailed turnover recipients/references/remarks. Excel includes **Daily Office Cash** and **Office Cash Movements** sheets. Cash is always complete-office scope, independent of noncash/project/report-detail filters. Existing legacy OUTFLOW records are not silently reclassified as owner turnovers.
+
+### Validation for owner-turnover update
+
+- Backend suite: 225 discovered, 214 passed, 11 environment-gated skips, zero failures.
+- New disposable-database HTTP integration passed on standalone (protected action blocked with no writes) and replica set (posting, real payment-source records, zero baseline, cash/noncash/void separation, duplicate submissions, role checks, stale corrections, before/after history, negative-balance rollback, concurrent turnover spending, baseline-void protection and report totals).
+- UI check passed: recipient/history display, correction confirmation before API write, body-level frontmost dialog, refreshed report callback, and escaped print daily/detail content.
+- Excel workbook test passed for identical daily openings/closings, turnover totals and recipient/reference details. Production frontend build passed with the existing bundle-size advisory. No new dependencies or live database changes.
+- Broader company/report/voucher integration failed one concurrent-voucher reservation assertion on its first run and passed on retry. This intermittent concurrency result is a separate follow-up; no commission implementation was changed in this update.
+
+Modified implementation files: `server/src/models/CashLedgerEntry.js`, `server/src/services/cashMovementService.js`, `server/src/services/financialReportService.js`, `server/src/controllers/cashLedgerController.js`, `server/src/controllers/collectionReportController.js`, `server/src/routes/financeRoutes.js`, `server/src/utils/financialReporting.js`, `client/src/components/CashLedgerTools.jsx`, `client/src/components/CollectionCashReport.jsx`, `client/src/utils/printFinancialReport.js`. Tests: `server/test/cash-turnovers.test.js`, `server/integration/cash-turnovers.test.js`, adjusted existing `server/test/collection-cash.test.js` for the added summary row. Documentation: this file.

@@ -38,7 +38,7 @@ export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
  for(const r of records){
   const released=payouts.filter(p=>p.commissionId===r.commissionId),old=previous.find(p=>p.commissionId===r.commissionId);
   r.releasedCents=released.reduce((n,p)=>n+p.amountCents,0);r.recoveredCents=(account.commissionRecoveries||[]).filter(p=>p.commissionId===r.commissionId&&(p.recoveryDate||"0000-00-00")<=asOf).reduce((n,p)=>n+p.amountCents,0);
-  r.netReleasedCents=r.releasedCents-r.recoveredCents;r.unreleasedCents=Math.max(0,r.earnedCents-r.netReleasedCents);r.recoveryDueCents=Math.max(0,r.netReleasedCents-r.earnedCents);r.awaitingCents=Math.max(0,r.budgetCents-r.earnedCents);
+  r.netReleasedCents=r.releasedCents-r.recoveredCents;r.unreleasedCents=Math.max(0,r.earnedCents-r.netReleasedCents);r.recoveryDueCents=Math.max(0,r.netReleasedCents-r.earnedCents);r.awaitingCents=account.lifecycle==='TRANSFERRED'?0:Math.max(0,r.budgetCents-r.earnedCents);if(account.lifecycle==='TRANSFERRED')r.earningClosed=true;
   r.historicalPayoutEvidence=released.filter(p=>p.origin==='HISTORICAL').map(p=>[p.payoutId,p.amountCents,p.releaseDate,p.method,p.reference||'']).sort((a,b)=>a[0].localeCompare(b[0]));
   r.historicalVerificationRequired=r.earnedCents>0&&r.sourceAllocations.some(s=>s.historical)&&!(account.commissionHistoricalReviews||[]).some(review=>historicalReviewMatches(review,r,agreement));
   r.historicalVerificationCents=r.historicalVerificationRequired?r.unreleasedCents:0;r.releasableCents=r.unreleasedCents-r.historicalVerificationCents;
