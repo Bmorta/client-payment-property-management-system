@@ -1,6 +1,6 @@
 import {historicalFingerprint,historicalReviewMatches} from './commissionReconciliation.js';
 import {randomUUID} from "node:crypto";
-import {roundRatio,percentAmount,apportionBudgets,splitCommission} from "../../../shared/commissionMath.js";
+import {COMPLETED_BUYER_INSTALLMENTS,roundRatio,percentAmount,apportionBudgets,splitCommission} from "../../../shared/commissionMath.js";
 export {percentAmount,apportionBudgets,splitCommission} from "../../../shared/commissionMath.js";
 export const effectivePayout=p=>({...p,...(p.revisions?.at(-1)?.values||{}),payoutId:p.payoutId,status:p.revisions?.at(-1)?.values?.voided?"VOIDED":p.revisions?.length?"CORRECTED":"RELEASED",amountCents:p.revisions?.at(-1)?.values?.voided?0:(p.revisions?.at(-1)?.values?.amountCents??p.amountCents)});
 export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
@@ -23,13 +23,14 @@ export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
   const agentBudgets=apportionBudgets(account.contract.totalCents,agreement.agents),dpBudgets=apportionBudgets(account.contract.downPaymentCents,agreement.agents);
   for(const allocation of agreement.agents){
    const agent=String(allocation.agent),budgetCents=agentBudgets.get(agent),dpBudget=Math.min(budgetCents,dpBudgets.get(agent)),monthlyBudget=budgetCents-dpBudget;
-   const sameTerm=buyerPeriods.length===agreement.termMonths;
-   const basisPeriods=sameTerm?buyerPeriods.map(s=>s.amountCents):splitCommission(monthlyBasis,agreement.termMonths),budgets=splitCommission(monthlyBudget,agreement.termMonths);
+   const sameTerm=buyerPeriods.length===agreement.termMonths,byBuyerInstallment=agreement.monthlyEarningRule===COMPLETED_BUYER_INSTALLMENTS;
+   if(byBuyerInstallment&&agreement.termMonths>buyerPeriods.length)throw Object.assign(new Error("Commission term exceeds available buyer installment periods. Review the agreement before changing its earning rule."),{statusCode:409});
+   const basisPeriods=(sameTerm||byBuyerInstallment)?buyerPeriods.map(s=>s.amountCents):splitCommission(monthlyBasis,agreement.termMonths),budgets=splitCommission(monthlyBudget,agreement.termMonths);
    const buckets=[{type:"DP",period:0,basisCents:account.contract.downPaymentCents,budgetCents:dpBudget,sources:dpSources.map(s=>({...s}))}];
    let sourceIndex=0,consumed=0;
    for(let i=0;i<agreement.termMonths;i++){
     const bucket={type:"MONTHLY",period:i+1,basisCents:basisPeriods[i],budgetCents:budgets[i],sources:[]};let capacity=bucket.basisCents;
-    if(sameTerm){bucket.sources=allMonthlySources.filter(s=>s.installment===buyerPeriods[i].installment).map(s=>({...s}));capacity=0}
+    if(sameTerm||byBuyerInstallment){bucket.sources=allMonthlySources.filter(s=>s.installment===buyerPeriods[i].installment).map(s=>({...s}));capacity=0}
     while(capacity>0&&sourceIndex<monthlySources.length){const source=monthlySources[sourceIndex],amount=Math.min(capacity,source.amountCents-consumed);if(amount>0){bucket.sources.push({...source,amountCents:amount});capacity-=amount;consumed+=amount}if(consumed===source.amountCents){sourceIndex++;consumed=0}}
     buckets.push(bucket);
    }
@@ -38,7 +39,7 @@ export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
     const commissionId=`${account.assignmentId}-COM-${allocation.agentId||agent}-${bucket.type}${bucket.period}`,old=previous.find(r=>r.commissionId===commissionId);
     let collected=0,earned=0;
     const sourceAllocations=bucket.sources.filter(source=>!agreement.effectiveDate||source.effectiveDate>=agreement.effectiveDate).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate)||a.paymentId.localeCompare(b.paymentId)||a.installment-b.installment).map(source=>{collected+=source.amountCents;const cumulative=bucket.basisCents?(collected>=bucket.basisCents?bucket.budgetCents:bucket.type==="MONTHLY"?0:Math.min(Math.max(0,bucket.budgetCents-1),roundRatio(bucket.budgetCents,collected,bucket.basisCents))):0;const commissionCents=cumulative-earned;earned=cumulative;return {...source,commissionCents}});
-    records.push({commissionId,agent,agentId:allocation.agentId,type:bucket.type,period:bucket.period,percentageBps:allocation.percentageBps,budgetCents:bucket.budgetCents,basisCents:bucket.basisCents,collectedCents:collected,earnedCents:earned,sourceAllocations,earningDate:earned>0?sourceAllocations.at(-1)?.effectiveDate||null:null,firstEarnedAt:(earned>0?sourceAllocations.find(s=>s.commissionCents>0)?.effectiveDate:null),earningRule:"FULL_INSTALLMENT_PERIODS",agreementVersion:agreement.version,agreementEffectiveDate:agreement.effectiveDate||account.contract.contractDate||null});
+    records.push({commissionId,agent,agentId:allocation.agentId,type:bucket.type,period:bucket.period,percentageBps:allocation.percentageBps,budgetCents:bucket.budgetCents,basisCents:bucket.basisCents,collectedCents:collected,earnedCents:earned,sourceAllocations,earningDate:earned>0?sourceAllocations.at(-1)?.effectiveDate||null:null,firstEarnedAt:(earned>0?sourceAllocations.find(s=>s.commissionCents>0)?.effectiveDate:null),earningRule:agreement.monthlyEarningRule||"FULL_INSTALLMENT_PERIODS",agreementVersion:agreement.version,agreementEffectiveDate:agreement.effectiveDate||account.contract.contractDate||null});
    }
   }
  }

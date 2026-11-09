@@ -1,3 +1,4 @@
+export const COMPLETED_BUYER_INSTALLMENTS = "COMPLETED_BUYER_INSTALLMENTS";
 export const roundRatio=(a,b,c)=>Number((BigInt(a)*BigInt(b)+BigInt(Math.floor(c/2)))/BigInt(c));
 export const percentAmount=(cents,bps)=>roundRatio(cents,bps,10000);
 export function apportionBudgets(cents,agents){
