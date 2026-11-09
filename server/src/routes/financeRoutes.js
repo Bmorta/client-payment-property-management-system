@@ -1,3 +1,4 @@
+import {expenseDetails,correctExpense} from "../controllers/expenseCorrectionController.js";
 import {accountPenalties,bulkWaive,recalculatePenalties} from "../controllers/penaltyOperationsController.js";
 import {clientPenalties} from "../controllers/clientPenaltyController.js";
 import {paymentPenaltyPolicy} from "../controllers/paymentPenaltyPolicyController.js";
@@ -59,6 +60,9 @@ router.get("/cash-ledger",listCashEntries);
 router.post("/cash-ledger",authorize("ADMIN"),createCashEntry);
 router.post("/cash-ledger/:id/void",authorize("ADMIN"),voidCashEntry);
 router.get("/expenses", listExpenses);
+router.get("/expenses/:id",expenseDetails);
+router.post("/expenses/:id/corrections/preview",authorize("ADMIN"),correctExpense);
+router.post("/expenses/:id/corrections",authorize("ADMIN"),correctExpense);
 router.post("/expenses", authorize("ADMIN", "STAFF"), createExpense);
 router.get("/reports/monitoring.xlsx",exportMonitoringReport);
 router.get("/reports/payment-register.xlsx",exportPaymentRegister);

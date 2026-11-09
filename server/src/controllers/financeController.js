@@ -1,3 +1,4 @@
+import {pagedExpenses} from "./expenseListController.js";
 import {attachBatchCounts} from "../services/paymentBatchCounts.js";
 import {needsAllocationChoice,paymentContext} from '../utils/paymentContext.js';
 import {reportIdentity,brandExcel} from "../services/companyBranding.js";
@@ -138,6 +139,7 @@ export async function listPayments(req, res, next) {
   try { res.json({ success: true, data: await paymentRows() }); } catch (e) { next(e); }
 }
 export async function listExpenses(req, res, next) {
+  if(req.query.paged==='1')return pagedExpenses(req,res,next);
   try { res.json({ success: true, data: await Expense.find().populate("project", "projectId projectName projectCode").sort({ expenseDate: -1, createdAt: -1 }).lean() }); } catch (e) { next(e); }
 }
 export async function createExpense(req, res, next) {

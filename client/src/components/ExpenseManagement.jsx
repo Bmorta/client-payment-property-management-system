@@ -1,0 +1,51 @@
+import {useEffect,useState} from 'react';
+import {createPortal} from 'react-dom';
+import api from '../services/api.js';
+import {useAuth} from '../context/AuthContext.jsx';
+import {localDate,pesos,submissionId} from '../utils/finance.js';
+import {manilaTimestamp} from '../utils/manilaTime.js';
+import {PAYMENT_METHODS,paymentMethodLabel} from '../../../shared/paymentMethods.js';
+import FeedbackMessage from './FeedbackMessage.jsx';
+import CenterPopup from './CenterPopup.jsx';
+import CloseButton from './CloseButton.jsx';
+import Pagination from './Pagination.jsx';
+import FieldLabel from './FieldLabel.jsx';
+import FundingAccountField from './FundingAccountField.jsx';
+
+function ExpenseEditor({id,mode,projects,onClose,onSaved}){
+ const [data,setData]=useState(null),[form,setForm]=useState({}),[reason,setReason]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState(null),[requestId]=useState(submissionId);
+ useEffect(()=>{let active=true;api.get(`/finance/expenses/${id}`).then(r=>{if(active){const e=r.data.data;setData(e);setForm({amount:e.amountCents/100,expenseDate:e.expenseDate,category:e.category,projectId:e.project?._id||'',method:e.method||'',fundingAccount:e.fundingAccount||'',description:e.description,payee:e.payee||'',reference:e.reference||'',payoutLinkChecked:!!e.payoutLinkChecked})}}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to load expense history.')});return()=>{active=false}},[id]);
+ const set=(k,v)=>{setPreview(null);setForm(f=>({...f,...(k==='method'?{fundingAccount:''}:{}),[k]:v}))};
+ const body={requestId,action:mode,reason,expectedVersion:data?.__v??0,...(mode==='CORRECT'?{changes:form}:{})};
+ const run=async save=>{if(busy)return;setBusy(true);setError('');try{const r=await api.post(`/finance/expenses/${id}/corrections${save?'':'/preview'}`,{...body,...(save?{previewToken:preview.token,confirm:true}:{})});if(save)onSaved(r.data.message);else setPreview(r.data.data)}catch(e){setPreview(null);setError(e.response?.data?.message||'Result uncertain. Check expense history before retrying; the submission ID is retained.')}finally{setBusy(false)}};
+ return createPortal(<div className="position-fixed top-0 start-0 w-100 h-100 p-3 d-flex justify-content-center align-items-center" style={{zIndex:5000,background:'#0008'}}><section className="card shadow w-100" style={{maxWidth:900,maxHeight:'90dvh',overflow:'auto'}} role="dialog" aria-modal="true" aria-label="Expense details and correction"><div className="card-body">
+  <CenterPopup error={error} confirm={preview?`${mode==='VOID'?'Void':'Correct'} ${data.expenseId}? Before: ${pesos(preview.before.amountCents)} (${preview.before.status||'POSTED'}). After: ${pesos(preview.after.amountCents)} (${preview.after.status||'POSTED'}). Original details and audit history will be preserved.`:''} confirmTitle="Confirm expense change" confirmLabel={busy?'Saving…':mode==='VOID'?'Confirm Void':'Confirm Correction'} onConfirm={()=>run(true)} onClose={()=>{if(!busy){setError('');setPreview(null)}}}/>
+  <div className="section-heading"><h2 className="h5">{mode==='VIEW'?'Expense History':mode==='VOID'?'Void Expense':'Correct Expense'}</h2><CloseButton disabled={busy} onClick={onClose}/></div>
+  {!data?<p>Loading expense…</p>:<><p><strong>{data.expenseId}</strong> · {data.status||'POSTED'} · {data.expenseDate} · {pesos(data.amountCents)}</p><p>{data.description} · {data.project?.projectName||'Office / Other'}</p>{data.commissionPayoutId&&<p className="alert alert-warning">Linked payout: {data.commissionPayoutId}. This operation does not reverse the agent payout.</p>}
+   {mode!=='VIEW'&&<form onSubmit={e=>{e.preventDefault();run(false)}}><fieldset disabled={busy}><p className="small">* Required. Posted expenses are corrected or voided; their history is never deleted.</p>{mode==='CORRECT'&&<div className="row g-3">
+    <div className="col-md-6"><FieldLabel>Amount (₱)<input required type="number" min="0.01" step="0.01" className="form-control" value={form.amount} onChange={e=>set('amount',e.target.value)}/></FieldLabel></div>
+    <div className="col-md-6"><FieldLabel>Actual expense date<input required type="date" max={localDate()} className="form-control" value={form.expenseDate} onChange={e=>set('expenseDate',e.target.value)}/></FieldLabel></div>
+    <div className="col-md-6"><FieldLabel>Category<select className="form-select" required value={form.category} onChange={e=>set('category',e.target.value)}>{['OFFICE','PROJECT','OTHER'].map(k=><option key={k}>{k}</option>)}</select></FieldLabel></div>
+    {form.category==='PROJECT'&&<div className="col-md-6"><FieldLabel>Project<select required className="form-select" value={form.projectId} onChange={e=>set('projectId',e.target.value)}><option value="">Choose project</option>{projects.filter(p=>p.status!=='ARCHIVED'||p._id===data.project?._id).map(p=><option value={p._id} key={p._id}>{p.projectName}</option>)}</select></FieldLabel></div>}
+    <div className="col-md-6"><FieldLabel>Payment method<select required className="form-select" value={form.method} onChange={e=>set('method',e.target.value)}><option value="">Choose actual method</option>{PAYMENT_METHODS.map(m=><option key={m} value={m}>{paymentMethodLabel(m)}</option>)}</select></FieldLabel><FundingAccountField method={form.method} value={form.fundingAccount} onChange={v=>set('fundingAccount',v)}/></div>
+    {['description','payee','reference'].map(k=><div className="col-md-6" key={k}><FieldLabel>{k==='description'?'Description':k==='payee'?'Paid to (optional)':'Reference (optional)'}<input required={k==='description'} maxLength={k==='description'?500:120} className="form-control" value={form[k]} onChange={e=>set(k,e.target.value)}/></FieldLabel></div>)}
+    {!data.commissionPayoutId&&<label className="form-check"><input className="form-check-input" type="checkbox" checked={form.payoutLinkChecked} onChange={e=>set('payoutLinkChecked',e.target.checked)}/>I verified this expense is independent of recorded commission payouts.</label>}
+   </div>}
+   <FieldLabel className="form-label w-100 mt-3">Reason for {mode==='VOID'?'void':'correction'}<input required minLength={5} maxLength={500} className="form-control" value={reason} onChange={e=>{setReason(e.target.value);setPreview(null)}}/></FieldLabel>
+   <button className={`btn ${mode==='VOID'?'btn-outline-danger':'btn-primary'}`}>{busy?'Reviewing…':'Review Before Saving'}</button></fieldset></form>}
+   <h3 className="h6 mt-4">Original details</h3><p>{data.originalValues?.expenseDate||data.expenseDate} · {pesos(data.originalValues?.amountCents??data.amountCents)} · {data.originalValues?.description||data.description}</p>
+   <h3 className="h6">Correction and void history</h3>{!data.revisions?.length?<p>No corrections or voids recorded.</p>:data.revisions.map(r=><div className="border rounded p-2 mb-2" key={r.requestId}><strong>{r.action} · {r.username}</strong><p>{manilaTimestamp(r.timestamp)} · {r.reason}</p><p>Before: {pesos(r.previousValues.amountCents)} · {r.previousValues.expenseDate} · {r.previousValues.status||'POSTED'}<br/>After: {pesos(r.updatedValues.amountCents)} · {r.updatedValues.expenseDate} · {r.updatedValues.status||'POSTED'}</p></div>)}
+  </>}
+ </div></section></div>,document.body);
+}
+
+export default function ExpenseManagement({range,project='',projects,refreshKey=0,onChanged=()=>{}}){
+ const {user}=useAuth(),admin=user?.role==='ADMIN';
+ const [status,setStatus]=useState('ALL'),[q,setQ]=useState(''),[page,setPage]=useState(1),[limit,setLimit]=useState(25),[data,setData]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[modal,setModal]=useState(null),[version,setVersion]=useState(0);
+ useEffect(()=>{setPage(1)},[range.from,range.to,project,status,q,limit]);
+ useEffect(()=>{let active=true;const timer=setTimeout(()=>api.get('/finance/expenses',{params:{...range,project,status,q,page,limit,paged:1}}).then(r=>{if(active){setData(r.data.data);setError('')}}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to load expense records.')}),200);return()=>{active=false;clearTimeout(timer)}},[range.from,range.to,project,status,q,page,limit,refreshKey,version]);
+ return <section className="card my-3"><div className="card-body"><h2 className="h5">Expense Records & History</h2><FeedbackMessage kind="error" message={error}/><FeedbackMessage kind="success" message={message}/><div className="filter-grid"><FieldLabel>Search expense / payee / reference<input className="form-control" maxLength={100} value={q} onChange={e=>setQ(e.target.value)}/></FieldLabel><FieldLabel>Status<select className="form-select" value={status} onChange={e=>setStatus(e.target.value)}>{['ALL','POSTED','VOIDED'].map(k=><option key={k}>{k}</option>)}</select></FieldLabel></div>
+  {!data?<p>Loading records…</p>:<><p>{data.count} matching records · Posted total across all pages: <strong>{pesos(data.postedAmountCents)}</strong>. Voided amounts are excluded from financial totals.</p><div className="table-responsive"><table className="table table-sm"><thead><tr>{['Expense / Date','Description','Amount','Method','Status','Actions'].map(k=><th key={k}>{k}</th>)}</tr></thead><tbody>{!data.rows.length?<tr><td colSpan={6}>No matching expense records.</td></tr>:data.rows.map(e=><tr key={e._id}><td>{e.expenseId}<div>{e.expenseDate}</div></td><td>{e.description}</td><td>{pesos(e.amountCents)}</td><td>{paymentMethodLabel(e.method||'UNCLASSIFIED')}</td><td>{e.status||'POSTED'}</td><td><div className="action-toolbar"><button className="btn btn-sm btn-outline-secondary" onClick={()=>setModal({id:e._id,mode:'VIEW'})}>View History</button>{admin&&(e.status||'POSTED')==='POSTED'&&<><button className="btn btn-sm btn-outline-primary" onClick={()=>setModal({id:e._id,mode:'CORRECT'})}>Correct</button><button className="btn btn-sm btn-outline-danger" onClick={()=>setModal({id:e._id,mode:'VOID'})}>Void</button></>}</div></td></tr>)}</tbody></table></div><Pagination page={page} limit={limit} total={data.count} onPage={setPage} onLimit={setLimit}/></>}
+  {modal&&<ExpenseEditor key={modal.id+modal.mode} {...modal} projects={projects} onClose={()=>setModal(null)} onSaved={m=>{setModal(null);setMessage(m);setVersion(v=>v+1);onChanged()}}/>}
+ </div></section>;
+}
