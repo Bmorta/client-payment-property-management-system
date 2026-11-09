@@ -1,3 +1,4 @@
+import BackupRequirementNotice from './components/BackupRequirementNotice.jsx';
 import AppLoading from "./components/AppLoading.jsx";
 import FeedbackHost from "./components/FeedbackHost.jsx";
 import DialogNavigation from "./components/DialogNavigation.jsx";
@@ -11,6 +12,7 @@ import UsersPage from "./pages/UsersPage.jsx";
 import ProjectsPage from "./pages/ProjectsPage.jsx";
 import ManageLotsPage from "./pages/ManageLotsPage.jsx";
 import PaymentTransactionsPage from "./pages/PaymentTransactionsPage.jsx";
+const DatabaseMaintenancePage=lazy(()=>import("./pages/DatabaseMaintenancePage.jsx"));
 const PayoutsPage=lazy(()=>import("./pages/PayoutsPage.jsx"));
 const CompaniesPage=lazy(()=>import("./pages/CompaniesPage.jsx"));
 const HistoricalMigrationPage=lazy(()=>import("./pages/HistoricalMigrationPage.jsx"));
@@ -43,7 +45,7 @@ const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
+      <BrowserRouter><BackupRequirementNotice/><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
@@ -66,6 +68,7 @@ export default function App() {
               <Route path="/payouts" element={<RoleRoute roles={["ADMIN","STAFF"]}><PayoutsPage/></RoleRoute>}/>
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/database-maintenance" element={<RoleRoute><DatabaseMaintenancePage/></RoleRoute>}/>
               <Route path="/users" element={<RoleRoute><UsersPage /></RoleRoute>} />
             </Route>
           </Route>

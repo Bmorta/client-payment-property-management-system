@@ -1,3 +1,5 @@
+import maintenanceRoutes from "./routes/maintenanceRoutes.js";
+import {maintenanceWriteGate} from "./services/maintenanceGate.js";
 import officePayoutRoutes from "./routes/officePayoutRoutes.js";
 import companyRoutes from "./routes/companyRoutes.js";
 import migrationRoutes from "./routes/migrationRoutes.js";
@@ -25,6 +27,7 @@ app.use("/api/projects/:projectId/map",express.json({limit:"6mb"}));
 app.use("/api/companies",express.json({limit:"4mb"}));
 app.use("/api/migration",express.json({limit:"6mb"}));
 app.use(express.json({ limit: "1mb" }));
+app.use(maintenanceWriteGate);
 
 app.get("/api/health", (_req, res) => {
   res.status(200).json({
@@ -33,6 +36,7 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.use("/api/maintenance",maintenanceRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/projects", projectRoutes);

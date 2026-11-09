@@ -1,3 +1,7 @@
+import {createBackup,recoveryTest,readJob,assertEligibleBackup} from '../src/services/databaseMaintenance.js';
+import {mkdtemp,rm} from 'node:fs/promises';
+import os from 'node:os';
+import pathModule from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -17,11 +21,13 @@ import {buildSchedule,today} from '../src/utils/accounting.js';
 
 test('historical migration HTTP workflow, staging, reconciliation and transactional activation',{skip:!process.env.CPM_MIGRATION_TEST_URI},async()=>{
  const name=`cpm_migration_test_${randomUUID().replaceAll('-','')}`;await mongoose.connect(process.env.CPM_MIGRATION_TEST_URI,{dbName:name});
+ const boundUri=new URL(process.env.CPM_MIGRATION_TEST_URI);boundUri.pathname='/'+name;process.env.MONGODB_URI=boundUri.toString();const backupFolder=await mkdtemp(pathModule.join(os.tmpdir(),'rems-migration-test-'));process.env.REMS_BACKUP_DIR=backupFolder;const recoveryTargets=[];let lastBackup,proofPromise;
  process.env.JWT_SECRET||='isolated-migration-test-secret';const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const url=`http://127.0.0.1:${server.address().port}/api`;
  try{
   await Promise.all([User.init(),MigrationBatch.init(),MigrationConfig.init(),ReceiptClaim.init(),PropertyAssignment.init()]);
   const users={},tokens={};for(const role of ['ADMIN','STAFF','VIEWER']){users[role]=await User.create({username:role.toLowerCase(),firstName:role,lastName:'Test',email:`${role}@test.local`,passwordHash:'unused',role});tokens[role]=signAccessToken(users[role])}
-  async function api(path,method='GET',body,role='ADMIN',status=200){const r=await fetch(url+path,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});let data;try{data=await r.json()}catch{throw new Error(`Not JSON ${path}: ${r.status}`)}assert.equal(r.status,status,`${path}: ${JSON.stringify(data)}`);return data.data}
+  async function ensureProof(){if(proofPromise)return proofPromise;proofPromise=(async()=>{if(lastBackup){try{await assertEligibleBackup(lastBackup);return}catch{}}const id=await createBackup({username:'test-admin'},{singleBackendConfirmed:true});const wait=async state=>{for(let i=0;i<400;i++){const job=await readJob(id);if(job.state===state)return;if(job.error)assert.fail(job.error);await new Promise(r=>setTimeout(r,100))}assert.fail('Backup timed out')};await wait('FILE_VERIFIED');const recovery=await recoveryTest(id,{username:'test-admin'},{confirm:true});recoveryTargets.push(recovery.target);await wait('RECOVERY_VERIFIED');lastBackup=id;await MigrationConfig.updateOne({_id:'OFFICE'},{$set:{backupReference:id,recoveryTestReference:recovery.target}})})();try{await proofPromise}finally{proofPromise=null}}
+  async function api(path,method='GET',body,role='ADMIN',status=200){if(status===200&&role==='ADMIN'&&body?.action==='ACTIVATE')await ensureProof();const r=await fetch(url+path,{method,headers:{Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});let data;try{data=await r.json()}catch{throw new Error(`Not JSON ${path}: ${r.status}`)}assert.equal(r.status,status,`${path}: ${JSON.stringify(data)}`);return data.data}
   const client=await Client.create({clientId:'CL-001',firstName:'Historical',lastName:'Buyer',createdBy:users.ADMIN._id});const project=await Project.create({projectId:'PRJ-MIG',projectName:'Migration Test',projectCode:'MIG',createdBy:users.ADMIN._id});
   async function createAccount(num=1,months=12){const property=await Property.create({propertyId:`PROP-MIG${num}`,project:project._id,phaseNumber:1,blockNumber:1,lotNumber:num,areaSqm:100,pricePerSqm:720,createdBy:users.ADMIN._id});return PropertyAssignment.create({assignmentId:`CTR-MIG${num}`,client:client._id,project:project._id,property:property._id,contract:{totalCents:7200000,downPaymentCents:0,months,contractDate:'2022-01-01',firstDueDate:'2022-02-05',schedule:buildSchedule(7200000,months,'2022-02-05',0,'2022-01-01')},createdBy:users.ADMIN._id})}
   const a=await createAccount();await api('/migration','GET',null,'VIEWER',403);
@@ -67,6 +73,7 @@ test('historical migration HTTP workflow, staging, reconciliation and transactio
   b=await api(path+'/workflow','POST',{version:b.__v,action:'SUBMIT',reason:'Original receipts checked'},'STAFF');await api(path+'/workflow','POST',{version:b.__v,action:'VERIFY',reason:'Checked',token:p.token},'STAFF',403);
   p=await api(path+'/preview');b=await api(path+'/workflow','POST',{version:b.__v,action:'VERIFY',reason:'Verified printed ledger',token:p.token});assert.equal(b.status,'VERIFIED');assert.equal((await PropertyAssignment.findById(a._id)).payments.length,0);
   p=await api(path+'/preview');const activateBody={version:b.__v,action:'ACTIVATE',reason:'Approved activation',confirm:true,token:p.token};
+  const unverified=await fetch(url+path+'/workflow',{method:'POST',headers:{Authorization:'Bearer '+tokens.ADMIN,'Content-Type':'application/json'},body:JSON.stringify(activateBody)});assert.equal(unverified.status,409);assert.equal((await unverified.json()).maintenance.path,'/database-maintenance');assert.equal((await PropertyAssignment.findById(a._id)).payments.length,0);assert.equal((await MigrationBatch.findById(b._id)).status,'VERIFIED');
   const hello=await mongoose.connection.db.admin().command({hello:1});
   if(!hello.setName){await api(path+'/workflow','POST',activateBody,'ADMIN',409);assert.equal((await PropertyAssignment.findById(a._id)).payments.length,0);assert.equal(await ReceiptClaim.countDocuments(),0);assert.equal((await MigrationBatch.findById(b._id)).status,'VERIFIED');return}
   const activations=await Promise.all([api(path+'/workflow','POST',activateBody),api(path+'/workflow','POST',activateBody)]),activated=activations[0];assert.equal(activated.status,'COMPLETED');assert.equal(activations[1].status,'COMPLETED');assert.equal((await api(path+'/preview')).balanced,true);
@@ -128,5 +135,5 @@ test('historical migration HTTP workflow, staging, reconciliation and transactio
   await api(correctionPath,'POST',correction);const corrected=await PropertyAssignment.findById(a3._id).lean();assert.equal(corrected.payments[0].amountCents,600000);assert.equal(corrected.payments[0].revisions.length,1);assert.equal(corrected.commissionPayouts.length,2);assert.equal(corrected.commissionSnapshot.records.find(c=>c.commissionId===commission.commissionId).recoveryDueCents,50000);
 
 
- }finally{await mongoose.connection.dropDatabase();await mongoose.disconnect();await new Promise(r=>server.close(r))}
+ }finally{for(const target of recoveryTargets)await mongoose.connection.getClient().db(target).dropDatabase();await rm(backupFolder,{recursive:true,force:true});await mongoose.connection.dropDatabase();await mongoose.disconnect();await new Promise(r=>server.close(r))}
 });

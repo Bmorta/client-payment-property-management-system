@@ -1,3 +1,4 @@
+import {maintenanceActive,trackedBackgroundWrite} from "./maintenanceGate.js";
 import {commissionMutation} from "../utils/commissionLedger.js";
 import {randomUUID} from "node:crypto";
 import PropertyAssignment from "../models/PropertyAssignment.js";
@@ -57,8 +58,8 @@ export async function reconcileAccount(accountId,actor,reason){
 }
 let running=false;
 export async function reconcileAll(){
- if(running)return;running=true;
- try{for await(const account of PropertyAssignment.find({$or:[{"contract.monitoringTerms":{$ne:null}},{commissionAgreement:{$ne:null}}]}).select("_id").cursor()){try{await reconcileAccount(account._id)}catch(error){console.error("Monitoring reconciliation failed for account",String(account._id),error.message)}}}finally{running=false}
+ if(running||maintenanceActive())return;running=true;
+ try{for await(const account of PropertyAssignment.find({$or:[{"contract.monitoringTerms":{$ne:null}},{commissionAgreement:{$ne:null}}]}).select("_id").cursor()){try{await trackedBackgroundWrite(()=>reconcileAccount(account._id))}catch(error){console.error("Monitoring reconciliation failed for account",String(account._id),error.message)}}}finally{running=false}
 }
 export function startMonitoring(){reconcileAll().catch(e=>console.error("Monitoring reconciliation failed",e.message));const timer=setInterval(()=>reconcileAll().catch(e=>console.error("Monitoring reconciliation failed",e.message)),60000);timer.unref();return()=>clearInterval(timer)}
 export function attachMonitoringUpdate(account,update,actor,reason){

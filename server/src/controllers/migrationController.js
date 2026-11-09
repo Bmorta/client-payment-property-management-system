@@ -1,3 +1,5 @@
+import {databaseReadinessFail} from '../services/backupRequirement.js';
+import {assertEligibleBackup} from '../services/databaseMaintenance.js';
 import {simpleMigrationReview} from "../services/simpleMigration.js";
 import {createRestorePoint} from "../services/restorePoint.js";
 import {calculateCommissions} from '../utils/commissionLedger.js';
@@ -104,10 +106,10 @@ export async function workflow(req,res,next){try{
  if(!simple&&(b.status!=='VERIFIED'||req.body.confirm!==true))fail('Verify the account and explicitly confirm activation.',409);
  const config=await MigrationConfig.findById('OFFICE').lean();if(!simple&&!validDate(config?.cutoffDate))fail('Preparation Mode: configure the official migration cutoff before financial activation.',409);
  if(!simple&&(!b.review||b.cutoffDate!==config.cutoffDate||(b.review.cutoffDate??b.cutoffDateSnapshot)!==config.cutoffDate||b.review.preparationMode))fail('The official cutoff requires a fresh reconciliation and administrator verification. Return this preparation review for correction and verify again.',409);
- if(!simple&&(!config?.backupReference||!config?.recoveryTestReference))fail('An administrator must record a verified backup and staging recovery-test reference before activation.',409);
+ if(!simple)await assertEligibleBackup(config?.backupReference,{operation:'historical-activation'});
  // Multi-document financial posting fails closed on standalone MongoDB. No
  // financial writes occur outside this transaction; retries preserve source IDs.
- const hello=await mongoose.connection.db.admin().command({hello:1});if(simple&&!hello.setName&&hello.msg!=='isdbgrid')fail('Safe import needs transaction support. Ask the administrator to enable a MongoDB replica set; your drafts remain saved.',409);
+ const hello=await mongoose.connection.db.admin().command({hello:1});if(simple&&!hello.setName&&hello.msg!=='isdbgrid')databaseReadinessFail('Safe import needs MongoDB replica-set transaction support. Open Database & Backups for readiness details; your drafts remain saved.');
  const backupCollections=simple?await mongoose.connection.db.listCollections({},{nameOnly:true}).toArray().then(r=>r.map(x=>x.name).filter(n=>!n.startsWith('system.'))):[];let restorePoint;const session=await mongoose.startSession();let activated;
  try{await session.withTransaction(async()=>{
   const stored=await MigrationBatch.findById(b._id).session(session).lean();let current=migrationContext(stored,config);if(current.status==='COMPLETED'){activated=current;return}if(current.__v!==b.__v)fail('Migration changed. Refresh.',409);
@@ -117,6 +119,7 @@ export async function workflow(req,res,next){try{
   let checked;if(simple){checked=await simpleMigrationReview(current,a,config,session);current={...checked.batch,review:{accountVersion:checked.preview.accountVersion}}}else checked=await validateBatch(current,a,session);const {preview:p,result}=checked;if(p.errors.length)fail(p.errors.join(' '),409);
   if(a.__v!==current.review.accountVersion)fail('Live account changed since verification. Return and reconcile again.',409);
   if(req.body.token!==p.token)fail('Preview changed. Refresh reconciliation before activating.',409);
+  if(!simple)await assertEligibleBackup(config?.backupReference,{operation:'historical-activation',session});
   if(simple)restorePoint=await createRestorePoint({session,collections:backupCollections,label:'historical-import'});
   const lockedConfig=simple?{matchedCount:1}:await MigrationConfig.updateOne({_id:'OFFICE',__v:config.__v,cutoffDate:current.cutoffDate},{$inc:{activationSequence:1}},{session});if(lockedConfig.matchedCount!==1)fail('Migration configuration changed. Review again.',409);
   for(const row of current.rows.filter(r=>r.kind==='PAYMENT'&&!r.excluded)){
@@ -134,7 +137,7 @@ export async function workflow(req,res,next){try{
   const event={...actor(req.user),action:'HISTORICAL_MIGRATION_ACTIVATED',batchId:current.batchId,reason,sourceRows:current.rows.filter(r=>!r.excluded).map(r=>r.rowId)};
   push.auditEvents={$each:[...(push.auditEvents?.$each||[push.auditEvents].filter(Boolean)),event]};
   const updated=await PropertyAssignment.updateOne({_id:a._id,__v:a.__v??0,migration:{$exists:false}},{$set:set,$push:push,$inc:{__v:1}},{session,runValidators:true});if(updated.modifiedCount!==1)fail('Live account changed. Reconcile again.',409);
-  activated=await MigrationBatch.findOneAndUpdate({_id:current._id,__v:current.__v},{$set:{status:'COMPLETED',...(simple?{reconciliation:current.reconciliation,review:{...actor(req.user),token:p.token,cutoffDate:current.cutoffDate,simpleApproval:true}}:{}),activation:{...actor(req.user),reason,restorePointId:restorePoint?.id,cutoffDate:current.cutoffDate,simpleApproval:simple,approvalSummary:{paymentCount:p.paymentCount,totalPaymentCents:p.totalPaymentCents,principalCents:p.expectedBalanceCents,penaltyCents:p.recordedPenaltyCents},accountVersion:(a.__v??0)+1,paymentIds:result.payments.map(p=>p.paymentId),payoutIds:payouts.map(p=>p.payoutId)}},$inc:{__v:1},$push:{history:{...actor(req.user),event:'ACTIVATED',reason}}},{session,new:true}).lean();
+  activated=await MigrationBatch.findOneAndUpdate({_id:current._id,__v:current.__v},{$set:{status:'COMPLETED',...(simple?{reconciliation:current.reconciliation,review:{...actor(req.user),token:p.token,cutoffDate:current.cutoffDate,simpleApproval:true}}:{}),activation:{...actor(req.user),reason,restorePointId:restorePoint?.id,backupId:simple?undefined:config.backupReference,cutoffDate:current.cutoffDate,simpleApproval:simple,approvalSummary:{paymentCount:p.paymentCount,totalPaymentCents:p.totalPaymentCents,principalCents:p.expectedBalanceCents,penaltyCents:p.recordedPenaltyCents},accountVersion:(a.__v??0)+1,paymentIds:result.payments.map(p=>p.paymentId),payoutIds:payouts.map(p=>p.payoutId)}},$inc:{__v:1},$push:{history:{...actor(req.user),event:'ACTIVATED',reason}}},{session,new:true}).lean();
  });}catch(e){if(e.code===20||/Transaction numbers|replica set|mongos/i.test(e.message))fail('Activation requires a MongoDB replica set for atomic financial posting. Staging remains safe; ask the administrator to configure and test a replica set.',409);if(e.code===11000)fail('A receipt or transaction was already claimed. Reconcile the duplicate; nothing was partially activated.',409);throw e}finally{await session.endSession()}
  reply(res,activated,'Historical records activated in their original financial periods.');
 }catch(e){next(e)}}

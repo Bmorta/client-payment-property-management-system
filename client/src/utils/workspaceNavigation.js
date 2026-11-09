@@ -9,7 +9,7 @@ export const workspaceGroups=[
  {id:'financial',label:'Financial Management',icon:'expense',items:[item('/expenses','Expenses & Remittances','expense'),item('/payouts','Payout Management','wallet',['ADMIN','STAFF']),item('/reports?view=cash&focus=movements','Cash Management & Turnovers','wallet')]},
  {id:'reports',label:'Reports',icon:'chart',items:[item('/reports?view=general','Operational Reports','chart'),item('/reports?view=cash','Financial Reports','chart')]},
  {id:'migration',label:'Historical Data Migration',icon:'receipt',items:[item('/historical-migration','Migration Workspace','receipt',['ADMIN','STAFF'])]},
- {id:'admin',label:'Administration',icon:'settings',items:[item('/companies','Company Settings','building'),item('/users?tab=users','Users','people',['ADMIN']),item('/users?tab=activity','Activity Logs','history',['ADMIN']),item('/approval-requests','Approval Requests','check',['ADMIN','STAFF'])]},
+ {id:'admin',label:'Administration',icon:'settings',items:[item('/database-maintenance','Database & Backups','settings',['ADMIN']),item('/companies','Company Settings','building'),item('/users?tab=users','Users','people',['ADMIN']),item('/users?tab=activity','Activity Logs','history',['ADMIN']),item('/approval-requests','Approval Requests','check',['ADMIN','STAFF'])]},
 ];
 export function visibleGroups(role){return workspaceGroups.map(g=>({...g,items:g.items.filter(i=>!i.roles||i.roles.includes(role))})).filter(g=>g.items.length)}
 export function activeDestination({pathname,search}){

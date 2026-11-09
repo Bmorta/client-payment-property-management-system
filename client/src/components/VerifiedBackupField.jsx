@@ -1,0 +1,9 @@
+import {useEffect,useState} from 'react';
+import BackupWorkflowLink from './BackupWorkflowLink.jsx';
+export default function VerifiedBackupField({defaultValue=''}){
+ const [options,setOptions]=useState([]),[value,setValue]=useState(defaultValue),[error,setError]=useState('');
+ const refresh=async()=>{try{const {default:api}=await import('../services/api.js');setOptions((await api.get('/maintenance/backup-options')).data.data);setError('')}catch(e){setError(e.response?.data?.message||'Unable to load verified backups.')}};
+ useEffect(()=>{refresh();window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh)},[]);
+ const selected=options.find(o=>o.id===value);
+ return <div className="col-12"><label className="form-label w-100">Recovery-verified database backup<select className="form-select" name="backupReference" value={value} onChange={e=>setValue(e.target.value)}><option value="">Not selected — preparation remains available</option>{value&&!selected&&<option value={value}>Previous reference — requires verification/reselection</option>}{options.map(o=><option key={o.id} value={o.id}>{o.id} · Verified {o.verifiedAt}</option>)}</select></label><input type="hidden" name="recoveryTestReference" value={selected?.recoveryTarget||''}/>{error&&<p role="alert" className="text-danger">{error}</p>}{selected&&<p>Database: {selected.database} · Created: {selected.createdAt} · Recovery verified: {selected.verifiedAt}</p>}<p>Before activation, the server checks integrity, environment and unchanged protected records again. Existing account reconciliation and administrator approval remain required.</p><div className="d-flex gap-2 flex-wrap"><BackupWorkflowLink returnTo="/historical-migration?advanced=1&tab=Configuration"/><button type="button" className="btn btn-outline-secondary btn-sm" onClick={refresh}>Refresh verified backups</button></div></div>
+}

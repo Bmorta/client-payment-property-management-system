@@ -1,3 +1,5 @@
+import {startBackupScheduler} from "./services/databaseMaintenance.js";
+import {inspectActiveContracts} from "./services/activeContractUpgrade.js";
 import "dotenv/config";
 import {startMonitoring} from "./services/monitoringService.js";
 import mongoose from "mongoose";
@@ -14,7 +16,12 @@ const startServer = async () => {
   try {
     await mongoose.connect(MONGODB_URI);
     console.log("MongoDB connected.");
+    try {
+      const readiness=await inspectActiveContracts(mongoose.connection.db);
+      if(readiness.legacyIndexes.length||readiness.legacyAccounts||!readiness.activeIndexPresent)console.warn("Database setup needs administrator review. Open Administration → Database & Backups. No active-contract upgrade was applied automatically.");
+    } catch { console.warn("Database readiness could not be checked. Open Administration → Database & Backups for administrator review."); }
     startMonitoring();
+    startBackupScheduler();
 
     app.listen(PORT, () => {
       console.log("API listening on port " + PORT);

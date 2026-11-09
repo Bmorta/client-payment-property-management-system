@@ -1,3 +1,5 @@
+import {databaseReadinessFail} from './backupRequirement.js';
+import {backupRequirement} from './backupRequirement.js';
 import mongoose from 'mongoose';
 import {createHash} from 'node:crypto';
 import PropertyAssignment from '../models/PropertyAssignment.js';
@@ -69,8 +71,8 @@ export async function prepareTransfer(id,input,session=null){
 export async function finalizeTransfer(id,input,actor){
  const duplicate=await LotTransfer.findOne({requestId:input.requestId}).lean();if(duplicate){if(String(duplicate.source)!==id||duplicate.approval.inputHash!==hash(input.payload))fail('Submission ID belongs to a different transfer.',409);return duplicate}
  if(input.confirm!==true||typeof input.requestId!=='string'||!/^[A-Za-z0-9_-]{16,100}$/.test(input.requestId))fail('Review the preview and explicitly confirm administrator approval.');
- const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')fail('Lot transfers require MongoDB replica-set transaction support. No transfer was posted.',409);
- const indexes=await PropertyAssignment.collection.indexes();if(indexes.some(i=>i.unique&&Object.keys(i.key).length===1&&i.key.property===1&&!i.partialFilterExpression)||!indexes.some(i=>i.name==='active_property_contract'&&i.unique&&i.partialFilterExpression?.lifecycle==='ACTIVE'))fail('Administrator must complete the reviewed active-contract index upgrade before transfers. No transfer was posted.',409);
+ const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')databaseReadinessFail('Lot transfers require MongoDB replica-set transaction support. Open Database & Backups for readiness details. No transfer was posted.');
+ const indexes=await PropertyAssignment.collection.indexes();if(indexes.some(i=>i.unique&&Object.keys(i.key).length===1&&i.key.property===1&&!i.partialFilterExpression)||!indexes.some(i=>i.name==='active_property_contract'&&i.unique&&i.partialFilterExpression?.lifecycle==='ACTIVE'))(()=>{throw backupRequirement('Administrator must complete the reviewed active-contract index upgrade before transfers. Open Database & Backups. No transfer was posted.','active-contract-index')})();
  await LotTransfer.init();const transferId=await generateRecordId('lotTransfer'),assignmentId=await generateRecordId('contract'),replacementId=new mongoose.Types.ObjectId(),session=await mongoose.startSession();let result;
  try{await session.withTransaction(async()=>{
  const previous=await LotTransfer.findOne({requestId:input.requestId}).session(session).lean();if(previous){if(String(previous.source)!==id||previous.approval.inputHash!==hash(input.payload))fail('Submission ID belongs to another transfer.',409);result=previous;return}

@@ -19,6 +19,7 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(response=>response,error=>{
+  if(error.response?.data?.maintenance?.path==='/database-maintenance')window.dispatchEvent(new CustomEvent('rems:backup-required',{detail:{message:error.response.data.message}}));
   const token=expiredSessionToken(error,localStorage.getItem('cpm_access_token'));
   if(token)window.dispatchEvent(new CustomEvent('cpm:session-expired',{detail:{token}}));
   // Never replay a financial mutation after a network/authentication failure.

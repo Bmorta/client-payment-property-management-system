@@ -1,0 +1,5 @@
+import {Router} from 'express';
+import {authenticate} from '../middleware/auth.js';
+import {authorize} from '../middleware/authorize.js';
+import {previewIdentifiers,applyIdentifiers,financialRestorePoints,verifiedBackupOptions,maintenanceStatus,startDatabaseBackup,testDatabaseRecovery,previewDatabaseUpgrade,applyDatabaseUpgrade,configureBackups} from '../controllers/maintenanceController.js';
+const router=Router();router.use(authenticate,authorize('ADMIN'));router.get('/identifiers/preview',previewIdentifiers);router.post('/identifiers',applyIdentifiers);router.get('/status',maintenanceStatus);router.get('/backup-options',verifiedBackupOptions);router.get('/financial-restore-points',financialRestorePoints);router.get('/active-contract-upgrade/preview',previewDatabaseUpgrade);router.post('/backups',startDatabaseBackup);router.post('/backups/:id/recovery-test',testDatabaseRecovery);router.post('/backup-settings',configureBackups);router.post('/active-contract-upgrade',applyDatabaseUpgrade);export default router;

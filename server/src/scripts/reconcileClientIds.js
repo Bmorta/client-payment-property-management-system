@@ -1,21 +1,11 @@
-// Explicit maintenance command; never invoked on application startup.
-// Default is read-only. Back up the office database before using --apply.
-import "dotenv/config";
-import mongoose from "mongoose";
-import Client from "../models/Client.js";
-import ActivityLog from "../models/ActivityLog.js";
-import {generateRecordId} from "../utils/generateRecordId.js";
-if(!process.env.MONGODB_URI)throw new Error("MONGODB_URI is required.");
-await mongoose.connect(process.env.MONGODB_URI);
-try{
- const missing={$or:[{clientId:{$exists:false}},{clientId:null},{clientId:""}]};
- const clients=await Client.collection.find(missing,{projection:{_id:1,clientId:1}}).toArray();
- console.log(`${clients.length} clients have no ID. Existing nonempty IDs will be preserved.`);
- if(!process.argv.includes("--apply"))console.log("Dry run only. No records or counters changed.");
- else for(const c of clients){
-  const clientId=await generateRecordId("client");
-  const event=await ActivityLog.create({module:"Clients",action:"CLIENT_ID_BACKFILLED",username:"maintenance",outcome:"PENDING",entityType:"Client",entityId:String(c._id),previousValues:{clientId:c.clientId},updatedValues:{clientId}});
-  const result=await Client.collection.updateOne({_id:c._id,...missing},{$set:{clientId}});
-  await ActivityLog.updateOne({_id:event._id},{$set:{outcome:result.modifiedCount?"SUCCEEDED":"FAILED",completedAt:new Date()}});
- }
-}finally{await mongoose.disconnect()}
+// Read-only by default. Prefer Administration → Database & Backups.
+import 'dotenv/config';
+import mongoose from 'mongoose';
+import {randomUUID} from 'node:crypto';
+import {identifierPreview,applyIdentifierMaintenance} from '../services/identifierMaintenance.js';
+if(!process.env.MONGODB_URI)throw Error('MONGODB_URI is required. Keep the existing database name.');
+try{await mongoose.connect(process.env.MONGODB_URI,{autoIndex:false,autoCreate:false});
+ const mode='CLIENT_IDS',preview=await identifierPreview(mode);console.log(JSON.stringify(preview,null,2));
+ if(!process.argv.includes('--apply'))console.log('Dry run only. No records or counters changed.');
+ else {const backupId=process.argv.find(v=>v.startsWith('--backup-reference='))?.slice('--backup-reference='.length);const result=await applyIdentifierMaintenance({mode,backupId,token:preview.token,requestId:randomUUID(),confirm:true,singleBackendConfirmed:process.argv.includes('--single-backend-confirmed')},{username:'SYSTEM_MIGRATION',role:'ADMIN'});console.log(JSON.stringify(result,null,2));}
+}catch(e){console.error(e.message);process.exitCode=1}finally{await mongoose.disconnect()}
