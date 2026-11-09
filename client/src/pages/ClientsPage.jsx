@@ -1,10 +1,11 @@
+import ClientLookup from "../components/ClientLookup.jsx";
 import {useAuth} from "../context/AuthContext.jsx";
 import NavIcon from "../components/NavIcon.jsx";
 import {pesos} from "../utils/finance.js";
 import PaymentSchedulePrint from "../components/PaymentSchedulePrint.jsx";
 import ListReportActions from "../components/ListReportActions.jsx";
 import SearchInput from "../components/SearchInput.jsx";
-import {Link,useSearchParams} from "react-router-dom";
+import {Link,useSearchParams,useNavigate} from "react-router-dom";
 import {revealTarget} from "../utils/navigation.js";
 import {default as FieldLabel} from "../components/FieldLabel.jsx";
 import RequiredMark from "../components/RequiredMark.jsx";
@@ -20,7 +21,7 @@ const blank={clientId:"",firstName:"",middleName:"",lastName:"",suffix:"",contac
 export default function ClientsPage(){
  const {user}=useAuth(),canManage=["ADMIN","STAFF"].includes(user?.role);
  const [statusFilter,setStatusFilter]=useState(""),[statusTarget,setStatusTarget]=useState(null);
- const [params]=useSearchParams();const [page,setPage]=useState(1),[total,setTotal]=useState(0);const loadCounter=useRef(0);
+ const [params]=useSearchParams();const navigate=useNavigate(),workspace=params.get("workspace"),workspaceTitle=({accounts:"Contracts & Accounts",transfers:"Lot Transfers",cancellations:"Cancellations, Credits & Refunds"})[workspace];const [page,setPage]=useState(1),[total,setTotal]=useState(0);const loadCounter=useRef(0);
  const [assignment,setAssignment]=useState(blankAssignment),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[version,setVersion]=useState(0);
  const [clients,setClients]=useState([]),[form,setForm]=useState(blank),[editing,setEditing]=useState(null),[query,setQuery]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState(""),[loading,setLoading]=useState(true);
  const load=async()=>{const request=++loadCounter.current;try{setLoading(true);const {data}=await api.get("/clients",{params:{q:query,status:statusFilter,page,limit:25,penalties:1}});if(request===loadCounter.current){setClients(data.data);setTotal(data.total)}}catch(e){if(request===loadCounter.current)setError(e.response?.data?.message||"Unable to load clients.")}finally{if(request===loadCounter.current)setLoading(false)}};
@@ -31,6 +32,7 @@ export default function ClientsPage(){
  const filtered=clients;
  return <main className="container-fluid py-4 px-4">
   <div className="mb-4"><p className="text-uppercase small fw-semibold text-secondary mb-1">Management</p><h1 className="h3 fw-bold mb-1">Clients</h1><p className="text-secondary mb-0">Maintain one master client record. Assign multiple lots across projects, track installment schedules and view payment history.</p></div>
+  {workspaceTitle&&<section className="card mb-4"><div className="card-body"><h2 className="h5">{workspaceTitle}</h2><p>{workspace==='accounts'?'Select a client to view their property contracts and schedules.':workspace==='transfers'?'Select a client, open the source property account, then choose Lot Transfer.':'Select a client to open cancellation, credit allocation and refund cases in Properties / Accounts.'} Existing approval and clearance requirements apply.</p><ClientLookup onSelect={client=>navigate(`/clients/${client._id}/accounts?tab=properties`)} label="Select client account"/></div></section>}
   <CenterPopup message={message} error={error} confirm={statusTarget?`${statusTarget.status==="ACTIVE"?"Deactivate":"Reactivate"} ${statusTarget.fullName||statusTarget.clientId}? Deactivation blocks ordinary new payments. Existing contracts, balances and history remain unchanged; reactivation does not reinstate a closed contract.`:""} confirmTitle="Confirm client status" confirmLabel={busy?"Saving…":"Confirm Status Change"} onConfirm={async()=>{if(busy)return;setBusy(true);const c=statusTarget;try{const r=await api.put(`/clients/${c._id}`,{status:c.status==="ACTIVE"?"INACTIVE":"ACTIVE"});setStatusTarget(null);setMessage(r.data.message);await load()}catch(e){setStatusTarget(null);setError(e.response?.data?.message||"Unable to change client status.")}finally{setBusy(false)}}} onClose={()=>{if(!busy){setMessage("");setError("");setStatusTarget(null)}}} />
   <div className="row g-4">
    <div className="col-12"><details className="card border-0 shadow-sm client-editor" open={!!editing}><summary className="p-3 fw-semibold"><NavIcon name="plus"/> {editing?"Edit Client":"Add Client & Assign Property"}</summary><div className="card-body"><h2 className="h5 fw-bold">{editing?"Edit Client":"Add Client"}</h2><p className="required-note"><span aria-hidden="true">*</span> Required fields</p><form onSubmit={submit} className="mt-3"><fieldset disabled={busy||!canManage}>

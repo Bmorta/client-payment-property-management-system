@@ -1,3 +1,4 @@
+import {useSearchParams} from "react-router-dom";
 import CenterPopup from "../components/CenterPopup.jsx";
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import ListReportActions from "../components/ListReportActions.jsx";
@@ -223,7 +224,8 @@ const UserModal = ({ open, editingUser, onClose, onSaved }) => {
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
-  const [tab, setTab] = useState("users");
+  const [params,setParams]=useSearchParams();
+  const tab=params.get("tab")==="activity"?"activity":"users",setTab=tab=>setParams({tab});
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");

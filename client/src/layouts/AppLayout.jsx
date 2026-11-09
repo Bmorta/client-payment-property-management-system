@@ -1,23 +1,21 @@
 import {useEffect,useRef,useState} from "react";
-import {NavLink,Outlet,useLocation} from "react-router-dom";
+import {Link,NavLink,Outlet,useLocation} from "react-router-dom";
 import NotificationBell from "../components/NotificationBell.jsx";
 import HeaderClock from "../components/HeaderClock.jsx";
 import NavIcon from "../components/NavIcon.jsx";
 import {useAuth} from "../context/AuthContext.jsx";
-const groups=[
- {label:"Overview",items:[["/","Dashboard","grid"]]},
- {label:"Clients & Agents",items:[["/clients","Clients","people"],["/agents","Agents","agent"]]},
- {label:"Property Inventory",items:[["/property-inventory","Property Summary","building"],["/projects","Projects / Lots","building"]]},
- {label:"Finance",items:[["/payment","Payment","wallet"],["/payment-transactions","Payment Transactions","receipt"],["/commissions","Commissions","percent"],["/expenses","Expenses","expense"],["/reports","Reports","chart"]]},
- {label:"Monitoring",items:[["/payment-monitoring","Payment Reminders","bell"],["/approval-requests","Approval Requests","check","ADMIN"]]},
- {label:"Administration",items:[["/companies","Company Management","building"],["/historical-migration","Historical Data Migration","receipt"],["/users","Users & Activity","settings","ADMIN"]]},
-];
+import {visibleGroups,activeDestination} from "../utils/workspaceNavigation.js";
+const readPreference=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
 export default function AppLayout(){
- const {user,logout}=useAuth(),{pathname}=useLocation(),[open,setOpen]=useState(false),menuButton=useRef(null),sidebar=useRef(null);
- const title=pathname.startsWith("/clients/")?"Client Workspace":pathname.startsWith("/projects/")?"Manage Lots":groups.flatMap(g=>g.items).find(([to])=>to===pathname)?.[1]||"Workspace";
+ const {user,logout}=useAuth(),location=useLocation(),{pathname,search}=location,[open,setOpen]=useState(false),menuButton=useRef(null),sidebar=useRef(null);
+ const groups=visibleGroups(user?.role),active=activeDestination(location),activeGroup=groups.find(g=>g.items.some(i=>i.to===active));
+ const [compact,setCompact]=useState(()=>readPreference('rems:compact',false)),[expanded,setExpanded]=useState(()=>readPreference('rems:groups',{}));
+ const title=pathname.startsWith('/projects/')?'Manage Lots':groups.flatMap(g=>g.items).find(i=>i.to===active)?.label||'Workspace';
+ useEffect(()=>{try{localStorage.setItem('rems:compact',JSON.stringify(compact));localStorage.setItem('rems:groups',JSON.stringify(expanded))}catch{}},[compact,expanded]);
+ useEffect(()=>{if(activeGroup)setExpanded(old=>({...old,[activeGroup.id]:true}))},[activeGroup?.id,active]);
  const initials=(user?.fullName||user?.username||"User").split(/\s+/).slice(0,2).map(s=>s[0]).join("").toUpperCase();
  const close=()=>{setOpen(false);menuButton.current?.focus()};
- useEffect(()=>{setOpen(false)},[pathname]);
+ useEffect(()=>{setOpen(false)},[pathname,search]);
  useEffect(()=>{
   if(!open)return;
   const previous=document.body.style.overflow;document.body.style.overflow="hidden";sidebar.current?.querySelector("button")?.focus();
@@ -30,20 +28,29 @@ export default function AppLayout(){
   };
   document.addEventListener("keydown",keydown);return()=>{document.body.style.overflow=previous;document.removeEventListener("keydown",keydown)};
  },[open]);
+ useEffect(()=>{
+  if(!compact||open)return;
+  const dismiss=e=>{if(e.key==="Escape"&&sidebar.current?.contains(document.activeElement)){document.getElementById("workspace-content")?.focus()}};
+  document.addEventListener("keydown",dismiss);return()=>document.removeEventListener("keydown",dismiss);
+ },[compact,open]);
  useEffect(()=>{const mq=window.matchMedia?.("(min-width: 1200px)");const change=e=>{if(e.matches)setOpen(false)};mq?.addEventListener("change",change);return()=>mq?.removeEventListener("change",change)},[]);
- return <div className={`app-shell${open?" menu-open":""}`}>
+ return <div className={`app-shell${open?" menu-open":""}${compact?" sidebar-compact":""}`}>
   <a className="skip-link" href="#workspace-content">Skip to content</a>
   {open&&<button type="button" className="sidebar-backdrop" tabIndex={-1} aria-label="Close navigation overlay" onClick={close}/>}
   <aside ref={sidebar} id="workspace-navigation" className="app-sidebar" role={open?"dialog":undefined} aria-modal={open?true:undefined} aria-label="Main navigation">
-   <div className="sidebar-brand"><NavLink to="/" className="brand-link" onClick={()=>setOpen(false)}><span className="brand-symbol"><NavIcon name="building"/></span><span>Property<span className="brand-subtitle">Payment & management</span></span></NavLink><button type="button" className="icon-button sidebar-close" aria-label="Close navigation" onClick={close}><NavIcon name="close"/></button></div>
+   <div className="sidebar-brand"><NavLink to="/" className="brand-link" onClick={()=>setOpen(false)}><span className="brand-symbol"><NavIcon name="building"/></span><span className="brand-copy">REMS<span className="brand-subtitle">Real Estate Management System</span></span></NavLink><button type="button" className="icon-button sidebar-close" aria-label="Close navigation" onClick={close}><NavIcon name="close"/></button></div>
+   <button type="button" className="desktop-collapse" aria-label={compact?'Expand sidebar':'Collapse sidebar'} aria-pressed={compact} onClick={()=>setCompact(v=>!v)}><NavIcon name="menu"/><span>{compact?'Expand':'Collapse sidebar'}</span></button>
    <nav className="sidebar-nav" aria-label="Workspace modules">{groups.map(group=>{
-    const items=group.items.filter(item=>(item[0]!=="/historical-migration"||["ADMIN","STAFF"].includes(user?.role))&&(!item[3]||user?.role===item[3]));if(!items.length)return null;
-    return <div className="nav-group" key={group.label}><p className="nav-group-label">{group.label}</p>{items.map(([to,label,icon])=><NavLink end={to==="/"} key={to} to={to} className={({isActive})=>`sidebar-link${isActive?" active":""}`} onClick={()=>setOpen(false)}><NavIcon name={icon}/><span>{label}</span></NavLink>)}</div>
+    const isOpen=expanded[group.id]??group.id===activeGroup?.id;
+    return <div className={`nav-group${isOpen?' group-open':''}${activeGroup?.id===group.id?' group-active':''}`} key={group.id}>
+     <button type="button" className="nav-category" aria-label={group.label} aria-expanded={!!isOpen} aria-controls={`nav-${group.id}`} title={group.label} onClick={()=>setExpanded(old=>({...old,[group.id]:!isOpen}))}><NavIcon name={group.icon}/><span>{group.label}</span><span className="nav-chevron" aria-hidden="true">{isOpen?'−':'+'}</span></button>
+     <div className="nav-items" id={`nav-${group.id}`}><span className="flyout-label">{group.label}</span>{group.items.map(({to,label,icon})=><Link key={to} to={to} aria-current={active===to?'page':undefined} className={`sidebar-link${active===to?' active':''}`} onClick={()=>setOpen(false)}><NavIcon name={icon}/><span>{label}</span></Link>)}</div>
+    </div>
    })}</nav>
    <div className="sidebar-account"><span className="user-avatar" aria-hidden="true">{initials}</span><div className="sidebar-user"><strong>{user?.fullName||user?.username}</strong><span>{user?.role?.toLowerCase()} · {user?.username}</span></div><button type="button" className="icon-button" onClick={logout} aria-label="Logout" title="Logout"><NavIcon name="logout"/></button></div>
   </aside>
   <div className="app-workspace">
-   <header className="workspace-header"><div className="workspace-heading"><button ref={menuButton} type="button" className="icon-button menu-toggle" aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded={open} onClick={()=>setOpen(true)}><NavIcon name="menu"/></button><div><p className="workspace-eyebrow">Office workspace</p><span className="workspace-title">{title}</span></div></div><div className="workspace-tools"><div className="header-clock"><HeaderClock/><span className="header-timezone">Philippine Standard Time</span></div><NotificationBell/><span className="header-avatar user-avatar" title={user?.fullName} aria-hidden="true">{initials}</span></div></header>
+   <header className="workspace-header"><div className="workspace-heading"><button ref={menuButton} type="button" className="icon-button menu-toggle" aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded={open} onClick={()=>setOpen(true)}><NavIcon name="menu"/></button><div><p className="workspace-eyebrow">REMS · Office workspace</p><span className="workspace-title">{title}</span></div></div><div className="workspace-tools"><div className="header-clock"><HeaderClock/><span className="header-timezone">Philippine Standard Time</span></div><NotificationBell/><span className="header-avatar user-avatar" title={user?.fullName} aria-hidden="true">{initials}</span></div></header>
    <div id="workspace-content" className="workspace-content" tabIndex={-1}><Outlet/></div>
   </div>
  </div>;

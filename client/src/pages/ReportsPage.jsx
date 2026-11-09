@@ -3,13 +3,15 @@ import PaymentCommissionRegister from "../components/PaymentCommissionRegister.j
 import CollectionCashReport from "../components/CollectionCashReport.jsx";
 import ExpenseReports from "../components/ExpenseReports.jsx";
 import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
-import {Link} from "react-router-dom";
+import {Link,useSearchParams} from "react-router-dom";
 import { useEffect, useState } from "react";
 import api from "../services/api.js";
 import PaymentTable from "../components/PaymentTable.jsx";
 import { pesos, clientName, lotName, localDate, periodDates, downloadCsv } from "../utils/finance.js";
 export default function ReportsPage(){
- const [reportView,setReportView]=useState("general");
+ const [params,setParams]=useSearchParams();
+ const reportView=params.get("view")==="cash"?"cash":"general";
+ const setReportView=view=>setParams({view});
  const [period,setPeriod]=useState("daily"),[anchor,setAnchor]=useState(localDate),[range,setRange]=useState(()=>periodDates("daily",localDate())),[projects,setProjects]=useState([]),[project,setProject]=useState(""),[report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
  useEffect(()=>{let cancelled=false;api.get("/projects").then(({data})=>{if(!cancelled)setProjects(data.data)}).catch(()=>{if(!cancelled)setError("Unable to load projects.")});return()=>{cancelled=true}},[]);
  const generate=async e=>{e.preventDefault();setBusy(true);setError("");setReport(null);try{const {data}=await api.get(`/finance/reports?${new URLSearchParams({...range,...(project?{project}:{})})}`);setReport(data.data)}catch(e){setError(e.response?.data?.message||"Unable to generate report.")}finally{setBusy(false)}};
@@ -17,7 +19,7 @@ export default function ReportsPage(){
  const exportReport=()=>downloadCsv(`report-${report.from}-to-${report.to}.csv`,[["Type","ID","Receipt Number","Date","Client / Description","Project","Lot / Category","Amount PHP"],...report.payments.map(p=>["PAYMENT",p.paymentId,p.receiptNumber||"",p.paymentDate,clientName(p.client),p.project?.projectName,lotName(p.property),(p.amountCents/100).toFixed(2)]),...report.expenses.map(e=>["EXPENSE",e.expenseId,"",e.expenseDate,e.description,e.project?.projectName,e.category,(e.amountCents/100).toFixed(2)])]);
  return <main className="container-fluid p-4"><h1 className="h3 fw-bold">Reports</h1><Link to="/commissions" className="btn btn-outline-primary btn-sm mb-3">Agent & Commission Reports</Link><p className="text-secondary">Collections, expenses and account balances. Weeks run Monday to Sunday; dates use Philippine time.</p>
  <div className="d-flex flex-wrap gap-2 mb-4" role="group" aria-label="Report type"><button type="button" className={reportView==="general"?"btn btn-primary":"btn btn-outline-primary"} onClick={()=>setReportView("general")}>General & Expense Reports</button><button type="button" className={reportView==="cash"?"btn btn-primary":"btn btn-outline-primary"} onClick={()=>setReportView("cash")}>Collection & Cash Summary</button></div>
- {reportView==="cash"?<CollectionCashReport projects={projects}/>:<>
+ {reportView==="cash"?<CollectionCashReport projects={projects} openCashTools={params.get("focus")==="movements"}/>:<>
  <form onSubmit={generate} className="card border-0 shadow-sm mb-4"><RequiredNote/><fieldset disabled={busy} className="card-body"><div className="row g-3">
  <div className="col-sm-6 col-xl-2"><FieldLabel className="form-label w-100">Period<select className="form-select" value={period} onChange={e=>{setPeriod(e.target.value);setReport(null);if(e.target.value!=="custom")setRange(periodDates(e.target.value,anchor))}}>{["daily","weekly","monthly","yearly","custom"].map(p=><option key={p} value={p}>{p[0].toUpperCase()+p.slice(1)}</option>)}</select></FieldLabel></div>
  {period!=="custom"&&<div className="col-sm-6 col-xl-2"><FieldLabel className="form-label w-100">Date in period<input type="date" required className="form-control" value={anchor} onChange={e=>{setAnchor(e.target.value);setReport(null);if(e.target.value)setRange(periodDates(period,e.target.value))}}/></FieldLabel></div>}

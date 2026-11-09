@@ -52,13 +52,13 @@ export default function LoginPage() {
               <div className="card-body p-4 p-md-5">
                 <div className="mb-4">
                   <p className="text-uppercase small fw-semibold text-secondary mb-2">
-                    Secure workspace
+                    REMS · Secure workspace
                   </p>
                   <h1 className="h3 fw-bold mb-2">
-                    Client Payment & Property Management
+                    Real Estate Management System
                   </h1>
                   <p className="text-secondary mb-0">
-                    Sign in to manage projects, clients, properties and payments.
+                    Integrated Property, Client, Financial & Commission Management
                   </p>
                 </div>
 

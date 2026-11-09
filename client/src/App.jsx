@@ -25,13 +25,13 @@ const ClientsPage=lazy(()=>import("./pages/ClientsPage.jsx"));
 const PaymentMonitoringPage=lazy(()=>import("./pages/PaymentMonitoringPage.jsx"));
 const DashboardPage=()=> <PaymentMonitoringPage dashboard/>;
 
-const AdminRoute = ({ children }) => {
+const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return null;
 
-  if (user?.role !== "ADMIN") {
+  if (!roles.includes(user?.role)) {
     return <Navigate to="/" replace state={{ from: location }} />;
   }
 
@@ -49,7 +49,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/companies" element={<CompaniesPage/>}/>
-              <Route path="/historical-migration" element={<HistoricalMigrationPage />} />
+              <Route path="/historical-migration" element={<RoleRoute roles={["ADMIN","STAFF"]}><HistoricalMigrationPage /></RoleRoute>} />
               <Route path="/property-inventory" element={<InventoryPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId/lots" element={<ManageLotsPage />} />
@@ -59,11 +59,11 @@ export default function App() {
               <Route path="/clients/:clientId/accounts" element={<ClientAccountsPage/>}/>
               <Route path="/payment-transactions" element={<PaymentTransactionsPage />} />
               <Route path="/payment-monitoring" element={<PaymentMonitoringPage />} />
-              <Route path="/approval-requests" element={<AdminRoute><ApprovalRequestsPage /></AdminRoute>} />
+              <Route path="/approval-requests" element={<RoleRoute roles={["ADMIN","STAFF"]}><ApprovalRequestsPage /></RoleRoute>} />
               <Route path="/payment" element={<PaymentPage />} />
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
+              <Route path="/users" element={<RoleRoute><UsersPage /></RoleRoute>} />
             </Route>
           </Route>
 
