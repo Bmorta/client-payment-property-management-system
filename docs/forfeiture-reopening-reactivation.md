@@ -1,6 +1,6 @@
 # Forfeiture, reopening and reactivation
 
-Status: implemented locally; not committed, pushed or deployed. No office database migration or financial data change was performed.
+Status: published on feature/rems-navigation. No deployment, office database migration or financial data change was performed.
 
 ## Workflow
 
@@ -25,6 +25,7 @@ Status: implemented locally; not committed, pushed or deployed. No office databa
 
 - Backend suite: 265 passed, 0 failed, 21 environment-gated skipped.
 - Dedicated disposable replica-set integration: passed forfeiture, frozen balances, partial/advance payment handling, reopening decisions, original/replacement reactivation, exact credits, multiple periods, idempotency, competing approvals, actual carried-penalty settlement and history.
+- Additional acceptance checks passed: staff/viewer approval requests are forbidden; a reopened lot assigned to another buyer blocks the former contract’s reactivation and preserves both accounts.
 - Dedicated standalone integration: passed refusal of protected changes without transaction support.
 - Latest penalty regression: standalone and replica modes passed (1 each).
 - Latest lot-transfer/index regression: standalone and replica modes passed (2 each).
@@ -97,3 +98,18 @@ Existing unrelated work was preserved. Compared with the pre-feature checkpoint:
 - `shared/forfeitureReport.js`
 - `shared/contractLifecycle.js`
 - `docs/forfeiture-reopening-reactivation.md`
+
+## Office acceptance checklist
+
+Run approval trials only with disposable development records or an isolated test database.
+
+- [ ] Pull feature/rems-navigation and restart both server and client.
+- [ ] Confirm Database & Backups reports transaction/index readiness; do not apply upgrades without reviewing and approving them.
+- [ ] Check desktop/mobile navigation, centered confirmations and error visibility.
+- [ ] Preview a threshold-eligible forfeiture and verify the buyer’s other contracts remain unchanged.
+- [ ] Verify held inventory cannot be sold before separate reopening approval.
+- [ ] Compare original and replacement reactivation previews, credit dispositions, exact schedule totals and frozen penalty resolution.
+- [ ] Compare all filtered report rows/totals with Excel and browser Print/PDF preview.
+- [ ] Print on the office printer and check legibility, margins and page breaks.
+
+Git pulls update code only. Preserve local environment files; do not copy or replace the live database as part of this code update.
