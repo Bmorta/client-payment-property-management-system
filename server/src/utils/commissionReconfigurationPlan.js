@@ -17,8 +17,9 @@ export function commissionReconfigurationPlan({option,agreement,records,revisedB
   const original=agreement.agents.find(o=>String(o.agent)===String(a.agent)),history=records.filter(r=>String(r.agent)===String(a.agent));
   const sum=k=>{const total=history.reduce((n,r)=>n+cents(r[k]??0,k),0);return cents(total,k)};
   const earnedCents=sum('earnedCents'),releasedCents=sum('releasedCents'),recoveredCents=sum('recoveredCents');
+  const agentTerm=agreement.agentTerms?.[a.agent]??agreement.termMonths;
   const monthly=history.filter(r=>r.type==='MONTHLY'&&!r.retired&&r.budgetCents>0).sort((a,b)=>a.period-b.period);
-  if(new Set(monthly.map(r=>r.period)).size!==monthly.length||monthly.some(r=>!Number.isSafeInteger(r.period)||r.period<1||r.period>agreement.termMonths))fail('Original commission periods require review.');
+  if(new Set(monthly.map(r=>r.period)).size!==monthly.length||monthly.some(r=>!Number.isSafeInteger(r.period)||r.period<1||r.period>agentTerm))fail('Original commission periods require review.');
   const completed=monthly.filter(r=>r.earnedCents>=r.budgetCents),remaining=monthly.filter(r=>r.earnedCents<r.budgetCents);
   const originalEntitlementCents=sum('budgetCents'),entitlementCents=option==='RETAIN'?originalEntitlementCents:revised.get(String(a.agent));
   const futureCents=Math.max(0,entitlementCents-earnedCents),excessEarnedCents=Math.max(0,earnedCents-entitlementCents),issues=[];
@@ -27,8 +28,8 @@ export function commissionReconfigurationPlan({option,agreement,records,revisedB
   const count=option==='RECALCULATE'?Number(termMonths):remaining.length;
   if(!Number.isSafeInteger(count)||count<0||count>1200)fail('Choose a valid future commission term.');
   if(!count&&futureCents)issues.push('No remaining commission installments; administrator review required.');
-  const futureSchedule=option==='RETAIN'?history.filter(r=>!r.retired&&r.budgetCents>r.earnedCents).map(r=>({originalCommissionId:r.commissionId,type:r.type,period:r.period,amountCents:r.budgetCents-r.earnedCents,basisCents:r.basisCents,collectedCents:r.collectedCents,originalBudgetCents:r.budgetCents,preservedEarnedCents:r.earnedCents})):count?splitCommission(futureCents,count).map((amountCents,i)=>({type:'MONTHLY',period:option==='CONTINUE'?remaining[i].period:i+1,amountCents})):[];
-  return {agent:String(a.agent),agentId:original.agentId,originalPercentageBps:original.percentageBps,percentageBps:a.percentageBps,originalTermMonths:agreement.termMonths,completedInstallments:completed.length,remainingInstallments:remaining.length,earnedCents,releasedCents,recoveredCents,unreleasedCents:Math.max(0,earnedCents-(releasedCents-recoveredCents)),originalEntitlementCents,entitlementCents,futureCents,excessEarnedCents,futureSchedule,issues,requiresReview:issues.length>0};
+  const futureSchedule=option==='RETAIN'?history.filter(r=>!r.retired&&r.budgetCents>r.earnedCents).map(r=>({originalCommissionId:r.commissionId,type:r.type,period:r.period,amountCents:r.budgetCents-r.earnedCents,basisCents:r.basisCents,collectedCents:r.collectedCents,originalBudgetCents:r.budgetCents,preservedEarnedCents:r.earnedCents,lineagePeriodId:r.lineagePeriodId,inheritedSourceAllocations:r.inheritedSourceAllocations||r.sourceAllocations||[]})):count?splitCommission(futureCents,count).map((amountCents,i)=>({type:'MONTHLY',period:option==='CONTINUE'?remaining[i].period:i+1,lineagePeriodId:option==='CONTINUE'?remaining[i].lineagePeriodId:undefined,amountCents})):[];
+  return {agent:String(a.agent),agentId:original.agentId,originalPercentageBps:original.percentageBps,percentageBps:a.percentageBps,originalTermMonths:agentTerm,completedInstallments:completed.length+(agreement.completedOffsets?.[a.agent]||0),remainingInstallments:remaining.length,earnedCents,releasedCents,recoveredCents,unreleasedCents:Math.max(0,earnedCents-(releasedCents-recoveredCents)),originalEntitlementCents,entitlementCents,futureCents,excessEarnedCents,futureSchedule,issues,requiresReview:issues.length>0};
  });
  return {option,agents:rows,requiresReview:rows.some(r=>r.requiresReview),policy:'Revised entitlement includes preserved earnings. Actual payouts remain separate. Noncash credits create no new earnings.'};
 }

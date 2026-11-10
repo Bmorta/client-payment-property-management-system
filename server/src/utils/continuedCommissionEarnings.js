@@ -3,7 +3,8 @@ import {roundRatio} from '../../../shared/commissionMath.js';
 // payout, recovery, verification and release-hold calculations.
 export function continuedCommissionEarnings(account,ledger,{asOf='9999-12-31'}={}){
  const c=account.commissionContinuation;
- if(!c)return account.commissionContinuationOut?.records?.map(r=>({...r,originalBudgetCents:r.originalBudgetCents??r.budgetCents,budgetCents:r.earnedCents,sourceAllocations:(r.sourceAllocations||[]).map(s=>({...s}))}))||[];
+ if(account.commissionContinuationOut)return account.commissionContinuationOut?.records?.map(r=>({...r,originalBudgetCents:r.originalBudgetCents??r.budgetCents,budgetCents:r.earnedCents,sourceAllocations:(r.sourceAllocations||[]).map(s=>({...s}))}))||[];
+ if(!c)return [];
  const preserved=c.preservedRecords.map(r=>({...r,originalBudgetCents:r.originalBudgetCents??r.budgetCents,budgetCents:r.earnedCents,sourceAllocations:(r.sourceAllocations||[]).map(s=>({...s}))}));
  const excluded=new Set(c.excludedPaymentIds),sources=Object.entries(ledger.allocations).flatMap(([paymentId,rows])=>{
   const p=ledger.payments?.find(p=>p.paymentId===paymentId)||(account.payments||[]).find(p=>p.paymentId===paymentId);
@@ -18,7 +19,7 @@ export function continuedCommissionEarnings(account,ledger,{asOf='9999-12-31'}={
    cursor.index=sourceIndex;cursor.used=used;
    const earned=needed===0?period.amountCents:period.type==='DP'&&period.basisCents?Math.max(0,Math.min(period.amountCents-1,roundRatio(period.originalBudgetCents,(period.collectedCents||0)+collected,period.basisCents)-(period.preservedEarnedCents||0))):0;
    if(earned&&allocations.length)allocations.at(-1).commissionCents=earned;
-   result.push({commissionId:`${account.assignmentId}-RC-${c.id}-${plan.agentId}-${i+1}`,agent:plan.agent,agentId:plan.agentId,type:period.type,period:period.period,percentageBps:plan.percentageBps,budgetCents:period.amountCents,basisCents:period.requiredCashCents,collectedCents:collected,earnedCents:earned,sourceAllocations:allocations,earningDate:earned?allocations.at(-1)?.effectiveDate:null,firstEarnedAt:earned?allocations.at(-1)?.effectiveDate:null,earningRule:'CONTINUED_FULL_PERIOD',agreementVersion:account.commissionAgreement.version,agreementEffectiveDate:c.effectiveDate,continuationId:c.id,originalContractId:c.sourceContract});
+   result.push({commissionId:`${account.assignmentId}-RC-${c.id}-${plan.agentId}-${i+1}`,agent:plan.agent,agentId:plan.agentId,type:period.type,period:period.period,percentageBps:plan.percentageBps,budgetCents:period.amountCents,basisCents:period.requiredCashCents,collectedCents:collected,earnedCents:earned,sourceAllocations:allocations,earningDate:earned?allocations.at(-1)?.effectiveDate:null,firstEarnedAt:earned?allocations.at(-1)?.effectiveDate:null,earningRule:'CONTINUED_FULL_PERIOD',agreementVersion:account.commissionAgreement.version,agreementEffectiveDate:c.effectiveDate,continuationId:c.id,originalContractId:c.sourceContract,lineagePeriodId:period.lineagePeriodId||`${c.id}:${plan.agent}:${period.type}:${period.period}`,agreementId:c.currentAgreementId||account.commissionAgreement.agreementId,inheritedSourceAllocations:period.inheritedSourceAllocations||[]});
   }
  }
  return result;
