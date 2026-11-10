@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-api.interceptors.response.use(response=>response,error=>{
+api.interceptors.response.use(response=>{if(['post','put','patch','delete'].includes(String(response.config?.method||'').toLowerCase()))window.dispatchEvent(new CustomEvent('cpm:financial-data-changed'));return response},error=>{
   if(error.response?.data?.maintenance?.path==='/database-maintenance')window.dispatchEvent(new CustomEvent('rems:backup-required',{detail:{message:error.response.data.message,maintenance:error.response.data.maintenance}}));
   const token=expiredSessionToken(error,localStorage.getItem('cpm_access_token'));
   if(token)window.dispatchEvent(new CustomEvent('cpm:session-expired',{detail:{token}}));
