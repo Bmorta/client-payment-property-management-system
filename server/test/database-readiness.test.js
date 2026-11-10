@@ -12,6 +12,11 @@ test('ordinary workflows have no backup eligibility guard; startup verifies with
  for(const file of ['lotTransferService','forfeitureService','cancellationService']){const source=await fs.readFile(new URL('../src/services/'+file+'.js',import.meta.url),'utf8');assert.doesNotMatch(source,/assertEligibleBackup|backupRequirement\(/)}
  const source=await fs.readFile(new URL('../src/server.js',import.meta.url),'utf8');assert.match(source,/inspectDatabaseReadiness\(\{record:true,probe:true\}\)/);assert.match(source,/autoIndex:false,autoCreate:false/);assert.doesNotMatch(source,/applyReviewedSchema|applyActiveContractUpgrade/);
 });
+test('scheduled monitoring pauses while active-contract schema maintenance is pending',async()=>{
+ const source=await fs.readFile(new URL('../src/services/monitoringService.js',import.meta.url),'utf8');
+ assert.match(source,/inspectDatabaseReadiness\(\)/);
+ assert.match(source,/if\(!readiness\.contractReady\)return/);
+});
 import {EventEmitter} from 'node:events';
 import {maintenanceWriteGate,withMaintenance} from '../src/services/maintenanceGate.js';
 test('a completed response on a disconnected socket does not leave maintenance permanently blocked',async()=>{
