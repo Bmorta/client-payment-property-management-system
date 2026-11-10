@@ -12,7 +12,7 @@ import {PAYMENT_METHODS,paymentMethodLabel} from '../../../shared/paymentMethods
 const blank=()=>({kind:'OPENING',amount:'',effectiveDate:localDate(),reason:'',reference:'',recipient:'',coverageConfirmed:false,requestId:submissionId()});
 export default function CashLedgerTools({onSaved,refreshKey,initiallyOpen=false,hasOpening=false,initialSearch=""}){
  const [page,setPage]=useState(1),[limit,setLimit]=useState(25),[count,setCount]=useState(0),[q,setQ]=useState(initialSearch),[statusFilter,setStatusFilter]=useState("ALL"),[kindFilter,setKindFilter]=useState(""),[editing,setEditing]=useState(null),[correctionReason,setCorrectionReason]=useState(""),[cashRange,setCashRange]=useState({from:"",to:localDate()});
- useEffect(()=>{setPage(1)},[q,statusFilter,kindFilter,limit,cashRange.from,cashRange.to,refreshKey]);
+ useEffect(()=>{setPage(1)},[q,statusFilter,kindFilter,limit,cashRange.from,cashRange.to]);
  const [entries,setEntries]=useState([]),[form,setForm]=useState(blank),[confirm,setConfirm]=useState(null),[voidEntry,setVoidEntry]=useState(null),[voidReason,setVoidReason]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  useEffect(()=>{let active=true;api.get('/finance/cash-ledger',{params:{paged:1,page,limit,q,kind:kindFilter,status:statusFilter,from:cashRange.from||undefined,to:cashRange.to||undefined}}).then(r=>{if(active){setEntries(r.data.data.rows);setCount(r.data.data.count)}}).catch(()=>{if(active)setError('Unable to load the office cash ledger.')});return()=>{active=false}},[refreshKey,page,limit,q,statusFilter,kindFilter,cashRange.from,cashRange.to]);
  useEffect(()=>{if(hasOpening)setForm(f=>f.kind==='OPENING'?{...f,kind:'INFLOW'}:f)},[hasOpening]);
