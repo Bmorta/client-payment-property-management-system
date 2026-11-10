@@ -30,7 +30,8 @@ export async function exportCommissions(req,res,next){try{
   }
   rows.sort((a,b)=>String(a[report==="PAYOUTS"?5:4]).localeCompare(String(b[report==="PAYOUTS"?5:4]))||String(a[0]).localeCompare(String(b[0])));
  }
- if(format==="json")return res.json({success:true,data:{...brand,title:`Commission ${report.toLowerCase()} report`,headers:columns,rows:rows.map(row=>row.map((v,i)=>columns[i].includes("PHP")||columns[i]==="Agent %"?Number(v):v??''))}});
+ const summary=Object.fromEntries(['earnedCents','releasedCents','unreleasedCents','heldCents','historicalVerificationCents','releasableCents','recoveredCents','recoveryDueCents'].map(k=>[k,records.reduce((n,r)=>n+(r[k]||0),0)]));
+ if(format==="json")return res.json({success:true,data:{...brand,summary:["PAYOUTS","ADJUSTMENTS"].includes(report)?undefined:summary,title:`Commission ${report.toLowerCase()} report`,headers:columns,rows:rows.map(row=>row.map((v,i)=>columns[i].includes("PHP")||columns[i]==="Agent %"?Number(v):v??''))}});
  if(format==="xlsx"){
   const {default:ExcelJS}=await import("exceljs");const wb=new ExcelJS.Workbook(),sheet=wb.addWorksheet("Commissions");sheet.addRow([brand.companyName]);sheet.addRow(columns);for(const row of rows)sheet.addRow(row.map((v,i)=>columns[i].includes("PHP")||columns[i]==="Agent %"?Number(v):v));sheet.getRow(2).font={bold:true};brandExcel(wb,sheet,brand);sheet.columns.forEach((c,i)=>{c.width=24;if(columns[i].includes("PHP"))c.numFmt="#,##0.00"});res.type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");res.attachment(`commission-${report.toLowerCase()}.xlsx`);res.send(Buffer.from(await wb.xlsx.writeBuffer()));
  }else{

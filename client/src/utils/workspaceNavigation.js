@@ -4,7 +4,7 @@ export const workspaceGroups=[
  {id:'property',label:'Property Management',icon:'building',items:[item('/projects','Projects & Lots','building'),item('/property-inventory','Property Inventory','building'),item('/reopen-properties','Reopen Properties','building')]},
  {id:'clients',label:'Clients & Contracts',icon:'people',items:[item('/clients','Client List','people'),item('/clients?workspace=accounts','Contracts & Accounts','receipt'),item('/settlements','Fully Paid & Settlement','check')]},
  {id:'payments',label:'Payments & Collections',icon:'wallet',items:[item('/payment','Record Payment','wallet',['ADMIN','STAFF']),item('/payment-transactions','Payment Transactions','receipt'),item('/payment-monitoring','Payment Monitoring','bell')]},
- {id:'agents',label:'Agents & Commissions',icon:'percent',items:[item('/agents','Agents','agent'),item('/commissions','Agreements & Register','percent'),item('/commissions?status=UNRELEASED','Commission Releases','wallet')]},
+ {id:'agents',label:'Agents & Commissions',icon:'percent',items:[item('/agents','Agents','agent'),item('/commissions','Agreements & Register','percent'),item('/commissions?view=unallocated','Unallocated Commissions','percent'),item('/commissions?status=UNRELEASED','Commission Releases','wallet')]},
  {id:'adjustments',label:'Contract Adjustments',icon:'history',items:[item('/forfeited-accounts','Forfeited Accounts','history'),item('/clients?workspace=transfers','Lot Transfers','building'),item('/clients?workspace=cancellations','Cancellations, Credits & Refunds','history')]},
  {id:'financial',label:'Financial Management',icon:'expense',items:[item('/expenses','Expenses & Remittances','expense'),item('/payouts','Payout Management','wallet',['ADMIN','STAFF']),item('/reports?view=cash&focus=movements','Cash Management & Turnovers','wallet')]},
  {id:'reports',label:'Reports',icon:'chart',items:[item('/reports?view=general','Operational Reports','chart'),item('/reports?view=cash','Financial Reports','chart')]},
@@ -19,6 +19,7 @@ export function activeDestination({pathname,search}){
  if(pathname.startsWith('/projects/'))return '/projects';
  if(pathname==='/reports')return q.get('focus')==='movements'?'/reports?view=cash&focus=movements':`/reports?view=${q.get('view')==='cash'?'cash':'general'}`;
  if(pathname==='/users')return `/users?tab=${q.get('tab')==='activity'?'activity':'users'}`;
+ if(pathname==='/commissions'&&q.get('view')==='unallocated')return '/commissions?view=unallocated';
  if(pathname==='/commissions')return q.get('status')==='UNRELEASED'?'/commissions?status=UNRELEASED':'/commissions';
  return pathname;
 }

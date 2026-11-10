@@ -11,13 +11,13 @@ import {listAgents,listCommissions} from './commissionController.js';
 import {listActivity} from './activityController.js';
 import {makeListReport,reportCsv,reportWorkbook,reportPdf} from '../utils/listReport.js';
 const controllers={inventory:listProjectProperties,projects:listProjects,clients:listClients,users:listUsers,agents:listAgents,commissions:listCommissions,'activity-logs':listActivity};
-const keys=['q','project','status','agent','client','property','account','type','from','to','sort','direction','user','module','action','report','phase','block','lot'];
+const keys=['clients','accountStatuses','q','project','status','agent','client','property','account','type','from','to','sort','direction','user','module','action','report','phase','block','lot'];
 export function canExportList(module,user){return !!user&&(!['users','activity-logs'].includes(module)||user.role==='ADMIN')}
 export async function listReport(req,res,next){try{
  const module=req.params.module,controller=Object.hasOwn(controllers,module)?controllers[module]:null,format=req.query.format||'json';
  if(!controller)return res.status(404).json({success:false,message:'Unknown list report.'});
  if(!canExportList(module,req.user))return res.status(403).json({success:false,message:'Administrator access is required.'});
- if(!['json','csv','xlsx',...(module==='commissions'?['pdf']:[])].includes(format)||Object.entries(req.query).some(([k,v])=>typeof v!=='string'||v.length>500))return res.status(400).json({success:false,message:'Invalid report options.'});
+ if(!['json','csv','xlsx',...(module==='commissions'?['pdf']:[])].includes(format)||Object.entries(req.query).some(([k,v])=>typeof v!=='string'||v.length>(k==='clients'?25000:500)))return res.status(400).json({success:false,message:'Invalid report options.'});
  if(format!=='json'&&!/^[a-f0-9]{64}$/.test(req.query.expectedSnapshot||''))return res.status(400).json({success:false,message:'Open a report preview before downloading.'});
  const filters=Object.fromEntries(keys.filter(k=>req.query[k]).map(k=>[k,req.query[k]]));let payload,status=200;
  const output={status(n){status=n;return this},json(value){payload=JSON.parse(JSON.stringify(value));return this}};
@@ -31,7 +31,7 @@ export async function listReport(req,res,next){try{
   await getProject({params:{id:filters.project}},{status(){return this},json(value){projectInfo=value.data}},e=>{throw e});
  }
  const records=module==='commissions'?payload.data.rows:module==='inventory'?filterInventory(payload.data,filters):payload.data;
- const report=customCommission?{...makeListReport('commissions',[],filters),...payload.data,count:payload.data.rows.length}:makeListReport(module,records,filters,module==='commissions'?payload.data.summary:undefined);
+ const report=customCommission?{...makeListReport('commissions',[],filters),...payload.data,count:payload.data.rows.length}:makeListReport(module,records,filters,['commissions','clients','agents'].includes(module)?payload.summary||payload.data.summary:undefined);
  if(!customCommission){const visibleProjects=module==='projects'?records.filter(r=>report.rows.some(row=>row[0]===r.projectId)).map(r=>r._id):records.map(r=>r.project?._id||r.project).filter(Boolean);Object.assign(report,await reportIdentity(filters.project||visibleProjects));}
  if(projectInfo)report.title=`Property Inventory — ${projectInfo.projectName} · ${projectInfo.projectId||projectInfo.projectCode||''}`;
  report.snapshot=createHash('sha256').update(JSON.stringify({title:report.title,companyIdentity:report.companyIdentity,companyName:report.companyName,filters:report.filters,headers:report.headers,rows:report.rows,summary:report.summary})).digest('hex');

@@ -1,6 +1,6 @@
 import {fitPayoutPrint} from '../utils/fitPayoutPrint.js';
 import {useEffect,useState} from 'react';
-import {Link} from 'react-router-dom';
+import {Link,useSearchParams} from 'react-router-dom';
 import api from '../services/api.js';
 import {useAuth} from '../context/AuthContext.jsx';
 import FieldLabel,{RequiredNote} from '../components/FieldLabel.jsx';
@@ -14,7 +14,8 @@ import {printAccountDocument} from '../utils/printAccountReports.js';
 import {localDate,submissionId,pesos} from '../utils/finance.js';
 const blank=()=>({payee:'',payeeType:'SUPPLIER',paymentDate:localDate(),amount:'',purpose:'',classification:'EXPENSE',category:'OTHER',projectId:'',propertyId:'',method:'CASH',fundingAccount:'CASH',reference:'',remarks:'',receivedBy:'',requestId:submissionId()});
 export default function PayoutsPage(){
- const {user}=useAuth(),admin=user?.role==='ADMIN';const [form,setForm]=useState(blank),[editing,setEditing]=useState(null),[projects,setProjects]=useState([]),[properties,setProperties]=useState([]),[data,setData]=useState(null),[selected,setSelected]=useState(null),[details,setDetails]=useState(null),[q,setQ]=useState(''),[status,setStatus]=useState(''),[page,setPage]=useState(1),[range,setRange]=useState({from:'',to:''}),[version,setVersion]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[action,setAction]=useState(null),[confirm,setConfirm]=useState(false),[ack,setAck]=useState(null),[release,setRelease]=useState(()=>({...blank(),existingExpenseId:'',reason:''}));
+ const [params]=useSearchParams();
+ const {user}=useAuth(),admin=user?.role==='ADMIN';const [form,setForm]=useState(blank),[editing,setEditing]=useState(null),[projects,setProjects]=useState([]),[properties,setProperties]=useState([]),[data,setData]=useState(null),[selected,setSelected]=useState(params.get('selected')||null),[details,setDetails]=useState(null),[q,setQ]=useState(params.get('q')||''),[status,setStatus]=useState(''),[page,setPage]=useState(1),[range,setRange]=useState({from:'',to:''}),[version,setVersion]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[action,setAction]=useState(null),[confirm,setConfirm]=useState(false),[ack,setAck]=useState(null),[release,setRelease]=useState(()=>({...blank(),existingExpenseId:'',reason:''}));
  const set=(k,v)=>setForm(f=>({...f,[k]:v,...(k==='method'?{fundingAccount:''}:{}),...(k==='projectId'?{propertyId:''}:{})}));
  useEffect(()=>{api.get('/projects').then(r=>setProjects(r.data.data)).catch(()=>setError('Unable to load projects.'))},[]);
  useEffect(()=>{let active=true;setProperties([]);if(form.projectId)api.get(`/projects/${form.projectId}/properties`).then(r=>{if(active)setProperties(r.data.data)}).catch(()=>{if(active)setError('Unable to load property choices.')});return()=>{active=false}},[form.projectId]);

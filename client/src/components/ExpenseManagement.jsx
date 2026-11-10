@@ -39,9 +39,9 @@ function ExpenseEditor({id,mode,projects,onClose,onSaved}){
  </div></section></div>,document.body);
 }
 
-export default function ExpenseManagement({range,project='',projects,refreshKey=0,onChanged=()=>{}}){
+export default function ExpenseManagement({range,project='',projects,refreshKey=0,initialExpense='',onChanged=()=>{}}){
  const {user}=useAuth(),admin=user?.role==='ADMIN';
- const [status,setStatus]=useState('ALL'),[q,setQ]=useState(''),[page,setPage]=useState(1),[limit,setLimit]=useState(25),[data,setData]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[modal,setModal]=useState(null),[version,setVersion]=useState(0);
+ const [status,setStatus]=useState('ALL'),[q,setQ]=useState(''),[page,setPage]=useState(1),[limit,setLimit]=useState(25),[data,setData]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[modal,setModal]=useState(initialExpense?{id:initialExpense,mode:'VIEW'}:null),[version,setVersion]=useState(0);
  useEffect(()=>{setPage(1)},[range.from,range.to,project,status,q,limit]);
  useEffect(()=>{let active=true;const timer=setTimeout(()=>api.get('/finance/expenses',{params:{...range,project,status,q,page,limit,paged:1}}).then(r=>{if(active){setData(r.data.data);setError('')}}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to load expense records.')}),200);return()=>{active=false;clearTimeout(timer)}},[range.from,range.to,project,status,q,page,limit,refreshKey,version]);
  return <section className="card my-3"><div className="card-body"><h2 className="h5">Expense Records & History</h2><FeedbackMessage kind="error" message={error}/><FeedbackMessage kind="success" message={message}/><div className="filter-grid"><FieldLabel>Search expense / payee / reference<input className="form-control" maxLength={100} value={q} onChange={e=>setQ(e.target.value)}/></FieldLabel><FieldLabel>Status<select className="form-select" value={status} onChange={e=>setStatus(e.target.value)}>{['ALL','POSTED','VOIDED'].map(k=><option key={k}>{k}</option>)}</select></FieldLabel></div>

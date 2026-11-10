@@ -1,6 +1,6 @@
 import ClientLookup from "./ClientLookup.jsx";
 import {default as FieldLabel,RequiredNote} from './FieldLabel.jsx';
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import api from '../services/api.js';
 import ClientSearchModal from './ClientSearchModal.jsx';
 import AgentPicker from './AgentPicker.jsx';
@@ -8,10 +8,13 @@ import CenterPopup from './CenterPopup.jsx';
 import {clientName,lotName,pesos} from '../utils/finance.js';
 import {previewCommission,percentageBps,suggestedCommissionTerm} from '../../../shared/commissionMath.js';
 const blank=()=>({percentage:'',termMonths:'',agents:[],reason:'',effectiveMode:'CONTRACT_DATE',effectiveDate:''});
-export default function CommissionAgreement({onSaved,onClose}){
+export default function CommissionAgreement({onSaved,onClose,initialAccount=""}){
+ const initialized=useRef(false);
  const [reconciliation,setReconciliation]=useState(null);
  const [client,setClient]=useState(null),[search,setSearch]=useState(false),[accounts,setAccounts]=useState([]),[selected,setSelected]=useState(''),[form,setForm]=useState(blank),[busy,setBusy]=useState(false),[confirm,setConfirm]=useState(false),[error,setError]=useState(''),[scheduleAgent,setScheduleAgent]=useState(0),[schedulePage,setSchedulePage]=useState(1),[removed,setRemoved]=useState([]),[termMode,setTermMode]=useState("SUGGESTED"),[modifying,setModifying]=useState(false),[conflict,setConflict]=useState(null);
  useEffect(()=>{let active=true;setAccounts([]);setSelected('');setModifying(false);if(client)api.get('/finance/accounts',{params:{client:client._id}}).then(r=>{if(active)setAccounts(r.data.data)}).catch(()=>{if(active)setError('Unable to load client property accounts.')});return()=>{active=false}},[client?._id]);
+ useEffect(()=>{if(!initialAccount)return;let active=true;api.get(`/finance/accounts/${initialAccount}`).then(r=>{if(active)setClient(r.data.data.client)}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to open the selected contract.')});return()=>{active=false}},[initialAccount]);
+ useEffect(()=>{if(initialized.current||!initialAccount||!accounts.some(a=>a._id===initialAccount))return;initialized.current=true;choose(initialAccount,!!accounts.find(a=>a._id===initialAccount)?.commissionAgreement)},[accounts,initialAccount]);
  const account=accounts.find(a=>a._id===selected);
  const choose=(id,modify=false,options=accounts)=>{const agreement=options.find(a=>a._id===id)?.commissionAgreement;if(agreement&&!modify){setConflict(id);return}setReconciliation(null);setSelected(id);setModifying(modify);setTermMode(agreement?"CUSTOM":"SUGGESTED");setConfirm(false);setForm(agreement?{percentage:String(agreement.percentageBps/100),termMonths:String(agreement.termMonths),agents:agreement.agents.map(a=>({agent:{_id:a.agent,agentId:a.agentId},percentage:String(a.percentageBps/100)})),reason:'',effectiveMode:agreement.effectiveMode||'CONTRACT_DATE',effectiveDate:agreement.effectiveDate||options.find(a=>a._id===id)?.contract.contractDate||''}:{...blank(),termMonths:String(suggestedCommissionTerm(options.find(a=>a._id===id)?.contract.months)||'')})};
  const body=()=>({effectiveMode:form.effectiveMode,effectiveDate:form.effectiveDate,previewToken:reconciliation?.token,confirmRetroactive:confirm,clientId:client?._id,percentage:form.percentage,termMonths:Number(form.termMonths),agents:form.agents.map(a=>({agent:a.agent?._id,percentage:a.percentage})),reason:form.reason,agreementAction:modifying?'MODIFY':'CREATE',expectedVersion:account.__v,confirmUnusedRemoval:confirm,confirm:true});

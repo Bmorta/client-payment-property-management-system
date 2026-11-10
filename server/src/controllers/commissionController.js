@@ -30,7 +30,10 @@ async function agentFields(body){
 }
 export async function listAgents(req,res,next){try{
  const page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page)||1)),filter={};if(req.query.q)filter.$or=[{agentId:new RegExp(escaped(req.query.q),"i")},{fullName:new RegExp(escaped(req.query.q),"i")}];if(req.query.status){if(!["ACTIVE","INACTIVE"].includes(req.query.status))fail(400,"Invalid agent status.");filter.status=req.query.status}if(req.query.project){const project=id(req.query.project),assigned=await PropertyAssignment.distinct("commissionSnapshot.records.agent",{project});filter.$and=[{$or:[{assignedProjects:project},{_id:{$in:assigned.map(a=>id(a))}}]}]}
- const [rows,total]=await Promise.all([Agent.find(filter).populate("assignedProjects","projectName").sort({fullName:1,_id:1}).skip(req.listExport?0:(page-1)*20).limit(req.listExport?0:20).lean(),Agent.countDocuments(filter)]);res.json({success:true,data:rows,total,page,pageSize:20});
+ const [rows,total]=await Promise.all([Agent.find(filter).populate("assignedProjects","projectName").sort({fullName:1,_id:1}).skip(req.listExport?0:(page-1)*20).limit(req.listExport?0:20).lean(),Agent.countDocuments(filter)]);let summary;
+ if(req.listExport){const ids=rows.map(r=>String(r._id)),earnings=ids.length?await PropertyAssignment.aggregate([...commissionPipeline(req.query.project?{project:req.query.project}:{}),{$match:{agent:{$in:ids}}},{$group:{_id:null,earnedCents:{$sum:'$earnedCents'},releasedCents:{$sum:'$releasedCents'},unreleasedCents:{$sum:'$unreleasedCents'}}}]):[];
+ summary={totalAgents:rows.length,activeAgents:rows.filter(r=>r.status==='ACTIVE').length,inactiveAgents:rows.filter(r=>r.status==='INACTIVE').length,...Object.fromEntries(['earnedCents','releasedCents','unreleasedCents'].map(k=>[k,earnings[0]?.[k]||0]))};}
+ res.json({success:true,data:rows,total,page,pageSize:20,summary});
 }catch(e){next(e)}}
 export async function saveAgent(req,res,next){try{
  const data=await agentFields(req.body),entry={...actor(req),reason:reason(req)};let agent;
@@ -83,7 +86,16 @@ export async function saveCommissionAgreement(req,res,next){try{
  await write(proposed,req,update,note);res.json({success:true,message:"Commission agreement and existing eligible payments reconciled. Payouts preserved; historical verification holds and recovery balances remain enforced."});
 }catch(e){next(e)}}
 export async function commissionAccount(req,res,next){try{
- const a=await PropertyAssignment.findById(id(req.params.id)).populate("client","clientId firstName lastName").populate("project","projectName").populate("property","phaseNumber blockNumber lotNumber").lean();if(!a)fail(404,"Account not found.");const snapshot=commissionWorkflowReview(a,allocatePayments(a));res.json({success:true,data:{_id:a._id,__v:a.__v,assignmentId:a.assignmentId,client:a.client,project:a.project,property:a.property,contract:a.contract,migration:a.migration,agreement:a.commissionAgreement,snapshot,payouts:(a.commissionPayouts||[]).map(effectivePayout),recoveries:a.commissionRecoveries||[],history:a.commissionEvents||[],agreementHistory:a.commissionAgreementHistory||[],historicalReviews:a.commissionHistoricalReviews||[],holdHistory:a.commissionHoldHistory||[]}});
+ const a=await PropertyAssignment.findById(id(req.params.id)).populate("client","clientId firstName lastName").populate("project","projectName").populate("property","phaseNumber blockNumber lotNumber").lean();if(!a)fail(404,"Account not found.");const snapshot=commissionWorkflowReview(a,allocatePayments(a));
+ const agentScope=req.query.agent?String(id(req.query.agent)):null;
+ const contractRecoveryBlocked=snapshot.records.some(r=>r.recoveryDueCents>0);
+ const recordIds=new Set(snapshot.records.filter(r=>!agentScope||String(r.agent)===agentScope).map(r=>r.commissionId));
+ if(agentScope){snapshot.records=snapshot.records.filter(r=>recordIds.has(r.commissionId));
+ // Expose only agent-scoped earnings. Contract-wide recovery checks remain enforced in write endpoints.
+ for(const key of Object.keys(snapshot))if(typeof snapshot[key]==='number')delete snapshot[key];
+ }
+ const scoped=rows=>agentScope?rows.filter(r=>recordIds.has(r.commissionId)):rows;
+ res.json({success:true,data:{_id:a._id,__v:a.__v,assignmentId:a.assignmentId,client:a.client,project:a.project,property:a.property,contract:a.contract,migration:a.migration,agreement:agentScope?{...a.commissionAgreement,agents:(a.commissionAgreement?.agents||[]).filter(r=>String(r.agent)===agentScope)}:a.commissionAgreement,agentScope,contractRecoveryBlocked,snapshot,payouts:scoped((a.commissionPayouts||[]).map(effectivePayout)),recoveries:scoped(a.commissionRecoveries||[]),history:scoped(a.commissionEvents||[]),agreementHistory:agentScope?[]:a.commissionAgreementHistory||[],historicalReviews:scoped(a.commissionHistoricalReviews||[]),holdHistory:a.commissionHoldHistory||[]}});
 }catch(e){next(e)}}
 export async function releaseCommission(req,res,next){try{
  const a=await account(req),requestId=key(req.body.requestId),amountCents=moneyCents(req.body.amount),releaseDate=req.body.releaseDate,note=optionalReason(req);
@@ -118,9 +130,15 @@ export async function correctPayout(req,res,next){try{
 export function commissionPipeline(query){
  const match={};if(query.agent)match.agent=String(id(query.agent));if(query.project)match.project=id(query.project);if(query.property)match.property=id(query.property);if(query.client)match.client=id(query.client);if(query.account)match.accountId=id(query.account);
  if(query.type){if(!["DP","MONTHLY"].includes(query.type))fail(400,"Invalid commission type.");match.type=query.type}
- if(query.status){if(query.status==="UNRELEASED")match.unreleasedCents={$gt:0};else if(["RELEASED","PARTIALLY_RELEASED","AWAITING_BUYER_PAYMENT","ADJUSTED_REVERSED"].includes(query.status))match.status=query.status;else fail(400,"Invalid commission status.")}
+ if(query.clients){const ids=String(query.clients).split(',');if(ids.length>1000)fail(400,"Select fewer clients.");const selected=ids.map(id);if(query.client&&!selected.some(c=>String(c)===String(match.client)))match.client={$in:[]};else match.client={$in:selected};}
+ if(query.status){const statuses=String(query.status).split(',');const conditions=statuses.map(status=>{
+ if(status==='EARNED')return {earnedCents:{$gt:0}};
+ if(status==='ON_HOLD')return {$or:[{heldCents:{$gt:0}},{historicalVerificationCents:{$gt:0}},{recoveryDueCents:{$gt:0}}]};
+ if(status==='UNRELEASED')return {unreleasedCents:{$gt:0}};
+ if(["RELEASED","PARTIALLY_RELEASED","AWAITING_BUYER_PAYMENT","ADJUSTED_REVERSED"].includes(status))return {status};
+ fail(400,"Invalid commission status.");});if(conditions.length===1)Object.assign(match,conditions[0]);else match.$or=conditions;}
  if(query.from||query.to){if(!validDate(query.from)||!validDate(query.to)||query.from>query.to)fail(400,"Choose valid date bounds.");match.earningDate={$gte:query.from,$lte:query.to}}
- const pipeline=[{$match:{"commissionSnapshot.records.0":{$exists:true}}},{$set:{liveCommissionHoldLabel:mongoCommissionHold()}},{$unwind:"$commissionSnapshot.records"},{$replaceWith:{$mergeObjects:["$commissionSnapshot.records",{releaseHold:{$cond:[{$and:[{$ne:["$liveCommissionHoldLabel",null]},{$gt:["$commissionSnapshot.records.unreleasedCents",0]}]},{active:true,label:"$liveCommissionHoldLabel"},null]},heldCents:{$cond:[{$ne:["$liveCommissionHoldLabel",null]},"$commissionSnapshot.records.unreleasedCents",0]},releasableCents:{$cond:[{$ne:["$liveCommissionHoldLabel",null]},0,"$commissionSnapshot.records.releasableCents"]},accountId:"$_id",assignmentId:"$assignmentId",propertyBudgetCents:"$commissionAgreement.propertyBudgetCents",project:"$project",property:"$property",client:"$client"}]}},{$match:match}];
+ const pipeline=[{$match:{"commissionSnapshot.records.0":{$exists:true}}},{$set:{liveCommissionHoldLabel:mongoCommissionHold()}},{$unwind:"$commissionSnapshot.records"},{$replaceWith:{$mergeObjects:["$commissionSnapshot.records",{releaseHold:{$cond:[{$and:[{$ne:["$liveCommissionHoldLabel",null]},{$gt:["$commissionSnapshot.records.unreleasedCents",0]}]},{active:true,label:"$liveCommissionHoldLabel"},null]},heldCents:{$cond:[{$ne:["$liveCommissionHoldLabel",null]},"$commissionSnapshot.records.unreleasedCents",{$max:[0,{$subtract:["$commissionSnapshot.records.unreleasedCents",{$ifNull:["$commissionSnapshot.records.releasableCents",0]}]}]}]},releasableCents:{$cond:[{$ne:["$liveCommissionHoldLabel",null]},0,"$commissionSnapshot.records.releasableCents"]},accountId:"$_id",assignmentId:"$assignmentId",propertyBudgetCents:"$commissionAgreement.propertyBudgetCents",project:"$project",property:"$property",client:"$client"}]}},{$match:match}];
  for(const [field,collection,local]of [["agentInfo","agents","agent"],["projectInfo","projects","project"],["propertyInfo","properties","property"],["clientInfo","clients","client"]]){
   if(local==="agent")pipeline.push({$addFields:{agentObjectId:{$convert:{input:"$agent",to:"objectId",onError:null,onNull:null}}}});
   pipeline.push({$lookup:{from:collection,localField:local==="agent"?"agentObjectId":local,foreignField:"_id",as:field,pipeline:[{$project:field==="agentInfo"?{agentId:1,fullName:1}:field==="projectInfo"?{projectName:1}:field==="propertyInfo"?{phaseNumber:1,blockNumber:1,lotNumber:1}:{clientId:1,firstName:1,lastName:1}}]}},{$set:{[field]:{$arrayElemAt:[`$${field}`,0]}}});
@@ -130,7 +148,7 @@ export function commissionPipeline(query){
 }
 export async function listCommissions(req,res,next){try{
  const page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page)||1)),sort=["earningDate","earnedCents","unreleasedCents","latestReleaseDate"].includes(req.query.sort)?req.query.sort:"sequence",direction=req.query.direction==="asc"?1:-1;
- const totals=Object.fromEntries(["budgetCents","earnedCents","releasedCents","recoveredCents","unreleasedCents","releasableCents","historicalVerificationCents","awaitingCents","recoveryDueCents"].map(k=>[k,{$sum:`$${k}`}])) ;
+ const totals=Object.fromEntries(["budgetCents","earnedCents","releasedCents","recoveredCents","unreleasedCents","releasableCents","historicalVerificationCents","awaitingCents","recoveryDueCents","heldCents"].map(k=>[k,{$sum:`$${k}`}])) ;
  const summaryGroup={_id:null,...totals,pendingReleases:{$sum:{$cond:[{$gt:["$releasableCents",0]},1,0]}}};
  const [data]=await PropertyAssignment.aggregate([...commissionPipeline(req.query),{$sort:sort==="sequence"?{accountId:1,agent:1,period:1,commissionId:1}:{[sort]:direction,commissionId:1}},{$facet:{rows:req.listExport?[]:[{$skip:(page-1)*20},{$limit:20}],total:[{$count:"count"}],summary:[{$group:summaryGroup}],budgets:[{$group:{_id:"$accountId",budget:{$first:"$propertyBudgetCents"}}},{$group:{_id:null,budget:{$sum:"$budget"}}}]}}]);
  const summary={...(data?.summary[0]||{}),propertyBudgetCents:data?.budgets[0]?.budget||0};

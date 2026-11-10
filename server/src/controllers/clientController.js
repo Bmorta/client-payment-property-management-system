@@ -1,3 +1,5 @@
+import {CLIENT_ACCOUNT_STATUSES,accountStatusTags} from "../../../shared/clientAccountStatuses.js";
+import {summarizeAccount} from "../utils/accounting.js";
 import PropertyAssignment from "../models/PropertyAssignment.js";
 import {clientPenaltyData} from "../utils/clientPenalties.js";
 import {today} from "../utils/accounting.js";
@@ -17,12 +19,23 @@ const normalize = (value) => typeof value === "string" ? value.trim() : value;
 
 export const listClients = async (req, res, next) => {
   try {
-    const q=String(req.query.q||'').trim().slice(0,100),filter=q?{$and:q.split(/\s+/).map(word=>({$or:['clientId','firstName','middleName','lastName','suffix','email','contactNumber'].map(k=>({[k]:new RegExp(escaped(word),'i')}))}))}:{};
+    const q=String(req.query.q||'').trim().slice(0,100),filter={};
     if(req.query.status){if(!["ACTIVE","INACTIVE"].includes(req.query.status))return res.status(400).json({success:false,message:"Choose a valid client status."});filter.status=req.query.status;}
-    const paged=req.query.limit!==undefined,page=Math.max(1,parseInt(req.query.page)||1),limit=Math.max(1,Math.min(100,parseInt(req.query.limit)||25));
-    let query=Client.find(filter).populate("createdBy", "firstName lastName username").sort({lastName:1,firstName:1,_id:1});if(paged)query=query.skip((page-1)*limit).limit(limit);const clients=await query;
-    let data=clients;if(req.query.penalties==='1'){const accounts=await PropertyAssignment.find({client:{$in:clients.map(c=>c._id)}}).lean(),grouped=new Map();for(const a of accounts){const key=String(a.client);if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(a)}const asOf=today();data=clients.map(c=>({...c.toObject({virtuals:true}),penaltySummary:clientPenaltyData(grouped.get(String(c._id))||[],asOf).summary}))}
-    res.json({success:true,data,...(paged?{total:await Client.countDocuments(filter),page,pageSize:limit}:{})});
+    const statuses=req.query.accountStatuses?String(req.query.accountStatuses).split(','):[];
+    if(statuses.some(v=>!CLIENT_ACCOUNT_STATUSES.some(([key])=>key===v)))return res.status(400).json({success:false,message:"Choose valid account statuses."});
+    const paged=!req.listExport&&req.query.limit!==undefined,page=Math.max(1,parseInt(req.query.page)||1),limit=Math.max(1,Math.min(100,parseInt(req.query.limit)||25));
+    const clients=await Client.find(filter).populate("createdBy","firstName lastName username").sort({lastName:1,firstName:1,_id:1}).lean({virtuals:true});
+    const includeAccounts=!!q||statuses.length||req.listExport||req.query.penalties==='1';
+    const accounts=includeAccounts?await PropertyAssignment.find({client:{$in:clients.map(c=>c._id)}}).populate('project','projectName projectId').populate('property','propertyId phaseNumber blockNumber lotNumber').lean():[];
+    const grouped=new Map();for(const a of accounts){const key=String(a.client);if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(a)}
+    const asOf=today(),words=q.toLowerCase().split(/\s+/).filter(Boolean);let data=clients.map(c=>{
+      const own=grouped.get(String(c._id))||[],details=own.map(a=>{const summary=summarizeAccount(a,asOf);return {accountId:String(a._id),assignmentId:a.assignmentId,project:a.project,property:a.property,tags:accountStatusTags(a,summary),summary}});
+      const matching=details.filter(a=>!statuses.length||statuses.some(v=>a.tags.includes(v)));
+      return {...c,fullName:[c.firstName,c.middleName,c.lastName,c.suffix].filter(Boolean).join(' '),matchingAccounts:matching.map(({summary,...a})=>a),accountTags:[...new Set(details.flatMap(a=>a.tags))],...(req.query.penalties==='1'?{penaltySummary:clientPenaltyData(own,asOf).summary}:{})};
+    }).filter(c=>(!statuses.length||c.matchingAccounts.length)&&words.every(word=>[c.clientId,c.fullName,c.email,c.contactNumber,...c.matchingAccounts.flatMap(a=>[a.assignmentId,a.project?.projectName,a.project?.projectId,a.property?.propertyId,`Phase ${a.property?.phaseNumber} Block ${a.property?.blockNumber} Lot ${a.property?.lotNumber}`])].join(' ').toLowerCase().includes(word)));
+    const total=data.length,summary={totalClients:total,activeClients:data.filter(c=>c.status==='ACTIVE').length,fullyPaidClients:data.filter(c=>c.accountTags.includes('FULLY_PAID')).length,settledClients:data.filter(c=>c.accountTags.includes('SETTLED')).length,outstandingClients:data.filter(c=>c.accountTags.includes('OUTSTANDING')).length};
+    if(paged)data=data.slice((page-1)*limit,page*limit);
+    res.json({success:true,data,summary,...(paged?{total,page,pageSize:limit}:{})});
   } catch (error) { next(error); }
 };
 
