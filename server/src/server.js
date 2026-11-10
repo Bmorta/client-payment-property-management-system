@@ -1,5 +1,5 @@
 import {startBackupScheduler} from "./services/databaseMaintenance.js";
-import {inspectActiveContracts} from "./services/activeContractUpgrade.js";
+import {inspectDatabaseReadiness} from "./services/databaseReadiness.js";
 import "dotenv/config";
 import {startMonitoring} from "./services/monitoringService.js";
 import mongoose from "mongoose";
@@ -14,18 +14,23 @@ if (!MONGODB_URI) {
 
 const startServer = async () => {
   try {
-    await mongoose.connect(MONGODB_URI);
+    // Managed services wait for MongoDB rather than failing during Windows boot.
+    const deadline=Date.now()+(process.env.REMS_MANAGED_SERVICE==='true'?90000:0);
+    while(true){try{await mongoose.connect(MONGODB_URI,{autoIndex:false,autoCreate:false,serverSelectionTimeoutMS:5000});break}catch(error){if(Date.now()>=deadline)throw error;await new Promise(resolve=>setTimeout(resolve,1500))}}
     console.log("MongoDB connected.");
     try {
-      const readiness=await inspectActiveContracts(mongoose.connection.db);
-      if(readiness.legacyIndexes.length||readiness.legacyAccounts||!readiness.activeIndexPresent)console.warn("Database setup needs administrator review. Open Administration → Database & Backups. No active-contract upgrade was applied automatically.");
-    } catch { console.warn("Database readiness could not be checked. Open Administration → Database & Backups for administrator review."); }
+      const readiness=await inspectDatabaseReadiness({record:true,probe:true});
+      console.log('Database readiness: '+readiness.status);
+      if(!readiness.ready)console.warn(readiness.issues.join(' ')+' Open Administration → System Health & Database Readiness. No migration ran.');
+    } catch {console.warn('Database readiness could not be verified. Open System Health & Database Readiness. No migration ran.');}
     startMonitoring();
     startBackupScheduler();
 
-    app.listen(PORT, () => {
+    const server=app.listen(PORT, process.env.HOST||'0.0.0.0', () => {
       console.log("API listening on port " + PORT);
     });
+    server.on('error',error=>{console.error('Server listener failed:',error.code||error.name);process.exit(1)});
+    let stopping=false;const shutdown=()=>{if(stopping)return;stopping=true;server.close(async()=>{await mongoose.disconnect();process.exit(0)});setTimeout(()=>process.exit(1),25000).unref()};process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

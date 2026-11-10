@@ -14,3 +14,8 @@ Thumbs.db
 # Private automatic financial restore points
 backups/
 server/backups/
+
+# Windows setup packages and private local diagnostics
+installer/output/
+installer/cache/
+installer/*.zip

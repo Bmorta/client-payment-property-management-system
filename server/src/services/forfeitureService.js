@@ -1,3 +1,4 @@
+import {assertContractOperationsReady} from './databaseReadiness.js';
 import {commissionWorkflowReview} from '../utils/commissionWorkflowWarnings.js';
 import {commissionHoldEvents} from '../utils/commissionHold.js';
 import {CLOSED_CONTRACTS} from '../../../shared/contractLifecycle.js';
@@ -82,7 +83,7 @@ export async function forfeiturePreview(accountId,input,session=null){
  }
  const token=hash({accountId:String(account._id),version:account.__v,propertyVersion:property.__v,input,plan});return {account,property,plan,action,reason,token};
 }
-async function readiness(){const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')databaseReadinessFail('Forfeiture and inventory decisions require MongoDB transactions. Open Database & Backups.');const status=await inspectActiveContracts(mongoose.connection.db);if(status.legacyAccounts||status.legacyIndexes.length||!status.activeIndexPresent||status.conflicts.length||status.invalidLifecycles||status.namedIndexConflict)throw contractIndexRequirement(status.conflicts.length?'Conflicting active contracts were found. Review the listed contracts in Database & Backups; no contract changes were applied.':'A one-time active-contract index upgrade is required for inventory-changing approvals. Review its preview in Database & Backups. This is database maintenance, not a routine backup requirement.');}
+async function readiness(){await assertContractOperationsReady()}
 export async function approveForfeitureAction(accountId,body,actor){
  if(body.confirm!==true||!/^[A-Za-z0-9_-]{16,100}$/.test(body.requestId||''))fail('A valid submission ID and explicit administrator confirmation are required.');const metadataOnly=['MARK_REVIEW','REJECT','CANCEL_REVIEW'].includes(body.input?.action);if(!metadataOnly)await readiness();const signature=hash(body.input),session=metadataOnly?null:await mongoose.startSession();let result;
  try{const execute=async()=>{

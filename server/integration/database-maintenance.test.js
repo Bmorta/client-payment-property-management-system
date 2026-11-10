@@ -1,3 +1,4 @@
+import {inspectDatabaseReadiness} from '../src/services/databaseReadiness.js';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import test from 'node:test';
@@ -32,6 +33,8 @@ test('isolated full backup, recovery, authorization, approved migration and pres
  await assertEligibleBackup(id);await c.createIndex({assignmentId:1},{name:'test_index_drift'});await assert.rejects(assertEligibleBackup(id),/indexes changed/);await c.dropIndex('test_index_drift');await assertEligibleBackup(id);
  await assert.rejects(promisify(execFile)(process.execPath,['src/scripts/upgradeLotTransferIndex.js','--apply','--single-backend-confirmed','--backup-reference=FREE-TEXT-IS-NOT-PROOF'],{cwd:new URL('../',import.meta.url),env:process.env}),e=>e.code===1);assert.deepEqual(await c.findOne(),before);
  await assert.rejects(approveUpgrade(id,{},{singleBackendConfirmed:true}),/phrase/);const preview=await upgradePreview();await approveUpgrade(id,{username:'test-admin'},{singleBackendConfirmed:true,token:preview.token,confirmation:'APPLY ACTIVE CONTRACT UPGRADE'});const applied=await wait(id,['UPGRADED']);assert.equal(applied.upgradeResult.after.legacyAccounts,0);assert.equal(applied.upgradeResult.after.activeIndexPresent,true);const after=await c.findOne();assert.equal(after.lifecycle,'ACTIVE');assert.deepEqual(after.payments,original.payments);assert.deepEqual(after.commissionPayouts,original.commissionPayouts);assert.ok(!(await c.indexes()).some(i=>i.name==='property_1'));await assert.rejects(assertEligibleBackup(id),/changed since/);
+ const refreshed=await createBackup({username:'test-admin'},{singleBackendConfirmed:true});await wait(refreshed,['FILE_VERIFIED']);const second=await recoveryTest(refreshed,{username:'test-admin'},{confirm:true});try{await wait(refreshed,['RECOVERY_VERIFIED']);await inspectDatabaseReadiness({record:true,probe:true});assert.equal((await assertEligibleBackup(refreshed)).id,refreshed,'nonfinancial verification must not invalidate a matching protected backup')}finally{await mongoose.connection.getClient().db(second.target).dropDatabase()}
+
  }finally{if(target)await mongoose.connection.getClient().db(target).dropDatabase();await mongoose.connection.dropDatabase();await mongoose.disconnect();server.closeAllConnections();await new Promise(r=>server.close(r));await rm(process.env.REMS_BACKUP_DIR,{recursive:true,force:true})}
 });
 

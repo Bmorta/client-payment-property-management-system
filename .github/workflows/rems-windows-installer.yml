@@ -1,0 +1,35 @@
+name: Build REMS Windows setup (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: client
+      - run: npm run build
+        working-directory: client
+        env:
+          VITE_API_URL: /api
+      - run: npm ci
+        working-directory: installer
+      - run: npm test
+        working-directory: installer
+      - run: npm run package
+        working-directory: installer
+      - name: Compile native Windows installer
+        shell: powershell
+        run: ./installer/windows/Build-Installer.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: REMS-Windows-Setup-UNSIGNED-acceptance-required
+          path: |
+            installer/output/*bootstrap.zip
+            installer/output/*.sha256
+            installer/output/*win-x64.exe

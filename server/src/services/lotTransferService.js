@@ -1,3 +1,4 @@
+import {assertContractOperationsReady} from './databaseReadiness.js';
 import {isActiveContractIndex} from './activeContractUpgrade.js';
 import {databaseReadinessFail} from './backupRequirement.js';
 import {contractIndexRequirement} from './backupRequirement.js';
@@ -72,8 +73,7 @@ export async function prepareTransfer(id,input,session=null){
 export async function finalizeTransfer(id,input,actor){
  const duplicate=await LotTransfer.findOne({requestId:input.requestId}).lean();if(duplicate){if(String(duplicate.source)!==id||duplicate.approval.inputHash!==hash(input.payload))fail('Submission ID belongs to a different transfer.',409);return duplicate}
  if(input.confirm!==true||typeof input.requestId!=='string'||!/^[A-Za-z0-9_-]{16,100}$/.test(input.requestId))fail('Review the preview and explicitly confirm administrator approval.');
- const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')databaseReadinessFail('Lot transfers require MongoDB replica-set transaction support. Open Database & Backups for readiness details. No transfer was posted.');
- const indexes=await PropertyAssignment.collection.indexes();if(indexes.some(i=>i.unique&&Object.keys(i.key).length===1&&i.key.property===1&&!i.partialFilterExpression)||!indexes.some(isActiveContractIndex))(()=>{throw contractIndexRequirement('A one-time active-contract index upgrade is required before transfers. Review Database & Backups maintenance; no transfer was posted.')})();
+ await assertContractOperationsReady();
  await LotTransfer.init();const transferId=await generateRecordId('lotTransfer'),assignmentId=await generateRecordId('contract'),replacementId=new mongoose.Types.ObjectId(),session=await mongoose.startSession();let result;
  try{await session.withTransaction(async()=>{
  const previous=await LotTransfer.findOne({requestId:input.requestId}).session(session).lean();if(previous){if(String(previous.source)!==id||previous.approval.inputHash!==hash(input.payload))fail('Submission ID belongs to another transfer.',409);result=previous;return}

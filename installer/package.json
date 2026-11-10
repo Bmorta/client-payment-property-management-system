@@ -1,0 +1,16 @@
+{
+  "name": "rems-windows-setup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "dependencies": {
+    "yaml": "2.8.2"
+  },
+  "devDependencies": {
+    "archiver": "7.0.1"
+  }
+}
