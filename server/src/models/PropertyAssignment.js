@@ -38,6 +38,8 @@ const assignmentSchema = new Schema({
   },
   paymentPenaltyPolicies:{type:[Schema.Types.Mixed],default:[]},
   commissionAgreement:Schema.Types.Mixed,
+  commissionContinuation:Schema.Types.Mixed,
+  commissionContinuationOut:Schema.Types.Mixed,
   commissionHistoricalReviews:{type:[Schema.Types.Mixed],default:[]},
   commissionAgreementHistory:{type:[Schema.Types.Mixed],default:[]},
   commissionSnapshot:Schema.Types.Mixed,

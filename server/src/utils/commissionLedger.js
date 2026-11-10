@@ -1,3 +1,4 @@
+import {continuedCommissionEarnings} from './continuedCommissionEarnings.js';
 import {commissionReleaseHold} from './commissionHold.js';
 import {historicalFingerprint,historicalReviewMatches} from './commissionReconciliation.js';
 import {randomUUID} from "node:crypto";
@@ -6,7 +7,8 @@ export {percentAmount,apportionBudgets,splitCommission} from "../../../shared/co
 export const effectivePayout=p=>({...p,...(p.revisions?.at(-1)?.values||{}),payoutId:p.payoutId,status:p.revisions?.at(-1)?.values?.voided?"VOIDED":p.revisions?.length?"CORRECTED":"RELEASED",amountCents:p.revisions?.at(-1)?.values?.voided?0:(p.revisions?.at(-1)?.values?.amountCents??p.amountCents)});
 export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
  const agreement=account.commissionAgreement,previous=account.commissionSnapshot?.records||[],records=[],payouts=(account.commissionPayouts||[]).map(effectivePayout).filter(p=>p.releaseDate<=asOf);
- if(agreement){
+ if(account.commissionContinuation||account.commissionContinuationOut){records.push(...continuedCommissionEarnings(account,ledger,{asOf}))}
+ else if(agreement){
   const monthlyBasis=account.contract.totalCents-account.contract.downPaymentCents;
   let sources=Object.entries(ledger.allocations).filter(([paymentId])=>{const raw=(account.payments||[]).find(p=>p.paymentId===paymentId),last=raw?.revisions?.at(-1)?.values;return (raw?.origin!=="HISTORICAL"||!!account.migration?.activatedAt)&&!(["CANCELLED","VOIDED","REVERSED"].includes(last?.status||raw?.status)||last?.voided||last?.cancelled||raw?.voided||raw?.cancelled)}).flatMap(([paymentId,rows])=>rows.filter(r=>["DOWN_PAYMENT","INSTALLMENT","ADVANCE"].includes(r.allocationType)).map(r=>({...r,paymentId,historical:(account.payments||[]).find(p=>p.paymentId===paymentId)?.origin==='HISTORICAL'}))).sort((a,b)=>a.installment-b.installment||a.effectiveDate.localeCompare(b.effectiveDate)||a.paymentId.localeCompare(b.paymentId));
   if(account.creditAmendments?.length){
@@ -45,7 +47,7 @@ export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
   }
  }
  // Removed agents/periods with historical earnings or payouts stay traceable.
- for(const old of previous)if(!records.some(r=>r.commissionId===old.commissionId)&&!(agreement?.prunedCommissionIds||[]).includes(old.commissionId))records.push({...old,budgetCents:0,earnedCents:0,collectedCents:0,sourceAllocations:[],retired:true});
+ for(const old of previous)if(!account.commissionContinuation&&!account.commissionContinuationOut&&!records.some(r=>r.commissionId===old.commissionId)&&!(agreement?.prunedCommissionIds||[]).includes(old.commissionId))records.push({...old,budgetCents:0,earnedCents:0,collectedCents:0,sourceAllocations:[],retired:true});
  for(const r of records){
   const released=payouts.filter(p=>p.commissionId===r.commissionId),old=previous.find(p=>p.commissionId===r.commissionId);
   r.releasedCents=released.reduce((n,p)=>n+p.amountCents,0);r.recoveredCents=(account.commissionRecoveries||[]).filter(p=>p.commissionId===r.commissionId&&(p.recoveryDate||"0000-00-00")<=asOf).reduce((n,p)=>n+p.amountCents,0);
