@@ -25,7 +25,23 @@ export async function createVouchers(req,res,next){try{
  }
  const saved=await Promise.all(prior.map(voucherView));for(const [groupKey,g] of groups){if(!Number.isSafeInteger(g.entries.reduce((n,e)=>n+e.amountCents,0)))fail('Voucher total exceeds supported precision.',400);const requestKey=createHash('sha256').update(`${req.user._id}:${b.requestId}:${groupKey}`).digest('hex');let v=await Voucher.findOne({requestKey}).lean();if(v&&v.signature!==signature)fail('Submission ID already belongs to a different voucher.');if(!v){try{v=(await Voucher.create({...g,requestKey,requestBatch,signature,voucherNumber:await generateRecordId('commissionVoucher'),voucherDate:b.voucherDate,method:b.method,remarks:String(b.remarks||'').trim().slice(0,500),preparedBy:actor(req),history:[{action:'PREPARED',reason,...actor(req)}]})).toObject()}catch(e){if(e.code!==11000)throw e;v=await Voucher.findOne({requestKey}).lean();if(!v||v.signature!==signature)throw e}}saved.push(await voucherView(v))}res.status(201).json({success:true,data:saved,message:'Draft vouchers saved. Printing does not record a payout.'});
  }catch(e){next(e)}}
-export async function listVouchers(req,res,next){try{const page=Math.max(1,Math.min(100000,parseInt(req.query.page)||1)),filter={};if(req.query.agent)filter.agent=oid(req.query.agent);const [rows,total]=await Promise.all([Voucher.find(filter).sort({createdAt:-1,_id:-1}).skip((page-1)*20).limit(20).lean(),Voucher.countDocuments(filter)]);res.json({success:true,data:{rows:await Promise.all(rows.map(voucherView)),total,page,pageSize:20}})}catch(e){next(e)}}
+export async function listVouchers(req,res,next){try{
+ const page=Math.max(1,Math.min(100000,parseInt(req.query.page)||1)),filter={},q=String(req.query.q||'').trim(),status=String(req.query.status||'');
+ if(q.length>100)fail('Search must not exceed 100 characters.',400);
+ if(status&&!['DRAFT','PENDING_APPROVAL','APPROVED','PARTIALLY_PAID','PAID','CANCELLED'].includes(status))fail('Invalid voucher status.',400);
+ if(req.query.agent)filter.agent=oid(req.query.agent);
+ if(q){const literal=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');filter.$or=['voucherNumber','agentName','agentId'].map(k=>({[k]:{$regex:literal,$options:'i'}}))}
+ for(const key of ['from','to'])if(req.query[key]&&!validDate(req.query[key]))fail('Choose valid voucher dates.',400);
+ if(req.query.from&&req.query.to&&req.query.from>req.query.to)fail('Start date must not follow end date.',400);
+ if(req.query.from||req.query.to)filter.voucherDate={...(req.query.from?{$gte:req.query.from}:{}),...(req.query.to?{$lte:req.query.to}:{})};
+ const skip=(page-1)*20;let rows=[],total=0;
+ if(!status){const result=await Promise.all([Voucher.find(filter).sort({createdAt:-1,_id:-1}).skip(skip).limit(20).lean(),Voucher.countDocuments(filter)]);rows=await Promise.all(result[0].map(voucherView));total=result[1]}
+ else{
+ // Payout status is derived from actual, corrected account payouts, never a stale voucher flag.
+ for await(const v of Voucher.find(filter).sort({createdAt:-1,_id:-1}).lean().cursor()){const view=await voucherView(v);if(view.status!==status)continue;if(total>=skip&&rows.length<20)rows.push(view);total++}
+ }
+ res.json({success:true,data:{rows,total,page,pageSize:20}})
+}catch(e){next(e)}}
 export async function getVoucher(req,res,next){try{const v=await Voucher.findById(oid(req.params.id)).lean();if(!v)fail('Voucher not found.',404);res.json({success:true,data:await voucherView(v)})}catch(e){next(e)}}
 export async function voucherAction(req,res,next){try{
  const v=await Voucher.findById(oid(req.params.id)).lean();if(!v)fail('Voucher not found.',404);const action=req.body.action,reason=['CANCEL','RECOVER_PENDING'].includes(action)?note(req):String(req.body.reason||'').trim();if(reason.length>500)fail('Notes must not exceed 500 characters.',400);if(req.body.expectedVersion!==v.__v)fail('Voucher changed. Refresh before continuing.');

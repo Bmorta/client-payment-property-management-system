@@ -6,8 +6,20 @@ export function dialogLayer(dialog) {
   }
   return layer;
 }
+export function visibleControl(element) {
+  if (element.closest('[hidden],[inert],[aria-hidden="true"]') || element.matches(':disabled,input[type="hidden"]')) return false;
+  for (let node = element; node && node !== document.body; node = node.parentElement) {
+    const style = window.getComputedStyle(node);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+  }
+  return true;
+}
+export function dialogControls(dialog) {
+  return [...dialog.querySelectorAll('button,input,select,textarea,a[href],iframe,[tabindex]')]
+    .filter(element => element.tabIndex >= 0 && visibleControl(element));
+}
 export function topDialog() {
   return [...document.querySelectorAll('[role="dialog"],[role="alertdialog"]')]
-    .filter(d => !d.classList.contains("app-sidebar") && !d.hidden && d.getAttribute('aria-hidden') !== 'true' && window.getComputedStyle(d).display !== 'none')
+    .filter(d => !d.classList.contains('app-sidebar') && visibleControl(d))
     .sort((a,b) => dialogLayer(a) - dialogLayer(b)).at(-1);
 }

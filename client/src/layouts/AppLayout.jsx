@@ -1,3 +1,4 @@
+import {topDialog} from '../utils/dialogStack.js';
 import AppearanceSelect from '../components/AppearanceSelect.jsx';
 import REMSIcon from "../components/REMSIcon.jsx";
 import {useEffect,useRef,useState} from "react";
@@ -22,6 +23,7 @@ export default function AppLayout(){
   if(!open)return;
   const previous=document.body.style.overflow;document.body.style.overflow="hidden";sidebar.current?.querySelector("button")?.focus();
   const keydown=e=>{
+   if(e.defaultPrevented||topDialog())return;
    if(e.key==="Escape"){e.preventDefault();close()}
    if(e.key==="Tab"){
     const targets=[...sidebar.current.querySelectorAll('a[href],button:not([disabled])')].filter(el=>el.getClientRects().length>0),first=targets[0],last=targets.at(-1);

@@ -1,0 +1,13 @@
+import test from 'node:test';
+import {randomUUID} from 'node:crypto';
+import mongoose from 'mongoose';
+import assert from 'node:assert/strict';
+import Voucher from '../src/models/CommissionVoucher.js';
+import Account from '../src/models/PropertyAssignment.js';
+import {listVouchers} from '../src/controllers/commissionVoucherController.js';
+test('voucher search combines literal text, dates, agent and actual payout status before pagination',{skip:!process.env.REMS_VOUCHER_SEARCH_TEST_URI},async()=>{
+try{await mongoose.connect(process.env.REMS_VOUCHER_SEARCH_TEST_URI,{dbName:'voucher_search_'+randomUUID().replaceAll('-','')});const account=new mongoose.Types.ObjectId(),other=new mongoose.Types.ObjectId(),agent=String(new mongoose.Types.ObjectId()),payouts=[];const docs=Array.from({length:25},(_,i)=>{const id=new mongoose.Types.ObjectId();if(i<3)payouts.push({payoutId:'PAY'+i,voucherId:String(id),voucherEntryId:'entry',amountCents:i===0?10000:5000,releaseDate:'2026-11-01'});return {_id:id,voucherNumber:`CV-${i}`,agent,agentId:'AGT-001',agentName:i===0?'Ana [Test]':'Ana Santos',voucherDate:'2026-11-01',approvalState:'APPROVED',entries:[{accountId:String(account),entryId:'entry',amountCents:10000}],createdAt:new Date(2026,0,i+1)}});docs.push({_id:new mongoose.Types.ObjectId(),voucherNumber:'OTHER',agent:String(other),agentName:'Other agent',voucherDate:'2026-10-01',approvalState:'DRAFT',entries:[{accountId:String(account),entryId:'other',amountCents:10000}]});await Account.collection.insertOne({_id:account,lifecycle:'ACTIVE',commissionPayouts:payouts});await Voucher.collection.insertMany(docs);
+const list=async query=>{let value;await listVouchers({query},{json:v=>value=v},e=>{throw e});return value.data};
+assert.equal((await list({})).total,26);assert.equal((await list({page:2})).rows.length,6);assert.equal((await list({q:'[Test]'})).total,1);assert.equal((await list({q:'.*'})).total,0);assert.equal((await list({q:'AGT-001',from:'2026-11-01',to:'2026-11-01',agent})).total,25);assert.equal((await list({status:'PAID'})).total,1);assert.equal((await list({status:'PARTIALLY_PAID'})).total,2);assert.equal((await list({status:'APPROVED'})).total,22);assert.equal((await list({status:'APPROVED',page:2})).rows.length,2);assert.equal((await list({status:'PAID',q:'Other'})).total,0);await assert.rejects(()=>list({from:'2026-12-01',to:'2026-01-01'}),/Start date/);await assert.rejects(()=>list({status:'bad'}),/Invalid voucher/);assert.equal(await Voucher.countDocuments(),26);console.log('PASS: literal search, agent/date/status combinations, derived payouts, full-result counts, pagination, validation and record preservation.');
+}finally{await mongoose.connection.dropDatabase();await mongoose.disconnect()}
+});

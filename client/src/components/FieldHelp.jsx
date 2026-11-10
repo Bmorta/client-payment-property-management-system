@@ -1,3 +1,4 @@
+import {dialogLayer} from '../utils/dialogStack.js';
 import {useId,useLayoutEffect,useRef,useState,useEffect} from "react";
 import {createPortal} from "react-dom";
 
@@ -15,7 +16,7 @@ export default function FieldHelp({label,children}){
    const anchor=button.current?.getBoundingClientRect(),box=tooltip.current?.getBoundingClientRect();if(!anchor||!box)return;
    const left=Math.max(12,Math.min(anchor.left,window.innerWidth-box.width-12));
    const below=anchor.bottom+8,above=anchor.top-box.height-8;
-   setPosition({left,top:below+box.height<=window.innerHeight-12?below:Math.max(12,above)});
+   setPosition({left,top:below+box.height<=window.innerHeight-12?below:Math.max(12,above),zIndex:Math.min(9900,Math.max(3200,dialogLayer(button.current)+20))});
   };
   place();window.addEventListener("resize",place);window.addEventListener("scroll",place,true);
   const outside=e=>{if(!button.current?.contains(e.target)&&!tooltip.current?.contains(e.target))hide()};
