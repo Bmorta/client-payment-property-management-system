@@ -1,3 +1,4 @@
+import {assertFinancialCorrectionDate} from "../utils/financialCorrectionLedger.js";
 import {assertContractOperationsReady} from './databaseReadiness.js';
 import {commissionWorkflowReview} from '../utils/commissionWorkflowWarnings.js';
 import {commissionHoldEvents} from '../utils/commissionHold.js';
@@ -51,6 +52,7 @@ export function reactivationPlan(account,property,input){
 }
 async function load(accountId,session){const account=await q(PropertyAssignment.findById(id(accountId)),session).lean();if(!account)fail('Contract not found.');const property=await q(Property.findById(account.property),session).lean();if(!property)fail('Property not found.');return {account,property}}
 async function common(account,property,input,session,metadataOnly=false){
+ assertFinancialCorrectionDate(account,input.effectiveDate);
  if(!validDate(input.effectiveDate)||input.effectiveDate<account.contract.contractDate||input.effectiveDate>today())fail('Choose an effective date between the original contract date and today.');
  if(!metadataOnly){
  if((account.payments||[]).map(effectivePayment).some(p=>p.paymentDate>input.effectiveDate)||(account.commissionPayouts||[]).map(effectivePayout).some(p=>p.releaseDate>input.effectiveDate)||(account.commissionRecoveries||[]).some(p=>p.recoveryDate>input.effectiveDate))fail('The effective date cannot precede recorded payments, payouts or recoveries.');

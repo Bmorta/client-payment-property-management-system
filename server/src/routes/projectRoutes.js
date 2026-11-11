@@ -1,3 +1,4 @@
+import {mapOverlay} from "../controllers/mapOverlayController.js";
 import {deleteMap,mapInfo,getMap,saveMap,prepareMapUpload} from "../controllers/projectMapController.js";
 import {exportProjectInventory} from "../controllers/inventoryExportController.js";
 import { auditMutation } from "../middleware/auditMutation.js";
@@ -11,6 +12,8 @@ import { authorize } from "../middleware/authorize.js";
 const router = Router();
 
 router.use(authenticate,(req,res,next)=>req.method==="PUT"&&req.path.endsWith("/map")?next():auditMutation(req,res,next));
+router.get("/:projectId/map/overlay",mapOverlay);
+router.put("/:projectId/map/overlay",authorize("ADMIN"),mapOverlay);
 router.get("/:projectId/map/info",mapInfo);
 router.get("/:projectId/map",getMap);
 router.delete("/:projectId/map",authorize("ADMIN","STAFF"),deleteMap);

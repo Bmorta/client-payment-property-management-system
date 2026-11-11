@@ -380,3 +380,6 @@ button, input, select, textarea { font: inherit; }
 [data-bs-theme="dark"] :is(.modal-header,.modal-footer,[role="dialog"].card > .card-body > .section-heading) { background:var(--appearance-surface); }
 [data-bs-theme="dark"] .workspace-content :is(.btn,.form-control,.form-select,summary,a,button):focus-visible { box-shadow:0 0 0 2px #111a29; }
 @media print { .modal-dialog { display:block; min-height:0; }.modal-content { max-height:none; overflow:visible; } }
+
+/* One shared, centered map toolbar; preserve existing themed button variants. */
+.map-action-toolbar > .btn { min-height:40px; padding:.5rem .8rem; display:inline-flex; align-items:center; justify-content:center; margin:0; max-width:100%; white-space:normal; }

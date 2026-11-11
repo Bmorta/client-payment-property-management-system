@@ -1,0 +1,34 @@
+import mongoose from 'mongoose';
+import {randomUUID} from 'node:crypto';
+import PropertyAssignment from '../models/PropertyAssignment.js';
+import LotTransfer from '../models/LotTransfer.js';
+import {financialCorrectionPlan} from '../utils/financialCorrectionPlan.js';
+import {allocatePayments} from '../utils/paymentLedger.js';
+import {intentHash} from '../utils/paymentIntent.js';
+import {today} from '../utils/accounting.js';
+import {createRestorePoint} from '../services/restorePoint.js';
+import {attachMonitoringUpdate} from '../services/monitoringService.js';
+const fail=(message,statusCode=409)=>{throw Object.assign(new Error(message),{statusCode})};
+const scoped=(q,s)=>s?q.session(s):q;
+async function load(id,session){if(!mongoose.isValidObjectId(id))fail('Invalid contract.',400);const a=await scoped(PropertyAssignment.findById(id),session).lean();if(!a)fail('Contract not found.',404);return a}
+async function evidence(a,session){const transfer=await scoped(LotTransfer.findOne({replacement:a._id}),session).lean(),plan=transfer?.snapshot?.plan,versions=(a.agreementHistory||[]).map((h,i)=>({id:'agreement:'+i,label:'Preserved contract version '+(i+1),contract:h.contract,creditCents:a.transferIn?.creditCents||0})).filter(v=>v.contract);
+ if(plan)versions.push({id:'transfer:'+transfer.transferId,label:'Approved '+transfer.transferId,contract:{...a.contract,totalCents:plan.totalCents,downPaymentCents:plan.downPaymentCents},creditCents:plan.creditCents,interestCents:plan.interestCents,feesCents:plan.feesCents});
+ for(const c of a.financialCorrections||[])versions.push({id:'correction:'+c.id,label:'Approved financial correction '+c.id,contract:c.correctedContract,creditCents:c.correctedCreditCents,interestCents:c.correctedContract.financialPricing?.interestCents,feesCents:c.correctedContract.financialPricing?.feesCents});
+ const verifiedCreditCents=(plan?.creditCents||0)+(a.creditAmendments||[]).reduce((n,c)=>n+(c.creditCents||0),0),automatic=versions.at(-1)||null;return {versions,verifiedCreditCents,automatic};}
+const token=(a,p)=>intentHash({version:a.__v,plan:p,date:today()});
+export async function correctionOptions(req,res,next){try{const a=await load(req.params.id),proof=await evidence(a);res.json({success:true,data:{contract:a.contract,ledger:allocatePayments(a),expectedVersion:a.__v||0,evidence:proof,history:(a.financialCorrections||[]).map(c=>({id:c.id,reason:c.reason,effectiveDate:c.effectiveDate,actor:c.actor,mode:c.mode,currentContract:c.currentContract,correctedContract:c.correctedContract,approvalReference:c.approvalReference,recoveryPoint:c.recoveryPoint,impacts:c.impacts})),review:a.financialCorrectionReview}})}catch(e){next(e)}}
+export async function previewFinancialCorrection(req,res,next){try{const a=await load(req.params.id),p=financialCorrectionPlan(a,req.body,today(),await evidence(a));res.json({success:true,data:{...p,previewToken:token(a,p),expectedVersion:a.__v||0}})}catch(e){next(e)}}
+export async function approveFinancialCorrection(req,res,next){let session;try{
+ if(req.body.confirm!==true||typeof req.body.requestId!=='string'||!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body.requestId))fail('Explicit administrator confirmation and a submission ID are required.',400);
+ const a=await load(req.params.id),prior=a.financialCorrections?.find(c=>c.requestId===req.body.requestId);if(prior&&prior.payloadHash!==intentHash(req.body.payload))fail('This submission ID belongs to different correction details. Check history.');if(prior)return res.json({success:true,data:{id:prior.id},message:'Correction already approved. No duplicate created.'});
+ const p=financialCorrectionPlan(a,req.body.payload,today(),await evidence(a));if(req.body.previewToken!==token(a,p))fail('The contract, source evidence or preview changed. Review again.');
+ const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')fail('Financial correction requires verified MongoDB transaction support. Open System Health.');
+ session=await mongoose.startSession();let correction;await session.withTransaction(async()=>{const current=await load(req.params.id,session),existing=current.financialCorrections?.find(c=>c.requestId===req.body.requestId);if(existing){if(existing.payloadHash!==intentHash(req.body.payload))fail('Correction submission details changed. Check history.');correction=existing;return}const fresh=financialCorrectionPlan(current,req.body.payload,today(),await evidence(current,session));if(token(current,fresh)!==req.body.previewToken)fail('Financial records changed before approval. No correction was saved.');
+ const recoveryPoint=await createRestorePoint({session,collections:[PropertyAssignment.collection.name,LotTransfer.collection.name],label:'administrator-financial-correction'}),id=randomUUID(),actor={userId:req.user._id,username:req.user.username,timestamp:new Date()};
+ correction={...fresh,id,requestId:req.body.requestId,payloadHash:intentHash(req.body.payload),approvalReference:req.body.previewToken,actor,recoveryPoint,penaltyCarry:fresh.penaltyCarry.map(a=>({...a,assessmentId:`FC:${id}:${a.assessmentId}`,sourceAssessmentId:a.assessmentId}))};
+ const review={pending:fresh.commissionSnapshot.records.length>0,effectiveDate:fresh.effectiveDate,reason:fresh.reason,correctionId:id,commissionSnapshot:fresh.commissionSnapshot},proposed={...current,contract:fresh.correctedContract,financialCorrections:[...(current.financialCorrections||[]),correction],financialCorrectionReview:review};
+ const checked=allocatePayments(proposed,fresh.effectiveDate);if(checked.balanceCents!==fresh.newBalanceCents||intentHash(checked.allocations)!==intentHash(fresh.beforeLedger.allocations))fail('Correction failed payment-allocation reconciliation. Nothing was saved.');
+ const update=attachMonitoringUpdate(proposed,{$set:{...Object.fromEntries(["totalCents","downPaymentCents","months","termType","firstDueDate","monthlyInstallmentCents","schedule","monitoringTerms","financialPricing"].map(key=>["contract."+key,fresh.correctedContract[key]])),financialCorrectionReview:review},$push:{financialCorrections:correction,agreementHistory:{contract:current.contract,replacedAt:actor.timestamp,replacedBy:req.user._id,financialCorrectionId:id},auditEvents:{action:'FINANCIAL_CORRECTION_APPROVED',correctionId:id,reason:fresh.reason,previousValues:current.contract,updatedValues:fresh.correctedContract,...actor}},$inc:{__v:1}},actor,fresh.reason);
+ const changed=await PropertyAssignment.updateOne({_id:current._id,__v:current.__v},update,{session,runValidators:true});if(changed.modifiedCount!==1)fail('Contract changed. No correction was saved.');
+ });res.json({success:true,data:{id:correction.id},message:'Financial correction approved. Original receipts and allocations preserved; affected commissions require review.'});
+ }catch(e){next(e)}finally{await session?.endSession()}}

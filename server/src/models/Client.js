@@ -12,9 +12,10 @@ const clientSchema = new mongoose.Schema(
     address: { type: String, trim: true, default: "" },
     notes: { type: String, trim: true, default: "" },
     status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE" },
+    deletedAt: Date, deletedBy: {type:mongoose.Schema.Types.ObjectId,ref:"User"}, deletionReason:String, statusBeforeDeletion:String, deletionHistory:{type:[mongoose.Schema.Types.Mixed],default:[]},
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }
   },
-  { timestamps: true }
+  { timestamps: true, optimisticConcurrency:true }
 );
 
 clientSchema.index({ lastName: 1, firstName: 1 });

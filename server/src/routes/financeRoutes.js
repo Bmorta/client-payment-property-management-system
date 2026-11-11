@@ -1,3 +1,4 @@
+import {correctionOptions,previewFinancialCorrection,approveFinancialCorrection} from "../controllers/financialCorrectionController.js";
 import {cashOffice,listOfficeReviews,createOfficeReview,officeReviewAction} from '../controllers/cashOfficeController.js';
 import {cancellationCommissionReview} from '../controllers/commissionReviewController.js';
 import {reviewSettlement,verifySettlement,settlementCertificate,settlementReport} from '../controllers/settlementController.js';
@@ -49,6 +50,9 @@ router.get('/forfeited-accounts',forfeitureAccounts);
 router.get('/properties/:propertyId/history',propertyLifecycleHistory);
 router.post('/accounts/:id/forfeiture-actions/preview',authorize('ADMIN'),previewForfeiture);
 router.post('/accounts/:id/forfeiture-actions',authorize('ADMIN'),postForfeiture);
+router.get("/accounts/:id/financial-corrections",authorize("ADMIN"),correctionOptions);
+router.post("/accounts/:id/financial-corrections/preview",authorize("ADMIN"),previewFinancialCorrection);
+router.post("/accounts/:id/financial-corrections",authorize("ADMIN"),approveFinancialCorrection);
 router.use("/accounts/:id",accountLifecycleGuard);
 router.get("/lot-transfer-options",authorize("ADMIN"),transferOptions);
 router.post("/accounts/:id/lot-transfer/preview",authorize("ADMIN"),previewLotTransfer);

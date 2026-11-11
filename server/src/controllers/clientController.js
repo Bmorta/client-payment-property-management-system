@@ -1,3 +1,8 @@
+import mongoose from "mongoose";
+import Property from "../models/Property.js";
+import PaymentBatch from "../models/PaymentBatch.js";
+import RefundRelease from "../models/RefundRelease.js";
+import CancellationCase from "../models/CancellationCase.js";
 import {CLIENT_ACCOUNT_STATUSES,accountStatusTags} from "../../../shared/clientAccountStatuses.js";
 import {summarizeAccount} from "../utils/accounting.js";
 import PropertyAssignment from "../models/PropertyAssignment.js";
@@ -19,7 +24,7 @@ const normalize = (value) => typeof value === "string" ? value.trim() : value;
 
 export const listClients = async (req, res, next) => {
   try {
-    const q=String(req.query.q||'').trim().slice(0,100),filter={};
+    const q=String(req.query.q||'').trim().slice(0,100),filter={deletedAt:null};if(req.query.deleted==='1'){if(req.user.role!=='ADMIN')return res.status(403).json({success:false,message:'Administrator access required.'});filter.deletedAt={$ne:null};}
     if(req.query.status){if(!["ACTIVE","INACTIVE"].includes(req.query.status))return res.status(400).json({success:false,message:"Choose a valid client status."});filter.status=req.query.status;}
     const statuses=req.query.accountStatuses?String(req.query.accountStatuses).split(','):[];
     if(statuses.some(v=>!CLIENT_ACCOUNT_STATUSES.some(([key])=>key===v)))return res.status(400).json({success:false,message:"Choose valid account statuses."});
@@ -42,7 +47,7 @@ export const listClients = async (req, res, next) => {
 export const getClient = async (req, res, next) => {
   try {
     const client = await Client.findById(req.params.id).populate("createdBy", "firstName lastName username");
-    if (!client) return res.status(404).json({ success: false, message: "Client not found." });
+    if (!client || client.deletedAt) return res.status(404).json({ success: false, message: "Client not found." });
     res.json({ success: true, data: client });
   } catch (error) { next(error); }
 };
@@ -53,7 +58,7 @@ export const createClient = async (req, res, next) => {
     if (!firstName || !lastName) {
       return res.status(400).json({ success: false, message: "First name and last name are required." });
     }
-    if (await possibleDuplicate(req.body)) return res.status(409).json({ success: false, message: "A client with this name and contact/email already exists. Use the existing client and assign another property." });
+    if (await possibleDuplicate(req.body)) return res.status(409).json({ success: false, message: "A client with this name and contact/email already exists. Use the existing client, or restore it from Deleted Clients before assigning another property." });
     const client = await Client.create({
       clientId: await generateRecordId("client"), firstName: normalize(firstName), middleName: normalize(middleName || ""),
       lastName: normalize(lastName), suffix: normalize(suffix || ""), contactNumber: normalize(contactNumber || ""),
@@ -63,6 +68,7 @@ export const createClient = async (req, res, next) => {
     await logActivity({ action: "CLIENT_CREATED", req, userId: req.user._id, entityType: "Client", entityId: client._id, metadata: { clientId: client.clientId } });
     res.status(201).json({ success: true, message: "Client created successfully.", data: client });
   } catch (error) {
+    if(error?.name==='VersionError')return res.status(409).json({success:false,message:'Client changed. Reload before saving again.'});
     if (error?.code === 11000) return res.status(409).json({ success: false, message: "Client ID already exists." });
     next(error);
   }
@@ -71,7 +77,7 @@ export const createClient = async (req, res, next) => {
 export const updateClient = async (req, res, next) => {
   try {
     const client = await Client.findById(req.params.id);
-    if (!client) return res.status(404).json({ success: false, message: "Client not found." });
+    if (!client || client.deletedAt) return res.status(404).json({ success: false, message: "Client not found." });
     if (req.body.clientId !== undefined && req.body.clientId !== client.clientId) return res.status(400).json({ success: false, message: "Client ID cannot be changed." });
     const fields = ["firstName","middleName","lastName","suffix","contactNumber","email","address","notes","status"];
     for (const field of fields) {
@@ -82,7 +88,21 @@ export const updateClient = async (req, res, next) => {
     await logActivity({ action: "CLIENT_UPDATED", req, userId: req.user._id, entityType: "Client", entityId: client._id, metadata: { clientId: client.clientId } });
     res.json({ success: true, message: "Client updated successfully.", data: client });
   } catch (error) {
+    if(error?.name==='VersionError')return res.status(409).json({success:false,message:'Client changed. Reload before saving again.'});
     if (error?.code === 11000) return res.status(409).json({ success: false, message: "Client ID already exists." });
     next(error);
   }
 };
+
+export async function changeClientDeletion(req,res,next){try{
+ if(req.user.role!=='ADMIN')return res.status(403).json({success:false,message:'Administrator access required.'});
+ if(!mongoose.isValidObjectId(req.params.id))return res.status(400).json({success:false,message:'Invalid client.'});
+ const client=await Client.findById(req.params.id).lean();if(!client)return res.status(404).json({success:false,message:'Client not found.'});
+ const restore=req.method==='POST',reason=String(req.body.reason||'').trim();
+ if(req.body.confirm!==true||req.body.expectedVersion!==(client.__v||0)||reason.length<5||reason.length>500)return res.status(409).json({success:false,message:'Enter a reason and confirm the current client version.'});
+ if(restore?!client.deletedAt:!!client.deletedAt)return res.status(409).json({success:false,message:'Client status changed. Refresh the list.'});
+ if(!restore){const links=await Promise.all([PropertyAssignment.exists({client:client._id}),Property.exists({client:client._id}),PaymentBatch.exists({client:client._id}),RefundRelease.exists({client:client._id}),CancellationCase.exists({client:client._id})]);if(links.some(Boolean))return res.status(409).json({success:false,message:'This client has linked properties, contracts or financial history. Use Deactivate; deletion cannot remove those records.'});}
+ const event={action:restore?'CLIENT_RESTORED':'CLIENT_DELETED',reason,userId:req.user._id,username:req.user.username,timestamp:new Date()},values=restore?{status:client.statusBeforeDeletion||'INACTIVE',deletedAt:null,deletedBy:null,deletionReason:''}:{status:'INACTIVE',statusBeforeDeletion:client.status,deletedAt:event.timestamp,deletedBy:req.user._id,deletionReason:reason};
+ const saved=await Client.findOneAndUpdate({_id:client._id,__v:client.__v||0,deletedAt:restore?{$ne:null}:null},{$set:values,$inc:{__v:1},$push:{deletionHistory:event}},{new:true,runValidators:true}).lean();if(!saved)return res.status(409).json({success:false,message:'Client changed. Refresh before retrying.'});
+ res.json({success:true,data:saved,message:restore?'Client restored with the same Client ID.':'Client moved to Deleted Clients. An administrator can restore it.'});
+ }catch(e){next(e)}}

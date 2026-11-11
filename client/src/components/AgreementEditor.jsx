@@ -1,3 +1,4 @@
+import FinancialCorrection from "./FinancialCorrection.jsx";
 import {agreementSchedule} from "../../../shared/agreementSchedule.js";
 import {revealTarget} from "../utils/navigation.js";
 import {default as FieldLabel} from "./FieldLabel.jsx";
@@ -30,7 +31,7 @@ export default function AgreementEditor({ account, onSaved, onClose, showPayment
   return <div className="border rounded p-3 my-3"><h3 className="h6 fw-bold">Edit Payment Agreement</h3>
     <p className="small text-secondary">The property and contract price are fixed. Saving replaces this account's schedule and preserves the previous agreement version. Recorded payment transactions are kept unchanged.</p>{!!account.transferIn?.creditCents&&<p className="alert alert-info small">The approved down payment and transferred credit remain fixed here. Changing their allocation requires a reviewed contract amendment.</p>}
     <CenterPopup error={error} confirm={confirm?"Replace this payment schedule? The previous agreement will be preserved and the change audited. Existing payments will not be deleted or changed.":null} confirmTitle="Confirm agreement update" confirmLabel="Save Agreement" onClose={()=>{setError("");setConfirm(false)}} onConfirm={save}/>
-    <form ref={editorRef} onSubmit={review}><fieldset disabled={busy}><div className="row g-3"><TermSelector value={form} onChange={setForm}/>
+    <FinancialCorrection account={account} onSaved={onSaved}/><form ref={editorRef} onSubmit={review}><fieldset disabled={busy}><div className="row g-3"><TermSelector value={form} onChange={setForm}/>
       <div className="col-sm-6"><FieldLabel className="form-label w-100">Down Payment (₱)<RequiredMark/><input aria-label="Agreement down payment" readOnly={!!account.transferIn?.creditCents} className="form-control" type="number" min="0" max={account.contract.totalCents/100} step="0.01" required value={form.downPayment} onChange={e=>setForm({...form,downPayment:e.target.value})}/></FieldLabel></div>
       <div className="col-sm-6"><FieldLabel className="form-label w-100">First installment due<RequiredMark/><input aria-label="Agreement first due date" className="form-control" type="date" min={account.contract.contractDate} required value={form.firstDueDate} onChange={e=>setForm({...form,firstDueDate:e.target.value})}/></FieldLabel></div>
     <ContractTerms transferCreditCents={account.transferIn?.creditCents||0} totalCents={account.contract.totalCents} showPaymentPolicy={showPaymentPolicy} value={form} onChange={setForm} existing={!!account.contract.monitoringTerms}/>

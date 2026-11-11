@@ -28,7 +28,7 @@ const assignmentSchema = new Schema({
   reactivationPenaltyCharges:{type:[Schema.Types.Mixed],default:[]},forfeitureClosure:Schema.Types.Mixed,forfeiturePeriods:{type:[Schema.Types.Mixed],default:[]},forfeitureEvents:{type:[Schema.Types.Mixed],default:[]},reactivationIn:Schema.Types.Mixed,
   transferIn:Schema.Types.Mixed,transferOut:Schema.Types.Mixed,cancellationOut:Schema.Types.Mixed,pendingCancellation:Schema.Types.Mixed,creditAmendments:{type:[Schema.Types.Mixed],default:[]},
   contract: {
-    transferPricing:Schema.Types.Mixed,
+    transferPricing:Schema.Types.Mixed,financialPricing:Schema.Types.Mixed,
     totalCents: { type: Number, required: true, min: 1 }, months: { type: Number, validate: validTerm, required: true }, termType: { type: String, enum: ["PREDEFINED", "CUSTOM"], default: "PREDEFINED" },
     monitoringTerms: {type:Schema.Types.Mixed,default:null},
     monthlyInstallmentCents:Number,
@@ -59,6 +59,7 @@ const assignmentSchema = new Schema({
   allocationVersions: {type:[Schema.Types.Mixed],default:[]},
   penaltyLedger: {type:[Schema.Types.Mixed],default:[]},
   penaltyWaivers: {type:[Schema.Types.Mixed],default:[]},
+  financialCorrections:{type:[Schema.Types.Mixed],default:[]},financialCorrectionReview:Schema.Types.Mixed,
   financialSettlement:Schema.Types.Mixed,
   settlementHistory:{type:[Schema.Types.Mixed],default:[]},
   settlementVerifications:{type:[Schema.Types.Mixed],default:[]},

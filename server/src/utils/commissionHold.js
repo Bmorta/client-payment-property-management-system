@@ -2,6 +2,7 @@
 // verification/recovery restrictions remain authoritative and unchanged.
 export const REVIEW_HOLD_STATUSES=['UNDER_REVIEW','NOTICE_ISSUED','APPROVED_FOR_FORFEITURE','FORFEITED'];
 export function commissionReleaseHold(a){const reasons=[];
+ if(a.financialCorrectionReview?.pending)reasons.push({code:'FINANCIAL_CORRECTION_REVIEW',label:'ON HOLD — FINANCIAL CORRECTION REVIEW',since:a.financialCorrectionReview.effectiveDate,reason:a.financialCorrectionReview.reason});
  if(['CANCELLED','FORFEITED','SUPERSEDED','TRANSFERRED'].includes(a.lifecycle))reasons.push({code:'CONTRACT_'+a.lifecycle,label:'ON HOLD — CONTRACT '+a.lifecycle,since:a.cancellationOut?.effectiveDate||a.forfeitureClosure?.effectiveDate||a.transferOut?.effectiveDate});
  if(a.pendingCancellation||a.cancellationReview?.status==='UNDER_REVIEW')reasons.push({code:'CANCELLATION_REVIEW',label:'ON HOLD — CANCELLATION REVIEW',since:a.pendingCancellation?.effectiveDate||a.cancellationReview?.timestamp,reason:a.pendingCancellation?.reason||a.cancellationReview?.reason});
  const review=a.forfeitureReviews?.at(-1);if(REVIEW_HOLD_STATUSES.includes(review?.status))reasons.push({code:'FORFEITURE_REVIEW',label:'ON HOLD — FORFEITURE REVIEW',since:review.effectiveDate||review.timestamp,reason:review.reason});

@@ -8,11 +8,11 @@ const run=(q,s)=>s?q.session(s):q;
 // synthetic payment transactions or turn inherited credits into collections.
 export async function inspectCreditLineage(account,session=null){
  const versions=new Map(),proofs=[],visiting=new Set(),memo=new Map();
- async function visit(a){const key=id(a._id);if(visiting.has(key))fail(`Credit lineage cycle at ${a.assignmentId}.`);if(memo.has(key))return memo.get(key);visiting.add(key);let inherited=0;const seen=new Set();
+ async function visit(a){const key=id(a._id);if(visiting.has(key))fail(`Credit lineage cycle at ${a.assignmentId}.`);if(memo.has(key))return memo.get(key);visiting.add(key);const correction=a.financialCorrections?.at(-1),approvedCorrection=!!(correction?.approvalReference&&correction.recoveryPoint?.verified);let inherited=0;const seen=new Set();
   if(a.transferIn){const t=a.transferIn;if(!t.transferId||!t.sourceId)fail(`${a.assignmentId}: inherited transfer lacks an approved source reference.`);
    const transfer=await run(LotTransfer.findOne({transferId:t.transferId}),session).lean(),parent=await run(PropertyAssignment.findById(t.sourceId),session).lean();
    if(!transfer||!parent||id(parent.client)!==id(account.client)||id(transfer.source)!==id(parent._id)||id(transfer.replacement)!==key||parent.lifecycle!=='TRANSFERRED'||id(parent.transferOut?.replacementId)!==key||parent.transferOut?.transferId!==t.transferId)fail(`${a.assignmentId}: transfer ${t.transferId} has inconsistent ownership or successor links.`);
-   const amount=transfer.snapshot?.plan?.creditCents;if(!Number.isSafeInteger(amount)||amount<0||amount!==t.creditCents)fail(`${a.assignmentId}: transfer credit does not match its approved financial snapshot.`);
+   const amount=transfer.snapshot?.plan?.creditCents;if(!Number.isSafeInteger(amount)||amount<0||amount!==t.creditCents&&!approvedCorrection)fail(`${a.assignmentId}: transfer credit does not match its approved financial snapshot.`);
    await visit(parent);versions.set(id(parent._id),{id:id(parent._id),version:parent.__v,contractId:parent.assignmentId});
    if(amount>allocatePayments(parent,transfer.effectiveDate).principalPaidCents)fail(`${parent.assignmentId}: transferred credit exceeds reconciled principal history.`);
    proofs.push({type:'TRANSFER',reference:t.transferId,from:id(parent._id),to:key,amountCents:amount});inherited+=amount;
@@ -25,6 +25,7 @@ export async function inspectCreditLineage(account,session=null){
    if(!Number.isSafeInteger(amendment.creditCents)||amendment.creditCents<=0)fail(`${a.assignmentId}: invalid inherited credit amount.`);
    proofs.push({type:'CANCELLATION',reference:c.caseId,to:key,amountCents:amendment.creditCents});inherited+=amendment.creditCents;
   }
+  if(correction){if(!approvedCorrection)fail(`${a.assignmentId}: financial correction has no verified approval/recovery evidence.`);const captured=new Set(correction.capturedCreditCaseIds||[]),subsequent=(a.creditAmendments||[]).filter(c=>!captured.has(c.caseId)).reduce((n,c)=>n+c.creditCents,0),verifiedAtCorrection=inherited-subsequent;if(!Number.isSafeInteger(correction.correctedCreditCents)||correction.correctedCreditCents<0||correction.correctedCreditCents>verifiedAtCorrection||correction.verifiedCreditCents!==verifiedAtCorrection)fail(`${a.assignmentId}: corrected credit conflicts with approved source evidence.`);proofs.push({type:'FINANCIAL_CORRECTION',reference:correction.id,to:key,priorCreditCents:verifiedAtCorrection,amountCents:correction.correctedCreditCents});inherited=correction.correctedCreditCents+subsequent;}
   if(!Number.isSafeInteger(inherited))fail('Inherited credits exceed supported precision.');visiting.delete(key);memo.set(key,inherited);return inherited;
  }
  const inheritedCreditCents=await visit(account);return {inheritedCreditCents,proofs,protectedAccounts:[...versions.values()]};

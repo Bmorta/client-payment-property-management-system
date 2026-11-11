@@ -6,6 +6,7 @@ import {COMPLETED_BUYER_INSTALLMENTS,roundRatio,percentAmount,apportionBudgets,s
 export {percentAmount,apportionBudgets,splitCommission} from "../../../shared/commissionMath.js";
 export const effectivePayout=p=>({...p,...(p.revisions?.at(-1)?.values||{}),payoutId:p.payoutId,status:p.revisions?.at(-1)?.values?.voided?"VOIDED":p.revisions?.length?"CORRECTED":"RELEASED",amountCents:p.revisions?.at(-1)?.values?.voided?0:(p.revisions?.at(-1)?.values?.amountCents??p.amountCents)});
 export function calculateCommissions(account,ledger,{asOf="9999-12-31"}={}){
+ const financialReview=account.financialCorrectionReview;if(financialReview?.pending&&!account.commissionContinuationOut&&asOf>=financialReview.effectiveDate){const frozen=structuredClone(financialReview.commissionSnapshot);for(const r of frozen.records){r.releaseHold=commissionReleaseHold(account);r.heldCents=r.unreleasedCents;r.releasableCents=0;}return frozen;}
  const agreement=account.commissionAgreement,previous=account.commissionSnapshot?.records||[],records=[],payouts=(account.commissionPayouts||[]).map(effectivePayout).filter(p=>p.releaseDate<=asOf);
  if(account.commissionContinuation||account.commissionContinuationOut){records.push(...continuedCommissionEarnings(account,ledger,{asOf}))}
  else if(agreement){

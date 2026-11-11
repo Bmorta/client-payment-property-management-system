@@ -1,3 +1,4 @@
+import {assertFinancialCorrectionDate} from "./financialCorrectionLedger.js";
 import {commissionWorkflowReview} from './commissionWorkflowWarnings.js';
 import {moneyCents,validDate,monthDate,validTerm} from '../../../shared/paymentSchedule.js';
 import {allocatePayments} from './paymentLedger.js';
@@ -7,6 +8,7 @@ export const amount=v=>moneyCents(v??0);
 export const note=(v,label,required=true)=>{const s=String(v||'').trim();if(s.length>1000||required&&s.length<5)fail(label+' must contain 5–1000 characters.');return s};
 function requireReviewedPolicy(account){const policy=currentPenaltyPolicy(account);if(!policy||!['ACTIVE','DISABLED','WAIVED'].includes(policy.penaltyStatus)||!Number.isSafeInteger(policy.graceDays)||policy.graceDays<0||policy.penaltyStatus==='ACTIVE'&&(policy.pendingPaymentPolicy||!['FULL_INSTALLMENT','UNPAID_BALANCE'].includes(policy.penaltyBasis)||!Number.isSafeInteger(policy.penaltyRateBps)))fail('Configure/review the actual penalty policy in the existing contract/Payments workflow first. An unknown penalty is not assumed to be zero.',409);}
 export function sourceEntitlement(account,input,effectiveDate,verifiedInheritedCreditCents=0){
+ assertFinancialCorrectionDate(account,effectiveDate);
  requireReviewedPolicy(account);
  if(input.priorDispositionsConfirmed!==true)fail('Confirm that previous refunds and credits, including external releases, were reconciled before creating another entitlement.');
  if(!Number.isSafeInteger(verifiedInheritedCreditCents)||verifiedInheritedCreditCents<0)fail('Verified inherited credit is invalid.');
@@ -26,6 +28,7 @@ export function sourceEntitlement(account,input,effectiveDate,verifiedInheritedC
  return {accountId:String(account._id),assignmentId:account.assignmentId,project:account.project,property:account.property,originalPriceCents:account.contract.totalCents,principalCents,verifiedInheritedCreditCents,downPaymentPaidCents:ledger.schedule.find(s=>s.installment===0)?.paidCents||0,oldBalanceCents:ledger.balanceCents,penaltyCents,option:input.option,percentage,grossCents,penaltyDeductionCents,netCents,retainedByPolicyCents:principalCents-grossCents,justification,penaltyDecision:input.penaltyDecision,legalReview:{basis:legal.basis,minimumCents:legalMinimumCents,reference:legalReference,refundInstallmentsAllowed:legal.refundInstallmentsAllowed===true},commissionDecision:input.commissionDecision,commissions,schedule:ledger.schedule,payments:account.payments||[],beforeLedger:ledger,clearanceRequested:input.clearance===true,clearanceReason:note(input.clearanceReason,'Inventory clearance',input.clearance===true)};
 }
 export function receivingAmendment(account,input,effectiveDate){
+ assertFinancialCorrectionDate(account,effectiveDate);
  requireReviewedPolicy(account);
  const ledger=allocatePayments(account,effectiveDate),creditCents=amount(input.amount);if(!creditCents||creditCents>ledger.balanceCents)fail('Receiving credit must be positive and no more than that contract’s unpaid principal.');
  if(ledger.currentPenaltySummary?.reviewIssues?.length)fail('Resolve receiving-account penalty reconciliation warnings first.',409);

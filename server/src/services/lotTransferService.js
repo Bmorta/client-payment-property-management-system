@@ -1,3 +1,4 @@
+import {assertFinancialCorrectionDate} from "../utils/financialCorrectionLedger.js";
 import {transferSchedule} from "../../../shared/transferSchedule.js";
 import {inspectCreditLineage,fenceCreditLineage} from './creditLineageService.js';
 import {assertContractOperationsReady} from './databaseReadiness.js';
@@ -26,6 +27,7 @@ const scoped=(query,session)=>query.session(session||null);
 const cents=v=>moneyCents(v??0);
 function split(amount,n){const floor=Math.floor(amount/n),extra=amount%n;return Array.from({length:n},(_,i)=>floor+(i<extra?1:0))}
 export function transferPlan(source,target,input,date=today()){
+ assertFinancialCorrectionDate(source,input.effectiveDate);
  if(!validDate(input.effectiveDate)||input.effectiveDate>date||input.effectiveDate<source.contract.contractDate)fail('Choose a transfer date between the contract date and today.');
  if((source.payments||[]).some(p=>effectivePayment(p).paymentDate>input.effectiveDate)||(source.commissionPayouts||[]).some(p=>(p.revisions?.at(-1)?.values?.releaseDate||p.releaseDate)>input.effectiveDate))fail('Transfer date cannot precede recorded payments or payouts.');
  const ledger=allocatePayments(source,input.effectiveDate),eligibleCreditCents=ledger.principalPaidCents,creditCents=cents(input.credit),adjustmentReason=String(input.adjustmentReason||'').trim(),nonTransferredDisposition=String(input.nonTransferredDisposition||'').trim();
