@@ -1,3 +1,4 @@
+import {agreementSchedule} from "../../../shared/agreementSchedule.js";
 import {pagedExpenses} from "./expenseListController.js";
 import {attachBatchCounts} from "../services/paymentBatchCounts.js";
 import {needsAllocationChoice,paymentContext} from '../utils/paymentContext.js';
@@ -193,8 +194,7 @@ export async function updateAgreement(req, res, next) {
     const monitoringTerms=req.body.monitoringTerms===undefined?account.contract.monitoringTerms:validateTerms(req.body.monitoringTerms,account.contract.contractDate);
     if(account.contract.monitoringTerms && !monitoringTerms)fail(400,"Disable penalties through a preserved terms revision rather than removing configured terms.");
     if(monitoringTerms&&String(req.body.reason||"").trim().length<5)fail(400,"Enter a reason for changing contractual terms.");
-    if(monitoringTerms&&req.body.monthlyInstallment!==undefined)validateMonthlyArrangement(account.contract.totalCents,downPaymentCents,months,req.body.monthlyInstallment,req.body.monthlyOverrideAcknowledged);
-    const schedule=configureSchedule(buildSchedule(account.contract.totalCents,months,req.body.firstDueDate,downPaymentCents,account.contract.contractDate),monitoringTerms,req.body.monthlyInstallment??(account.contract.monthlyInstallmentCents/100));
+    const schedule=agreementSchedule({...account.contract,transferIn:account.transferIn},req.body,monitoringTerms);
     if(schedule.some(s=>s.dueDate<account.contract.contractDate))fail(400,"Due day cannot move an installment before the contract date.");
     const contract = { ...account.contract, monitoringTerms, monthlyInstallmentCents:schedule.find(s=>s.installment>0)?.amountCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", downPaymentCents, firstDueDate:schedule.find(s=>s.installment>0)?.dueDate||req.body.firstDueDate, schedule };
     allocatePayments({...account,contract});

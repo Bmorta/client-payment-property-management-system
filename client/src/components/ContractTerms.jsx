@@ -17,12 +17,13 @@ const explanations={
  frequency:"Monthly due review: one current contribution per overdue installment. Previous monthly totals are history, not additional charges.",
  effectiveDate:"Date these contract rules take effect, not before the contract date. Unpaid principal and expired grace are still required; existing monthly penalty anniversaries are preserved."
 };
-export default function ContractTerms({value,onChange,existing=false,showPaymentPolicy=false,totalCents=null}){
+export default function ContractTerms({value,onChange,existing=false,showPaymentPolicy=false,totalCents=null,transferCreditCents=0}){
  const prefix=useId(),terms=value.monitoringTerms,set=(key,next)=>onChange({...value,monitoringTerms:{...terms,...(["penaltyStatus","penaltyBasis","allocationPriority"].includes(key)?{pendingPaymentPolicy:false}:{}),[key]:next}});
  let dp=null;try{dp=moneyCents(value.downPayment||0)}catch{}
- const suggested=computedMonthly(totalCents,dp,Number(value.months)),override=value.monthlyInstallmentOverride===true;
+ const principalTotal=totalCents==null?null:totalCents-Math.max(0,transferCreditCents-(dp||0));
+ const suggested=computedMonthly(principalTotal,dp,Number(value.months)),override=value.monthlyInstallmentOverride===true;
  useEffect(()=>{if(!terms||suggested==null)return;if(value.monthlyInstallmentOverride===undefined){const manual=existing&&value.monthlyInstallment!==undefined&&Number(value.monthlyInstallment)!==suggested/100;onChange({...value,monthlyInstallmentOverride:manual,...(!manual?{monthlyInstallment:(suggested/100).toFixed(2)}:{})})}else if(!override&&Number(value.monthlyInstallment)!==suggested/100)onChange({...value,monthlyInstallment:(suggested/100).toFixed(2),monthlyOverrideAcknowledged:false})},[suggested,!!terms,value.monthlyInstallmentOverride,value.monthlyInstallment]);
- let difference=null;try{if(suggested!=null&&value.monthlyInstallment)difference=moneyCents(value.monthlyInstallment)*Number(value.months)-(totalCents-dp)}catch{}
+ let difference=null;try{if(suggested!=null&&value.monthlyInstallment)difference=moneyCents(value.monthlyInstallment)*Number(value.months)-(principalTotal-dp)}catch{}
  const basis=`${totalCents}/${dp}/${value.months}`,previousBasis=useRef(basis);
  useEffect(()=>{if(previousBasis.current!==basis){previousBasis.current=basis;if(override&&value.monthlyOverrideAcknowledged)onChange({...value,monthlyOverrideAcknowledged:false})}},[basis]);
  useEffect(()=>{if(!existing&&terms&&value.contractDate&&terms.effectiveDate!==value.contractDate)onChange({...value,monitoringTerms:{...terms,effectiveDate:value.contractDate}})},[value.contractDate,!!terms]);
