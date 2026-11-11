@@ -41,9 +41,21 @@ function Invoke-Npm([string]$Directory,[string[]]$Arguments) {
  $start=New-Object Diagnostics.ProcessStartInfo;$start.FileName=$script:Node;$start.WorkingDirectory=$Directory
  $start.Arguments='"'+$script:Npm+'" '+(($Arguments|ForEach-Object {'"'+$_+'"'}) -join ' ')
  $start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
- $process=New-Object Diagnostics.Process;$process.StartInfo=$start;$null=$process.Start();$outputTask=$process.StandardOutput.ReadToEndAsync();$errorTask=$process.StandardError.ReadToEndAsync()
- while(!$process.WaitForExit(150)){[Windows.Forms.Application]::DoEvents()};$null=$outputTask.Result;$null=$errorTask.Result
- if($process.ExitCode -ne 0){throw 'Dependency installation/build failed. Check network access, disk space and the package lock; no database reset was attempted.'}
+ # Lifecycle scripts must use the same reviewed Node runtime as npm itself.
+ $start.EnvironmentVariables['PATH']=(Split-Path $script:Node -Parent)+';'+$env:PATH
+ Write-ProgressLine ('Running npm '+($Arguments -join ' ')+' in '+$Directory)
+ $process=New-Object Diagnostics.Process;$process.StartInfo=$start
+ try {
+  $null=$process.Start();$outputTask=$process.StandardOutput.ReadToEndAsync();$errorTask=$process.StandardError.ReadToEndAsync()
+  while(!$process.WaitForExit(150)){[Windows.Forms.Application]::DoEvents()}
+  $output=[string]$outputTask.Result;$errors=[string]$errorTask.Result
+  if($process.ExitCode -ne 0){
+   $details=($output+"`r`n"+$errors) -replace '(?i)(https?://)[^/\s@]+@','$1[redacted]@'
+   $details=$details -replace '(?i)((?:_authToken|password|token|secret)\s*[=:]\s*)[^\s]+','$1[redacted]'
+   foreach($line in ($details -split "`r?`n" | Select-Object -Last 40)){if($line.Trim()){Write-ProgressLine $line}}
+   throw ('npm '+($Arguments -join ' ')+' failed with exit code '+$process.ExitCode+'. See the detailed output above or '+(Join-Path $script:StateRoot 'setup-last.log')+'. No database reset was attempted.')
+  }
+ } finally { $process.Dispose() }
 }
 function Initialize-SetupTools {
  Initialize-Node
