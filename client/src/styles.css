@@ -383,3 +383,74 @@ button, input, select, textarea { font: inherit; }
 
 /* One shared, centered map toolbar; preserve existing themed button variants. */
 .map-action-toolbar > .btn { min-height:40px; padding:.5rem .8rem; display:inline-flex; align-items:center; justify-content:center; margin:0; max-width:100%; white-space:normal; }
+
+/* Full-screen map editing keeps tools outside the image, in both themes. */
+.map-editor-modal { padding:0 !important; overflow:hidden; z-index:6500; background:var(--bs-body-bg); }
+.map-editor-host { width:100%; height:100%; }
+.map-editor-host[hidden] { display:none !important; }
+.map-editor-workspace { --map-tools-width:142px; width:100%; height:100dvh; display:flex; flex-direction:column; color:var(--bs-body-color); background:var(--bs-body-bg); }
+.map-editor-header { flex:none; display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); }
+.map-editor-heading { min-width:0; }
+.map-editor-heading > span { display:block; max-width:40vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8rem; color:var(--bs-secondary-color); }
+.map-editor-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; }
+.map-editor-actions > .btn { min-height:40px; white-space:nowrap; }
+.map-tools-toggle { display:none; }
+.map-editor-body { flex:1; min-height:0; display:grid; grid-template-columns:var(--map-tools-width) minmax(0,1fr); grid-template-areas:"tools canvas"; }
+.map-editor-workspace.settings-expanded .map-editor-body { grid-template-columns:var(--map-tools-width) 280px minmax(0,1fr); grid-template-areas:"tools settings canvas"; }
+.map-editor-tools { grid-area:tools; min-height:0; overflow:auto; padding:10px 8px; border-right:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); }
+.map-editor-tools fieldset { display:flex; flex-direction:column; gap:7px; }
+.map-editor-tools .map-tool { display:flex; align-items:center; gap:8px; width:100%; min-height:42px; padding:8px; text-align:left; font-size:.8rem; line-height:1.25; }
+.map-tool > span:first-child { flex:0 0 22px; font-size:1.15rem; text-align:center; }
+.map-editor-tools hr { margin:4px 0; }
+.map-editor-settings { grid-area:settings; min-width:0; min-height:0; overflow:auto; padding:12px; border-right:1px solid var(--bs-border-color); background:var(--bs-body-bg); }
+.map-editor-settings > fieldset { display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+.map-editor-settings label,.map-saved-versions > label { display:flex; flex-direction:column; gap:5px; min-width:0; font-size:.8rem; }
+.map-editor-settings :is(input,select,textarea) { max-width:100%; min-width:0; }
+.map-editor-settings input[type="range"] { width:100%; }
+.map-editor-settings input[type="color"] { width:100%; min-height:36px; padding:2px; border:1px solid var(--bs-border-color); background:var(--bs-body-bg); }
+.map-editor-settings .section-heading { margin-bottom:0; }
+.map-editor-settings .map-checkbox { flex-direction:row; align-items:center; gap:8px; }
+.map-color-fields,.map-position-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.map-editor-settings .btn { white-space:normal; overflow-wrap:anywhere; }
+.map-editor-settings details { padding:8px 0; border-top:1px solid var(--bs-border-color); }
+.map-editor-settings details[open] > summary { margin-bottom:10px; }
+.map-saved-versions { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.map-editor-canvas { grid-area:canvas; position:relative; min-width:0; min-height:0; overflow:hidden; touch-action:none; background:#e8edf4; outline-offset:-3px; }
+.map-editor-canvas:focus-visible { outline:3px solid var(--bs-primary); }
+.map-editor-image-anchor { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
+.map-editor-image-anchor > svg { display:block; max-width:none; max-height:none; overflow:visible; transform-origin:center; user-select:none; }
+.map-editor-status { flex:none; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; padding:6px 12px; border-top:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); font-size:.75rem; }
+.map-editor-navigation { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.map-editor-navigation output { min-width:48px; text-align:center; }
+.map-editor-navigation .btn { min-height:34px; }
+.map-print-save-controls { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin:12px 0; }
+.map-editor-loading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; padding:24px; }
+[data-bs-theme="dark"] .map-editor-canvas { background:#0d1523; }
+[data-bs-theme="dark"] .map-editor-tools .btn-outline-secondary { --bs-btn-color:#c0ccdd; --bs-btn-border-color:#66768e; --bs-btn-hover-bg:#2b3d57; --bs-btn-hover-color:#fff; }
+@media(max-width:1023px) {
+ .map-editor-workspace { --map-tools-width:58px; }
+ .map-tools-toggle { display:inline-flex; }
+ .map-tool-label { display:none; }
+ .map-editor-tools .map-tool { justify-content:center; padding:8px 4px; }
+ .map-editor-workspace.tools-expanded { --map-tools-width:150px; }
+ .tools-expanded .map-tool-label { display:inline; }
+ .tools-expanded .map-editor-tools .map-tool { justify-content:flex-start; }
+ .map-editor-workspace.settings-expanded .map-editor-body { grid-template-columns:var(--map-tools-width) 240px minmax(0,1fr); }
+ .map-editor-header { padding:8px 10px; }
+ .map-editor-actions { gap:6px; }
+ .map-editor-actions .btn { padding:6px 9px; font-size:.8rem; }
+}
+@media(max-width:767px) {
+ .map-editor-header { align-items:flex-start; flex-direction:column; gap:7px; }
+ .map-editor-heading { display:flex; align-items:baseline; gap:8px; width:100%; }
+ .map-editor-heading > span { max-width:65vw; }
+ .map-editor-heading h2 { font-size:1rem; white-space:nowrap; }
+ .map-editor-actions { width:100%; justify-content:flex-end; }
+ .map-editor-actions .btn { min-height:36px; font-size:.72rem; padding:5px 7px; }
+ .map-editor-workspace.settings-expanded .map-editor-body { grid-template-columns:var(--map-tools-width) minmax(0,1fr); grid-template-rows:minmax(100px,1fr) minmax(0,32dvh); grid-template-areas:"tools canvas" "tools settings"; }
+ .map-editor-settings { border-right:0; border-top:1px solid var(--bs-border-color); padding:10px; }
+ .map-editor-status { padding:5px 8px; }
+ .map-editor-status > span { max-width:100%; overflow-wrap:anywhere; }
+ .map-editor-navigation { width:100%; justify-content:flex-end; gap:4px; }
+ .map-editor-navigation .btn { font-size:.7rem; padding:4px 7px; min-height:32px; }
+}
