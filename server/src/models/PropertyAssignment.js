@@ -24,9 +24,9 @@ const assignmentSchema = new Schema({
   client: { type: Schema.Types.ObjectId, ref: "Client", required: true },
   project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
   property: { type: Schema.Types.ObjectId, ref: "Property", required: true },
-  lifecycle:{type:String,enum:["ACTIVE","TRANSFERRED","CANCELLATION_PENDING","CANCELLED","FORFEITED","SUPERSEDED"],default:"ACTIVE"},
+  lifecycle:{type:String,enum:["ACTIVE","TRANSFERRED","ASSUMED","CANCELLATION_PENDING","CANCELLED","FORFEITED","SUPERSEDED"],default:"ACTIVE"},
   reactivationPenaltyCharges:{type:[Schema.Types.Mixed],default:[]},forfeitureClosure:Schema.Types.Mixed,forfeiturePeriods:{type:[Schema.Types.Mixed],default:[]},forfeitureEvents:{type:[Schema.Types.Mixed],default:[]},reactivationIn:Schema.Types.Mixed,
-  transferIn:Schema.Types.Mixed,transferOut:Schema.Types.Mixed,cancellationOut:Schema.Types.Mixed,pendingCancellation:Schema.Types.Mixed,creditAmendments:{type:[Schema.Types.Mixed],default:[]},
+  transferIn:Schema.Types.Mixed,transferOut:Schema.Types.Mixed,assumptionIn:Schema.Types.Mixed,assumptionOut:Schema.Types.Mixed,cancellationOut:Schema.Types.Mixed,pendingCancellation:Schema.Types.Mixed,creditAmendments:{type:[Schema.Types.Mixed],default:[]},
   contract: {
     transferPricing:Schema.Types.Mixed,financialPricing:Schema.Types.Mixed,
     totalCents: { type: Number, required: true, min: 1 }, months: { type: Number, validate: validTerm, required: true }, termType: { type: String, enum: ["PREDEFINED", "CUSTOM"], default: "PREDEFINED" },

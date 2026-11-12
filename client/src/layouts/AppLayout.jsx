@@ -6,6 +6,7 @@ import {Link,NavLink,Outlet,useLocation} from "react-router-dom";
 import NotificationBell from "../components/NotificationBell.jsx";
 import HeaderClock from "../components/HeaderClock.jsx";
 import NavIcon from "../components/NavIcon.jsx";
+import FeatureSearch from "../components/FeatureSearch.jsx";
 import {useAuth} from "../context/AuthContext.jsx";
 import {visibleGroups,activeDestination} from "../utils/workspaceNavigation.js";
 const readPreference=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
@@ -56,7 +57,7 @@ export default function AppLayout(){
    <div className="sidebar-account"><span className="user-avatar" aria-hidden="true">{initials}</span><div className="sidebar-user"><strong>{user?.fullName||user?.username}</strong><span>{user?.role?.toLowerCase()} · {user?.username}</span></div><button type="button" className="icon-button" onClick={logout} aria-label="Logout" title="Logout"><NavIcon name="logout"/></button></div>
   </aside>
   <div className="app-workspace">
-   <header className="workspace-header"><div className="workspace-heading"><button ref={menuButton} type="button" className="icon-button menu-toggle" aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded={open} onClick={()=>setOpen(true)}><NavIcon name="menu"/></button><div><p className="workspace-eyebrow">REMS · Office workspace</p><span className="workspace-title">{title}</span></div></div><div className="workspace-tools"><div className="header-clock"><HeaderClock/><span className="header-timezone">Philippine Standard Time</span></div><AppearanceSelect compact/><NotificationBell/><span className="header-avatar user-avatar" title={user?.fullName} aria-hidden="true">{initials}</span></div></header>
+   <header className="workspace-header"><div className="workspace-heading"><button ref={menuButton} type="button" className="icon-button menu-toggle" aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded={open} onClick={()=>setOpen(true)}><NavIcon name="menu"/></button><div><p className="workspace-eyebrow">REMS · Office workspace</p><span className="workspace-title">{title}</span></div></div><div className="workspace-tools"><FeatureSearch/><div className="header-clock"><HeaderClock/><span className="header-timezone">Philippine Standard Time</span></div><AppearanceSelect compact/><NotificationBell/><span className="header-avatar user-avatar" title={user?.fullName} aria-hidden="true">{initials}</span></div></header>
    <div id="workspace-content" className="workspace-content" tabIndex={-1}><Outlet/></div>
   </div>
  </div>;

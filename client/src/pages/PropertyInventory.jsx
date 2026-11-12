@@ -11,9 +11,12 @@ import CenterPopup from "../components/CenterPopup.jsx";
 import StructureManager from "./StructureManager.jsx";
 import { validPrice, lotPrice, money, deletableLot } from "../utils/lotPricing.js";
 import { mergeStructure, nextNumber } from "../utils/propertyStructure.js";
+import Pagination from "../components/Pagination.jsx";
 
 const STATUSES = ["AVAILABLE", "RESERVED", "SOLD", "FOR_ASSUME"];
-const statusLabel = status => status === "FOR_ASSUME" ? "For Assume" : status;
+const FILTER_STATUSES = [...STATUSES,"ASSUMPTION_PENDING","ASSUMED"];
+const statusLabel = status => ({FOR_ASSUME:"For Assume",ASSUMPTION_PENDING:"Assumption Pending",ASSUMED:"Assumed"})[status]||status;
+const editableLot = lot => lot.status === 'AVAILABLE' && !lot.client && !lot.hasAccount && lot.assumptionStatus !== 'PENDING' && !['PENDING','REJECTED'].includes(lot.reopeningStatus);
 const newBlock = (blockNumber = 1, startLotNumber = 1) => ({
   blockNumber, startLotNumber, lotCount: 1, defaultArea: "", areasSqm: [""], defaultPrice: "", pricesPerSqm: [""], statuses: ["AVAILABLE"]
 });
@@ -32,6 +35,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
   const [selectedPhase, setSelectedPhase] = useState("");
   const [selectedBlock, setSelectedBlock] = useState("");
   const [filters, setFilters] = useState({ phase: "", block: "", lot: "", status: "" });
+  const [page,setPage]=useState(1),[limit,setLimit]=useState(25);
   useEffect(()=>{if(externalFilters)setFilters(f=>({...f,...externalFilters}))},[JSON.stringify(externalFilters)]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -43,9 +47,9 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
   const archived = readOnly || project.status === "ARCHIVED";
   const structure = mergeStructure(savedStructure, properties);
   const blockOptions = structure.blocks.filter(b => String(b.phaseNumber) === selectedPhase);
-  const changed = properties.filter(p =>
+  const changed = properties.filter(p => editableLot(p) && (
     String(drafts[p._id]?.lotNumber ?? p.lotNumber) !== String(p.lotNumber) || String(drafts[p._id]?.areaSqm ?? "") !== String(p.areaSqm ?? "") || String(drafts[p._id]?.pricePerSqm ?? "") !== String(p.pricePerSqm ?? "") || drafts[p._id]?.status !== p.status
-  );
+  ));
   const [lotEditing, setLotEditing] = useState(false);
   const editMode = mode === "modify" && lotEditing && !archived;
   const notify = (text, isError = false) => {
@@ -182,11 +186,12 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
       } finally { setBusy(false); }
     } });
   };
-  const visibleProperties = filterInventory(properties,{...filters,q:inventoryQuery});
+  const filteredProperties = filterInventory(properties,{...filters,q:inventoryQuery});
+  const visibleProperties = filteredProperties.slice((page-1)*limit,page*limit);
   const eligibleVisible = visibleProperties.filter(deletableLot);
   const chosenLots = eligibleVisible.filter(p => selectedLots.includes(p._id));
   const toggleSelected = id => setSelectedLots(old => old.includes(id) ? old.filter(value => value !== id) : [...old, id]);
-  const changeFilters = update => { setSelectedLots([]); setFilters(update); };
+  const changeFilters = update => { setSelectedLots([]); setPage(1); setFilters(update); };
   const optionsFor = key => [...new Set(properties.filter(p =>
     (key === "phase" || !filters.phase || String(p.phaseNumber) === filters.phase) &&
     (key !== "lot" || !filters.block || String(p.blockNumber) === filters.block))
@@ -203,6 +208,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
       confirmTitle={confirmAction?.discard ? "Discard changes" : "Confirm deletion"} confirmLabel={confirmAction?.discard ? "Discard Changes" : "Delete"} cancelLabel={confirmAction?.discard ? "Keep Editing" : "Cancel"}
       onClose={() => { setMessage(""); setError(""); setConfirmAction(null); }} onConfirm={() => confirmAction?.action()} />
     {loading ? <p role="status">Loading inventory...</p> : loadFailed ? <p className="text-danger" role="alert">Inventory could not be loaded. Reload this page to retry.</p> : <>
+      <div className="inventory-quick-summary row g-2 mb-3"><div className="col-6 col-lg-3"><div className="inventory-summary-item"><span>Total lots</span><strong>{properties.length}</strong></div></div><div className="col-6 col-lg-3"><div className="inventory-summary-item"><span>Available</span><strong>{properties.filter(p=>p.status==='AVAILABLE'&&!p.client&&!p.hasAccount).length}</strong></div></div><div className="col-6 col-lg-3"><div className="inventory-summary-item"><span>Contracted / linked</span><strong>{properties.filter(p=>p.hasAccount||p.client).length}</strong></div></div><div className="col-6 col-lg-3"><div className="inventory-summary-item"><span>Assumption pending</span><strong>{properties.filter(p=>p.assumptionStatus==='PENDING').length}</strong></div></div></div>
       {archived ? <p className="alert alert-secondary">{readOnly ? "Read-only inventory. Use Manage Lots to make changes." : "This project is archived. Inventory is read-only."}</p> : <div className="border rounded p-3 mb-4">
         <h3 className="h6 fw-bold">New Lot Configuration</h3>
         <div className="d-flex flex-wrap gap-2 mb-3">
@@ -321,7 +327,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
         </form>}
       </div>}
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        {editMode&&<RequiredNote/>}<h3 className="h6 fw-bold mb-0">Existing lots ({visibleProperties.length} of {properties.length})</h3>
+        {editMode&&<RequiredNote/>}<h3 className="h6 fw-bold mb-0">Existing lots ({filteredProperties.length} of {properties.length})</h3>
         {mode === "modify" && !lotEditing && !archived && <button className="btn btn-outline-primary btn-sm" disabled={busy} onClick={() => setLotEditing(true)}>Edit lot information</button>}
         {editMode && <div className="d-flex flex-wrap gap-2 align-items-center">
           <span className="small text-secondary">{changed.length} unsaved lot edits</span>
@@ -330,7 +336,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
         </div>}
       </div>
       {changed.length > 0 && <p className="small text-secondary">Save or cancel lot edits before printing or exporting saved inventory.</p>}
-      <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([])}} items={properties.map(p=>({key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
+      <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([]);setPage(1)}} items={properties.map(p=>({key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>
           <FieldLabel htmlFor={`filter-${key}`} className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}
@@ -338,7 +344,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
             ...old, [key]: e.target.value, ...(key === "phase" ? { block: "", lot: "" } : key === "block" ? { lot: "" } : {})
           }))}>
             <option value="">All {key === "status" ? "statuses" : key + "s"}</option>
-            {(key === "status" ? STATUSES : optionsFor(key)).map(value => <option key={value} value={value}>{key === "status" ? statusLabel(value) : value}</option>)}
+            {(key === "status" ? FILTER_STATUSES : optionsFor(key)).map(value => <option key={value} value={value}>{key === "status" ? statusLabel(value) : value}</option>)}
           </select></FieldLabel>
         </div>)}
       </div>
@@ -357,21 +363,21 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
             disabled={busy || !!generator || changed.length > 0 || !deletableLot(p) || (chosenLots.length >= 100 && !selectedLots.includes(p._id))}
             checked={selectedLots.includes(p._id)} onChange={() => toggleSelected(p._id)} /></FieldLabel></td>}
           <td>{p.propertyId}<Link className="d-block small" to={`/property-history?property=${p._id}`}>History</Link></td><td>{p.phaseNumber}</td><td>{p.blockNumber}</td><td>{editMode ? <FieldLabel compact className="guided-control">{`Lot number for ${p.propertyId}`}<input required aria-label={`Lot number for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="1" step="1"
-            disabled={busy || !!generator} value={drafts[p._id]?.lotNumber ?? p.lotNumber} onChange={e => updateDraft(p._id, "lotNumber", e.target.value)} /></FieldLabel> : p.lotNumber}</td>
+            disabled={busy || !!generator || !editableLot(p)} value={drafts[p._id]?.lotNumber ?? p.lotNumber} onChange={e => updateDraft(p._id, "lotNumber", e.target.value)} /></FieldLabel> : p.lotNumber}</td>
           <td>{editMode ? <FieldLabel compact className="guided-control">{`Area for ${p.propertyId}`}<input aria-label={`Area for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0.01" step="any"
-            disabled={busy || !!generator} value={drafts[p._id]?.areaSqm ?? ""} onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /></FieldLabel> : p.areaSqm ?? "—"}</td>
+            disabled={busy || !!generator || !editableLot(p)} value={drafts[p._id]?.areaSqm ?? ""} onChange={e => updateDraft(p._id, "areaSqm", e.target.value)} /></FieldLabel> : p.areaSqm ?? "—"}</td>
           <td>{editMode ? <FieldLabel compact className="guided-control">{`Price per sqm for ${p.propertyId}`}<input aria-label={`Price per sqm for ${p.propertyId}`} className="form-control form-control-sm" type="number" min="0" step="0.01"
-            disabled={busy || !!generator} value={drafts[p._id]?.pricePerSqm ?? ""} onChange={e => updateDraft(p._id, "pricePerSqm", e.target.value)} /></FieldLabel> : money(p.pricePerSqm)}</td>
+            disabled={busy || !!generator || !editableLot(p)} value={drafts[p._id]?.pricePerSqm ?? ""} onChange={e => updateDraft(p._id, "pricePerSqm", e.target.value)} /></FieldLabel> : money(p.pricePerSqm)}</td>
           <td><output aria-label={`Price per lot for ${p.propertyId}`}>{money(lotPrice(editMode ? drafts[p._id]?.areaSqm : p.areaSqm, editMode ? drafts[p._id]?.pricePerSqm : p.pricePerSqm))}</output></td>
-          <td>{editMode ? <FieldLabel compact className="guided-control">{`Status for ${p.propertyId}`}<select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm" disabled={busy || !!generator}
+          <td>{editMode ? <FieldLabel compact className="guided-control">{`Status for ${p.propertyId}`}<select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm" disabled={busy || !!generator || !editableLot(p)}
             value={drafts[p._id]?.status ?? p.status} onChange={e => updateDraft(p._id, "status", e.target.value)}>
             {STATUSES.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
-          </select></FieldLabel> : <StatusBadge status={p.status} />}</td>
-          {editMode && <td><button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || !!generator || changed.length > 0 || !deletableLot(p)}
+          </select></FieldLabel> : <StatusBadge status={p.status} />}{p.assumptionStatus==='PENDING'&&<span className="badge text-bg-warning d-block mt-1">Assumption Pending</span>}{p.assumptionStatus==='ASSUMED'&&<span className="badge text-bg-info d-block mt-1">Assumed Contract</span>}</td>
+          {editMode && <td>{!editableLot(p)&&<div className="small text-secondary mb-1" title="This lot is connected to a contract or protected workflow.">🔒 Editing restricted — use the contract or Reopen Lot workflow.</div>}<button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || !!generator || changed.length > 0 || !deletableLot(p)}
             onClick={() => deleteLots([p])}>Delete lot</button>
             {!deletableLot(p) && <div className="small text-secondary">{p.client ? "Connected to a client" : "Not available for deletion"}</div>}</td>}
         </tr>)}</tbody>
-      </table></div>
+      </table></div><Pagination page={page} limit={limit} total={filteredProperties.length} onPage={setPage} onLimit={n=>{setLimit(n);setPage(1)}}/>
     </>}
   </div></section>;
 }

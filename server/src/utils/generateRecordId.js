@@ -1,6 +1,7 @@
 import OfficePayout from "../models/OfficePayout.js";
 import CancellationCase from '../models/CancellationCase.js';
 import RefundRelease from '../models/RefundRelease.js';
+import AssumptionCase from '../models/AssumptionCase.js';
 import LotTransfer from '../models/LotTransfer.js';
 import PaymentBatch from '../models/PaymentBatch.js';
 import CommissionVoucher from '../models/CommissionVoucher.js';
@@ -14,7 +15,7 @@ import Agent from '../models/Agent.js';
 import Client from '../models/Client.js';
 import PropertyAssignment from '../models/PropertyAssignment.js';
 import SequenceCounter from '../models/SequenceCounter.js';
-const definitions={officePayout:[OfficePayout,'payoutId','OP'],cancellation:[CancellationCase,"caseId","CAN"],refund:[RefundRelease,"releaseId","RFD"],lotTransfer:[LotTransfer,"transferId","TRF"],paymentBatch:[PaymentBatch,"batchReference","PB"],commissionVoucher:[CommissionVoucher,"voucherNumber","CV"],cashEntry:[CashLedgerEntry,"entryId","CSH"],project:[Project,'projectId','PRJ'],expense:[Expense,'expenseId','EXP'],phase:[Phase,'phaseId','PHS'],block:[Block,'blockId','BLK'],property:[Property,'propertyId','PROP'],contract:[PropertyAssignment,'assignmentId','CTR'],agent:[Agent,'agentId','AGT'],client:[Client,'clientId','CL'],payment:[PropertyAssignment,'payments.paymentId','PAY','payments'],commissionPayout:[PropertyAssignment,'commissionPayouts.payoutId','CPY','commissionPayouts'],request:[PropertyAssignment,'correctionRequests.requestNumber','REQ','correctionRequests']};
+const definitions={assumption:[AssumptionCase,'caseId','ASM'],officePayout:[OfficePayout,'payoutId','OP'],cancellation:[CancellationCase,"caseId","CAN"],refund:[RefundRelease,"releaseId","RFD"],lotTransfer:[LotTransfer,"transferId","TRF"],paymentBatch:[PaymentBatch,"batchReference","PB"],commissionVoucher:[CommissionVoucher,"voucherNumber","CV"],cashEntry:[CashLedgerEntry,"entryId","CSH"],project:[Project,'projectId','PRJ'],expense:[Expense,'expenseId','EXP'],phase:[Phase,'phaseId','PHS'],block:[Block,'blockId','BLK'],property:[Property,'propertyId','PROP'],contract:[PropertyAssignment,'assignmentId','CTR'],agent:[Agent,'agentId','AGT'],client:[Client,'clientId','CL'],payment:[PropertyAssignment,'payments.paymentId','PAY','payments'],commissionPayout:[PropertyAssignment,'commissionPayouts.payoutId','CPY','commissionPayouts'],request:[PropertyAssignment,'correctionRequests.requestNumber','REQ','correctionRequests']};
 // Reconcile legacy numeric sequences before atomic increments. Gaps are allowed;
 // archived/deleted IDs are never returned to the counter. Receipts are external.
 export async function generateRecordId(type){

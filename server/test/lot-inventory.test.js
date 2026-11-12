@@ -19,6 +19,7 @@ const response = () => ({ code: 200, status(code) { this.code = code; return thi
 const req = (body = {}) => ({ params: { projectId }, body, user: { _id: projectId } });
 const next = error => { throw error; };
 test.beforeEach(t => { t.mock.method(PropertyAssignment, "exists", async () => null);t.mock.method(OfficePayout,"exists",async()=>null); });
+const mockEditableLots=(t,lots)=>{t.mock.method(Property,'find',()=>({lean:async()=>lots}));t.mock.method(PropertyAssignment,'find',()=>({distinct:async()=>[]}));t.mock.method(mongoose,'startSession',async()=>({withTransaction:async fn=>fn(),endSession:async()=>{}}));};
 
 // No MongoDB connection: mock persistence and assert that unsafe requests never delete.
 for (const [name, lots, code] of [
@@ -97,7 +98,7 @@ test("generation rejects malformed per-lot prices before insertion", async t => 
 
 test("batch edits persist rates and preserve omitted rates from older clients", async t => {
   t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
-  t.mock.method(Property, "countDocuments", async () => 1);
+  mockEditableLots(t,[{_id:ids[0],status:'AVAILABLE',client:null,__v:0}]);
   const write = t.mock.method(Property, "bulkWrite", async () => ({ matchedCount: 1 }));
   let res = response(); await updateProjectProperties(req({ updates: [{ _id: ids[0], areaSqm: 120, status: "AVAILABLE", pricePerSqm: 2500, pricePerLot: 1 }] }), res, next);
   let saved = write.mock.calls[0].arguments[0][0].updateOne.update.$set;
@@ -124,8 +125,7 @@ test("generated lots persist each rate and derive each lot total independently",
 
 test("renumbering to an unused lot keeps identity, phase and block unchanged", async t => {
   t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
-  t.mock.method(Property, "countDocuments", async () => 1);
-  t.mock.method(Property, "find", () => ({ lean: async () => [{ _id: ids[0], phaseNumber: 1, blockNumber: 3, lotNumber: 7 }] }));
+  mockEditableLots(t,[{ _id: ids[0], phaseNumber: 1, blockNumber: 3, lotNumber: 7,status:'AVAILABLE',client:null,__v:0 }]);
   t.mock.method(Property, "exists", async filter => {
     assert.equal(filter.project, projectId);
     assert.deepEqual(filter.$or[0], { phaseNumber: 1, blockNumber: 3, lotNumber: 12, _id: { $ne: ids[0] } });
@@ -133,18 +133,17 @@ test("renumbering to an unused lot keeps identity, phase and block unchanged", a
   });
   const write = t.mock.method(Property, "bulkWrite", async () => ({ matchedCount: 1 }));
   const res = response();
-  await updateProjectProperties(req({ updates: [{ _id: ids[0], lotNumber: 12, areaSqm: 120, status: "FOR_ASSUME" }] }), res, next);
+  await updateProjectProperties(req({ updates: [{ _id: ids[0], lotNumber: 12, areaSqm: 120, status: "AVAILABLE" }] }), res, next);
   assert.equal(res.code, 200);
   const operation = write.mock.calls[0].arguments[0][0].updateOne;
   assert.equal(operation.filter._id, ids[0]);
-  assert.equal(operation.update.$set.lotNumber, 12);assert.equal(operation.update.$set.status, "FOR_ASSUME");
+  assert.equal(operation.update.$set.lotNumber, 12);assert.equal(operation.update.$set.status, "AVAILABLE");
   for (const immutable of ["propertyId", "phaseNumber", "blockNumber", "client"]) assert.equal(Object.hasOwn(operation.update.$set, immutable), false);
 });
 
 test("duplicate and invalid lot numbers are blocked before batch updates", async t => {
   t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
-  t.mock.method(Property, "countDocuments", async () => 1);
-  t.mock.method(Property, "find", () => ({ lean: async () => [{ _id: ids[0], phaseNumber: 1, blockNumber: 1, lotNumber: 1 }] }));
+  mockEditableLots(t,[{ _id: ids[0], phaseNumber: 1, blockNumber: 1, lotNumber: 1,status:'AVAILABLE',client:null,__v:0 }]);
   t.mock.method(Property, "exists", async () => ({ _id: ids[1] }));
   const write = t.mock.method(Property, "bulkWrite", async () => { throw Error("Must not update"); });
   for (const number of [0, -1, 1.5, "2", 2]) {
@@ -168,8 +167,7 @@ test("custom starting lot numbers and For Assume are persisted when generating",
 
 test("unique-index race returns a recoverable duplicate response", async t => {
   t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
-  t.mock.method(Property, "countDocuments", async () => 1);
-  t.mock.method(Property, "find", () => ({ lean: async () => [{ _id: ids[0], phaseNumber: 1, blockNumber: 1, lotNumber: 1 }] }));
+  mockEditableLots(t,[{ _id: ids[0], phaseNumber: 1, blockNumber: 1, lotNumber: 1,status:'AVAILABLE',client:null,__v:0 }]);
   t.mock.method(Property, "exists", async () => null);
   t.mock.method(Property, "bulkWrite", async () => { throw { code: 11000 }; });
   const res = response();

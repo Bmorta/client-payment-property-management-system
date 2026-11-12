@@ -27,7 +27,7 @@ const actorEvent=(actor,action,reason)=>({...actor,action,reason,timestamp:new D
 const uniqueIds=(rows,label)=>{if(!Array.isArray(rows)||rows.length>20||new Set(rows.map(r=>r.accountId)).size!==rows.length)fail('Choose at most 20 distinct '+label+'.');rows.forEach(r=>id(r.accountId))};
 async function loadAccount(value,clientId,session,caseId){
  const a=await query(PropertyAssignment.findById(id(value)),session).populate('project','projectName status').populate('property','propertyId phaseNumber blockNumber lotNumber status client __v').lean();
- if(!a||String(a.client)!==String(clientId)||['TRANSFERRED','CANCELLED','FORFEITED','SUPERSEDED'].includes(a.lifecycle)||a.cancellationOut||a.pendingCancellation&&a.pendingCancellation.caseId!==caseId)fail('Choose an active contract owned by this client without another cancellation reservation.',409);
+ if(!a||String(a.client)!==String(clientId)||['TRANSFERRED','ASSUMED','CANCELLED','FORFEITED','SUPERSEDED'].includes(a.lifecycle)||a.cancellationOut||a.pendingCancellation&&a.pendingCancellation.caseId!==caseId)fail('Choose an active contract owned by this client without another cancellation reservation.',409);
  if(!a.property||!a.project||String(a.property.client)!==String(clientId))fail('Contract inventory/client links need reconciliation first.',409);
  if(a.migration&&!a.migration.activatedAt||['CANCELLED','TRANSFERRED','FORFEITED'].includes(a.migration?.historicalStatus))fail('Reconcile historical contract status before cancellation or credits.',409);
  if(['FORFEITED','APPROVED_FOR_FORFEITURE'].includes(a.forfeitureReviews?.at(-1)?.status))fail('Resolve the approved forfeiture status before cancellation or amendment.',409);

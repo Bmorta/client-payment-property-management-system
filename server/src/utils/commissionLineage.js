@@ -9,7 +9,7 @@ export async function reconcileCommissionLineage(heads,load,{verifyMissingLink}=
  async function visit(a){const id=String(a._id);if(visiting.has(id))fail('Commission lineage contains a cycle.',[{contractId:a.assignmentId}]);if(accounts.has(id))return;
   visiting.add(id);const c=a.commissionContinuation;
   const parents=c?.sourceIds||[c?.sourceId].filter(Boolean);
-  for(const parentId of parents){if(same(parentId,id))continue;const parent=await load(parentId);if(!same(parent.client,a.client))fail('Commission lineage crosses client ownership.',[{contractId:a.assignmentId,parentId}]);
+  for(const parentId of parents){if(same(parentId,id))continue;const parent=await load(parentId);if(!same(parent.client,a.client)&&!(same(parent.assumptionOut?.successorId,a._id)&&same(a.assumptionIn?.sourceId,parent._id)))fail('Commission lineage crosses client ownership without an approved assumption link.',[{contractId:a.assignmentId,parentId}]);
    if(!same(parent.commissionContinuationOut?.targetId,id)){if(!parent.commissionContinuationOut&&verifyMissingLink&&await verifyMissingLink(parent,a))repairs.push({sourceId:String(parent._id),targetId:id,sourceContract:parent.assignmentId,targetContract:a.assignmentId,records:calculateCommissions(parent,allocatePayments(parent)).records});else conflicts.push({contractId:parent.assignmentId,successor:a.assignmentId,issue:'Missing or conflicting reciprocal approved successor link'});}
    await visit(parent);
   }

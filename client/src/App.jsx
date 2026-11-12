@@ -30,6 +30,7 @@ const ReportsPage=lazy(()=>import("./pages/ReportsPage.jsx"));
 const AgentsPage=lazy(()=>import("./pages/AgentsPage.jsx"));
 const CommissionsPage=lazy(()=>import("./pages/CommissionsPage.jsx"));
 const ClientsPage=lazy(()=>import("./pages/ClientsPage.jsx"));
+const AssumptionsPage=lazy(()=>import("./pages/AssumptionsPage.jsx"));
 
 const PaymentMonitoringPage=lazy(()=>import("./pages/PaymentMonitoringPage.jsx"));
 const DashboardPage=()=> <PaymentMonitoringPage dashboard/>;
@@ -64,6 +65,7 @@ export default function App() {
               <Route path="/projects/:projectId/lots" element={<ManageLotsPage />} />
               <Route path="/agents" element={<AgentsPage/>}/>
               <Route path="/commissions" element={<CommissionsPage/>}/>
+              <Route path="/assumptions" element={<RoleRoute roles={["ADMIN","STAFF"]}><AssumptionsPage/></RoleRoute>}/>
               <Route path="/clients" element={<ClientsPage />} />
               <Route path="/clients/:clientId/accounts" element={<ClientAccountsPage/>}/>
               <Route path="/payment-transactions" element={<PaymentTransactionsPage />} />

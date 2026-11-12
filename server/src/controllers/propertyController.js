@@ -18,7 +18,7 @@ export async function listProjectProperties(req, res, next) {
     const properties = await Property.find({ project: project._id })
       .sort({ phaseNumber: 1, blockNumber: 1, lotNumber: 1 });
     const assignments = await PropertyAssignment.find({ project: project._id }).select("property lifecycle").lean();
-    const assigned = new Set(assignments.filter(a=>!["TRANSFERRED","CANCELLED","FORFEITED","SUPERSEDED"].includes(a.lifecycle)).map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
+    const assigned = new Set(assignments.filter(a=>!["TRANSFERRED","ASSUMED","CANCELLED","FORFEITED","SUPERSEDED"].includes(a.lifecycle)).map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
     res.json({ success: true, data: properties.map(p => {
       const lot = p.toJSON(); const hasAccount = assigned.has(String(p._id));
       return { ...lot, hasAccount, hasHistory:history.has(String(p._id)),canDelete: lot.canDelete && !history.has(String(p._id)) };
@@ -81,11 +81,17 @@ export async function updateProjectPropertyArea(req, res, next) {
     if (typeof areaSqm !== "number" || !Number.isFinite(areaSqm) || areaSqm <= 0) {
       return res.status(400).json({ success: false, message: "Lot area must be a positive number." });
     }
+    const existing = await Property.findOne({ _id: req.params.propertyId, project: req.params.projectId }).lean();
+    if (!existing) return res.status(404).json({ success: false, message: "Property not found." });
+    const active = await PropertyAssignment.exists({ property: existing._id, lifecycle: "ACTIVE" });
+    if (existing.client || active || existing.status !== "AVAILABLE" || ["PENDING", "REJECTED"].includes(existing.reopeningStatus)) {
+      return res.status(409).json({ success: false, message: "This lot is protected by a client, contract, or property workflow. Use the applicable contract or Reopen Lot workflow." });
+    }
     const property = await Property.findOneAndUpdate(
-      { _id: req.params.propertyId, project: req.params.projectId },
+      { _id: req.params.propertyId, project: req.params.projectId, status: "AVAILABLE", client: null, __v: existing.__v },
       { $set: { areaSqm } }, { new: true, runValidators: true }
     );
-    if (!property) return res.status(404).json({ success: false, message: "Property not found." });
+    if (!property) return res.status(409).json({ success: false, message: "The lot changed while you were editing. Refresh inventory before retrying." });
     res.json({ success: true, data: property, message: "Lot area updated." });
   } catch (error) {
     next(error);
@@ -233,9 +239,20 @@ export async function updateProjectProperties(req, res, next) {
         return res.status(400).json({ success: false, message: "Invalid lot status." });
       }
     }
-    const count = await Property.countDocuments({ project: project._id, _id: { $in: [...ids] } });
-    if (count !== updates.length) {
+    const lots = await Property.find({ project: project._id, _id: { $in: [...ids] } }).lean();
+    if (lots.length !== updates.length) {
       return res.status(404).json({ success: false, message: "One or more lots were not found in this project." });
+    }
+    const byId = new Map(lots.map(lot => [String(lot._id), lot]));
+    const blockedIds = lots.filter(lot => lot.client || lot.status !== "AVAILABLE" || ["PENDING", "REJECTED"].includes(lot.reopeningStatus)).map(lot => String(lot._id));
+    const activeAssignments = await PropertyAssignment.find({ property: { $in: blockedIds.length ? blockedIds : [...ids] }, lifecycle: "ACTIVE" }).distinct("property");
+    const protectedIds = new Set([...blockedIds, ...activeAssignments.map(String)]);
+    if (protectedIds.size) return res.status(409).json({ success: false, message: "One or more lots are connected to a client, contract, or protected workflow. No changes were saved; use the applicable contract or Reopen Lot workflow.", protectedLots: [...protectedIds] });
+    for (const update of updates) {
+      const current = byId.get(String(update._id));
+      if (update.status !== current.status && update.status === "AVAILABLE") {
+        return res.status(409).json({ success: false, message: "A lot cannot be manually returned to Available. Use the existing approved Reopen Lot workflow." });
+      }
     }
     const renumbered = updates.filter(update => update.lotNumber !== undefined);
     if (renumbered.length) {
@@ -255,13 +272,16 @@ export async function updateProjectProperties(req, res, next) {
         return res.status(409).json({ success: false, message: "That lot number already exists in this phase and block. Choose an unused number. No changes saved." });
       }
     }
-    const result = await Property.bulkWrite(updates.map(update => ({
-      updateOne: {
-        filter: { _id: update._id, project: project._id, reopeningStatus:{$nin:['PENDING','REJECTED']} },
-        update: { $inc:{__v:1}, $set: { areaSqm: update.areaSqm ?? null, status: update.status, ...(update.lotNumber !== undefined ? { lotNumber: update.lotNumber } : {}), ...(update.pricePerSqm !== undefined ? { pricePerSqm: update.pricePerSqm } : {}) } }
-      }
-    })), { ordered: true });
-    if(result.matchedCount!==updates.length)return res.status(409).json({success:false,message:'Some lots are protected by forfeiture review or changed concurrently. Refresh inventory; use Reopen Properties for protected lots. Other eligible edits may have been saved.'});
+    const session=await mongoose.startSession();let result;
+    try {
+      await session.withTransaction(async()=>{
+        result=await Property.bulkWrite(updates.map(update=>({updateOne:{
+          filter:{_id:update._id,project:project._id,status:'AVAILABLE',client:null,__v:byId.get(String(update._id)).__v,reopeningStatus:{$nin:['PENDING','REJECTED']},assumptionStatus:{$nin:['PENDING']}},
+          update:{$inc:{__v:1},$set:{areaSqm:update.areaSqm??null,status:update.status,...(update.lotNumber!==undefined?{lotNumber:update.lotNumber}:{}),...(update.pricePerSqm!==undefined?{pricePerSqm:update.pricePerSqm}:{})}}
+        }})),{ordered:true,session});
+        if(result.matchedCount!==updates.length)throw Object.assign(new Error('Some lots changed or became protected while you were editing. No changes were saved; refresh inventory and review again.'),{statusCode:409});
+      });
+    } finally { await session.endSession(); }
     res.json({ success: true, message: `${result.matchedCount} lots saved.` });
   } catch (error) {
     if (error?.code === 11000) return res.status(409).json({ success: false, message: "Lot number already exists. Some edits may have been saved; refresh inventory before retrying." });
