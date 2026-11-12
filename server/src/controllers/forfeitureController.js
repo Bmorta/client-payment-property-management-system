@@ -1,3 +1,6 @@
+import {currentPenaltyPolicy} from '../../../shared/penaltyPolicy.js';
+import Client from '../models/Client.js';
+import Project from '../models/Project.js';
 import {propertyHistoryReport} from '../../../shared/forfeitureReport.js';
 import {createHash} from 'node:crypto';
 import mongoose from 'mongoose';
@@ -10,7 +13,7 @@ import {allocatePayments} from '../utils/paymentLedger.js';
 import {reportIdentity} from '../services/companyBranding.js';
 const fail=message=>{throw Object.assign(new Error(message),{statusCode:400})};
 const actor=req=>({userId:String(req.user._id),username:req.user.username,role:req.user.role});
-export async function previewForfeiture(req,res,next){try{const p=await forfeiturePreview(req.params.id,req.body);res.json({success:true,data:{token:p.token,action:p.action,plan:p.plan,accountId:p.account._id,assignmentId:p.account.assignmentId,property:p.property,contract:p.account.contract}})}catch(e){next(e)}}
+export async function previewForfeiture(req,res,next){try{const p=await forfeiturePreview(req.params.id,req.body);const [client,project]=await Promise.all([Client.findById(p.account.client).select('clientId firstName middleName lastName suffix').lean(),Project.findById(p.account.project).select('projectId projectName').lean()]);res.json({success:true,data:{token:p.token,action:p.action,plan:p.plan,accountId:p.account._id,assignmentId:p.account.assignmentId,property:p.property,contract:p.account.contract,client,project,terms:currentPenaltyPolicy(p.account),reviewStatus:p.account.forfeitureReviews?.at(-1)?.status||null,obligations:{refundDecision:'SEPARATE_REVIEW_REQUIRED',priorCreditDisposition:p.account.forfeiturePeriods?.at(-1)?.creditDisposition||null,transferredCreditCents:p.plan.ledger?.transferCreditCents||0}}})}catch(e){next(e)}}
 export async function postForfeiture(req,res,next){try{res.json({success:true,data:await approveForfeitureAction(req.params.id,req.body,actor(req)),message:'Administrator decision saved atomically. Original receipts and financial history preserved.'})}catch(e){next(e)}}
 export async function forfeitureAccounts(req,res,next){try{
  const asOf=req.query.asOf||today();if(!validDate(asOf)||asOf>today())fail('Choose a valid reporting date no later than today.');const from=req.query.from,to=req.query.to;if(from&&!validDate(from)||to&&!validDate(to)||from&&to&&from>to)fail('Choose a valid forfeiture date range.');

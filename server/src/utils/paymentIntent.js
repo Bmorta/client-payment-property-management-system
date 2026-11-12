@@ -1,3 +1,4 @@
+import {quoteUnpaidInstallments} from '../../../shared/installmentQuote.js';
 import {currentPenaltyPolicy} from "../../../shared/penaltyPolicy.js";
 import {createHash} from 'node:crypto';
 import {allocatePayments} from './paymentLedger.js';
@@ -5,7 +6,7 @@ import {moneyCents,validDate,today} from './accounting.js';
 import {paymentRemarks} from '../../../shared/paymentRemarks.js';
 export const intentFail=(message,statusCode=400)=>{throw Object.assign(new Error(message),{statusCode})};
 export const intentHash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
-export function installmentQuote(account,date,months){const n=Number(months);if(!Number.isSafeInteger(n)||n<1||n>1200)intentFail('Enter a whole number of installment periods (1–1,200).');const ledger=allocatePayments(account,date),rows=ledger.schedule.filter(r=>r.installment>0&&r.balanceCents>0).slice(0,n);if(rows.length!==n)intentFail('The requested periods exceed the remaining unpaid installment schedule.');return {periods:rows.map(r=>({installment:r.installment,dueDate:r.dueDate,balanceCents:r.balanceCents})),amountCents:rows.reduce((s,r)=>s+r.balanceCents,0)}}
+export function installmentQuote(account,date,months){return quoteUnpaidInstallments(allocatePayments(account,date).schedule,months)}
 export function preparePaymentIntent(account,input){
  if(account.pendingCancellation||['CANCELLED','FORFEITED','SUPERSEDED'].includes(account.lifecycle))intentFail('This contract is cancelled or reserved for cancellation. Open its case history; use other active contracts for payments.',409);
  if(account.lifecycle==='TRANSFERRED')intentFail('This contract was transferred. Use its replacement account.',409);
@@ -17,6 +18,7 @@ export function preparePaymentIntent(account,input){
  if(before.outstandingPenaltyCents>0&&!['NOW','LATER'].includes(input.penaltyDecision))intentFail('Select Pay Penalty Now or Pay Penalty Later for this property.');
  if(input.penaltyDecision==='NOW'){if(!Array.isArray(input.penaltySelections)||!input.penaltySelections.length||input.penaltySelections.length>10000)intentFail('Select the penalty periods and amounts to pay now.');const seen=new Set();for(const selected of input.penaltySelections){if(!selected||typeof selected.assessmentId!=='string'||seen.has(selected.assessmentId))intentFail('Choose unique penalty assessments.');seen.add(selected.assessmentId);const a=before.assessments.find(a=>a.assessmentId===selected.assessmentId),amountCents=moneyCents(selected.amount);if(!a||!amountCents||amountCents>a.balanceCents)intentFail('Selected penalty exceeds its actual outstanding assessment.');penalties.push({assessmentId:a.assessmentId,amountCents});penaltyCents+=amountCents}}
  else if(input.penaltySelections?.length)intentFail('Pay Later must not allocate any penalty amount.');
+ if(input.monthsToPay!=null&&input.monthsToPay!==''){const quote=quoteUnpaidInstallments(before.schedule,input.monthsToPay);if((input.type||'AUTO')!=='INSTALLMENT'||principalCents!==quote.amountCents)intentFail('The months selection no longer matches the unpaid installment schedule. Refresh the amount or clear months for a manual partial payment.',409);}
  const total=principalCents+penaltyCents;if(!Number.isSafeInteger(total)||!total)intentFail('Enter a positive property payment.');const type=input.type||'AUTO';if(!['AUTO','DOWN_PAYMENT','INSTALLMENT','PENALTY'].includes(type)||type==='PENALTY'&&principalCents>0)intentFail('Choose a valid payment type and principal amount.');
  const paymentIntent={principalCents,penalties,penaltyDecision:before.outstandingPenaltyCents>0?input.penaltyDecision:'NONE'},candidate={paymentId:'PREVIEW',paymentDate:date,amountCents:total,type,paymentIntent,createdAt:new Date()};
  const effective=allocatePayments({...account,payments:[...(account.payments||[]),candidate]},date),current=allocatePayments({...account,payments:[...(account.payments||[]),candidate]}),allocations=effective.allocations.PREVIEW||[];

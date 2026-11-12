@@ -454,3 +454,27 @@ button, input, select, textarea { font: inherit; }
  .map-editor-navigation { width:100%; justify-content:flex-end; gap:4px; }
  .map-editor-navigation .btn { font-size:.7rem; padding:4px 7px; min-height:32px; }
 }
+
+/* Cashiering: the client stays in view beside the transaction, without nested scrolling. */
+.cashier-workspace {display:grid;grid-template-columns:minmax(260px,.8fr) minmax(0,1.7fr);gap:1rem;align-items:start}
+.cashier-workspace>*,.cashier-property-form,.forfeiture-review-summary {min-width:0}
+.cashier-client-panel {position:sticky;top:1rem}
+.cashier-contract input[type=checkbox] {flex:none;min-width:1.1rem;min-height:1.1rem;margin-top:.25rem}
+.cashier-facts {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:1rem;row-gap:.45rem;margin:.85rem 0;font-size:.9rem}
+.cashier-facts dt {font-weight:500;color:var(--bs-secondary-color)}
+.cashier-facts dd {text-align:right;margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.cashier-periods {background:var(--bs-tertiary-bg);border-radius:.5rem;padding:.75rem}
+.cashier-periods ul {display:flex;flex-wrap:wrap;gap:.35rem 1.5rem;margin:.5rem 0 0;padding-left:1.2rem;max-height:10rem;overflow:auto}
+.cashier-grand-total {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;border-top:1px solid var(--bs-border-color);padding-top:.8rem}
+.cashier-grand-total strong {font-size:clamp(1.5rem,3vw,2.1rem);font-variant-numeric:tabular-nums}
+.cashier-total {background:var(--bs-tertiary-bg)}
+.cashier-property-form details,.forfeiture-review-summary details {margin:.75rem 0}
+.cashier-property-form summary,.cashier-contract summary,.forfeiture-review-summary summary {cursor:pointer;padding:.4rem 0;font-weight:500}
+.cashier-receipt-modal {overflow:auto}
+.cashier-receipt-modal .modal-dialog {width:calc(100% - 1rem);margin:1rem auto}
+.cashier-receipt-modal .modal-content {max-height:calc(100dvh - 2rem)}
+.cashier-receipt-modal .modal-body {overflow:auto;min-height:0}
+.cashier-workspace button,.cashier-workspace input,.cashier-workspace select {min-height:2.5rem}
+.cashier-workspace .table td,.forfeiture-review-summary .table td {overflow-wrap:anywhere}
+@media(max-width:1023px){.cashier-workspace {grid-template-columns:minmax(0,1fr)}.cashier-client-panel {position:static}.cashier-client-panel .cashier-contract {display:block}}
+@media(max-width:390px){.cashier-workspace .card-body {padding:.75rem}.cashier-property-form {padding:.65rem!important}.cashier-facts {column-gap:.5rem}.cashier-grand-total {align-items:start;flex-direction:column}}

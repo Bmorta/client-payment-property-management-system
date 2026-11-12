@@ -1,3 +1,4 @@
+import {assertForfeitureReviewTransition} from '../../../shared/forfeitureWorkflow.js';
 import {assertFinancialCorrectionDate} from "../utils/financialCorrectionLedger.js";
 import {assertContractOperationsReady} from './databaseReadiness.js';
 import {commissionWorkflowReview} from '../utils/commissionWorkflowWarnings.js';
@@ -55,6 +56,7 @@ async function common(account,property,input,session,metadataOnly=false){
  assertFinancialCorrectionDate(account,input.effectiveDate);
  if(!validDate(input.effectiveDate)||input.effectiveDate<account.contract.contractDate||input.effectiveDate>today())fail('Choose an effective date between the original contract date and today.');
  if(!metadataOnly){
+ if((account.creditAmendments||[]).some(a=>a.effectiveDate>input.effectiveDate))fail('The effective date cannot precede an approved contract amendment.');
  if((account.payments||[]).map(effectivePayment).some(p=>p.paymentDate>input.effectiveDate)||(account.commissionPayouts||[]).map(effectivePayout).some(p=>p.releaseDate>input.effectiveDate)||(account.commissionRecoveries||[]).some(p=>p.recoveryDate>input.effectiveDate))fail('The effective date cannot precede recorded payments, payouts or recoveries.');
  if((account.forfeitureEvents||[]).filter(e=>['FORFEIT','REOPEN','REACTIVATE'].includes(e.action)).some(e=>e.effectiveDate>input.effectiveDate))fail('The effective date cannot precede an approved lifecycle decision.');
  if(account.migration?.cutoffDate&&input.effectiveDate<=account.migration.cutoffDate)fail('Lifecycle decisions within the activated historical cutoff require migration reconciliation. Choose a later effective date.');
@@ -71,7 +73,7 @@ async function common(account,property,input,session,metadataOnly=false){
 export async function forfeiturePreview(accountId,input,session=null){
  const {account,property}=await load(accountId,session),action=input.action;if(!['MARK_REVIEW','REJECT','CANCEL_REVIEW','FORFEIT','REOPEN','REJECT_REOPEN','RETURN_REOPEN','REACTIVATE'].includes(action))fail('Choose a supported forfeiture action.');const reason=note(input.reason,'Administrator reason');let plan={};
  if(['MARK_REVIEW','REJECT','CANCEL_REVIEW','FORFEIT'].includes(action)){
-  if(account.lifecycle&&account.lifecycle!=='ACTIVE')fail('Choose an active contract for forfeiture review.');const {ledger,commissions}=await common(account,property,input,session,['MARK_REVIEW','REJECT','CANCEL_REVIEW'].includes(action));plan={ledger,commissions};
+  if(account.lifecycle&&account.lifecycle!=='ACTIVE')fail('Choose an active contract for forfeiture review.');assertForfeitureReviewTransition(account,action);const {ledger,commissions}=await common(account,property,input,session,['MARK_REVIEW','REJECT','CANCEL_REVIEW'].includes(action));plan={ledger,commissions};
   if(['MARK_REVIEW','FORFEIT'].includes(action)&&ledger.riskStatus!=='FORFEITURE_REVIEW_REQUIRED')fail('Actual unpaid allocations do not meet the configured forfeiture threshold.');
   if(action==='FORFEIT'){if(!currentPenaltyPolicy(account)||currentPenaltyPolicy(account).pendingPaymentPolicy)fail('Review the actual penalty basis and contract policy before forfeiture.');if(!['UNDER_REVIEW','NOTICE_ISSUED','APPROVED_FOR_FORFEITURE','FORFEITED'].includes(account.forfeitureReviews?.at(-1)?.status))fail('Mark and review this contract before final forfeiture approval.');if(input.reviewConfirmed!==true)fail('Confirm review of contractual requirements and supporting records before forfeiture.');note(input.documentReference,'Supporting document / review reference');if(String(property.client)!==String(account.client)||!['RESERVED','SOLD','FOR_ASSUME'].includes(property.status))fail('Property assignment/status no longer matches this contract.');}
  }else{
