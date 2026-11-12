@@ -20,6 +20,7 @@ import {generateRecordId} from '../utils/generateRecordId.js';
 import {voucherGuard} from './cancellationService.js';
 import {inspectActiveContracts} from './activeContractUpgrade.js';
 import {contractIndexRequirement,databaseReadinessFail} from './backupRequirement.js';
+import {syncClientLifecycleFromContracts} from './clientLifecycleSync.js';
 const fail=message=>{throw Object.assign(new Error(message),{statusCode:409})};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const q=(query,session)=>query.session(session||null);
@@ -119,5 +120,7 @@ export async function approveForfeitureAction(accountId,body,actor){
   const update={$set:{...set,notifications:(a.notifications||[]).map(n=>n.monitoringAlert?{...n,active:false,resolvedAt:stamp}:n)},$push:{...push,notifications:{$each:[]}},$inc:{__v:1}};delete update.$push.notifications;update.$set.notifications.push(...['ADMIN','STAFF'].map(recipient=>({id:event.eventId+':'+recipient,recipient,contractLifecycleAlert:true,eventOnly:true,status:action,message:`${a.assignmentId}: ${action.replaceAll('_',' ')}`,href:'/clients/'+a.client+'/accounts?account='+String(replacementId||a._id),createdAt:stamp,readBy:[]})));if(Object.keys(unset).length)update.$unset=unset;
   const saved=await PropertyAssignment.updateOne({_id:a._id,__v:a.__v,'forfeitureEvents.requestId':{$ne:body.requestId}},update,{session,runValidators:true});if(saved.modifiedCount!==1)fail('Contract changed. No coordinated changes were committed.');
   if(Object.keys(lotSet).length){const changed=await Property.updateOne({_id:property._id,__v:property.__v},{$set:lotSet,$push:{history:{...event,contractId:a.assignmentId,client:a.client}},$inc:{__v:1}},{session,runValidators:true});if(changed.modifiedCount!==1)fail('Lot availability changed. Entire approval rolled back.');}
+  if(action==='FORFEIT')await syncClientLifecycleFromContracts(a.client,actor,'Contract forfeited',session);
+  if(action==='REACTIVATE')await syncClientLifecycleFromContracts(a.client,actor,'Contract reactivated',session);
  };if(session)await session.withTransaction(execute);else await execute();return result;}finally{if(session)await session.endSession()}
 }

@@ -2,7 +2,7 @@ import {correctionOptions,previewFinancialCorrection,approveFinancialCorrection}
 import {cashOffice,listOfficeReviews,createOfficeReview,officeReviewAction} from '../controllers/cashOfficeController.js';
 import {cancellationCommissionReview} from '../controllers/commissionReviewController.js';
 import {reviewSettlement,verifySettlement,settlementCertificate,settlementReport} from '../controllers/settlementController.js';
-import {previewForfeiture,postForfeiture,forfeitureAccounts,propertyLifecycleHistory} from '../controllers/forfeitureController.js';
+import {previewForfeiture,postForfeiture,forfeitureAccounts,propertyLifecycleHistory,releaseCancelledProperty} from '../controllers/forfeitureController.js';
 import {cashHistoryExport} from "../controllers/cashHistoryExportController.js";
 import {paymentAcknowledgement} from "../controllers/paymentAcknowledgementController.js";
 import {addOfficeCash} from "../controllers/cashAdditionController.js";
@@ -54,6 +54,7 @@ router.post('/accounts/:id/forfeiture-actions',authorize('ADMIN'),postForfeiture
 router.get("/accounts/:id/financial-corrections",authorize("ADMIN"),correctionOptions);
 router.post("/accounts/:id/financial-corrections/preview",authorize("ADMIN"),previewFinancialCorrection);
 router.post("/accounts/:id/financial-corrections",authorize("ADMIN"),approveFinancialCorrection);
+router.post('/accounts/:id/cancelled-property-release',authorize('ADMIN'),releaseCancelledProperty);
 router.use("/accounts/:id",accountLifecycleGuard);
 router.get("/lot-transfer-options",authorize("ADMIN"),transferOptions);
 router.post("/accounts/:id/lot-transfer/preview",authorize("ADMIN"),previewLotTransfer);

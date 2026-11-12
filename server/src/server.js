@@ -2,6 +2,7 @@ import {startBackupScheduler} from "./services/databaseMaintenance.js";
 import {inspectDatabaseReadiness} from "./services/databaseReadiness.js";
 import "dotenv/config";
 import {startMonitoring} from "./services/monitoringService.js";
+import {repairClosedContractStatuses} from "./services/clientLifecycleSync.js";
 import mongoose from "mongoose";
 import app from "./app.js";
 
@@ -22,6 +23,8 @@ const startServer = async () => {
       const readiness=await inspectDatabaseReadiness({record:true,probe:true});
       console.log('Database readiness: '+readiness.status);
       if(!readiness.ready)console.warn(readiness.issues.join(' ')+' Open Administration → System Health & Database Readiness. No migration ran.');
+      if(readiness.contractReady){const repair=await repairClosedContractStatuses();if(repair.repaired||repair.lotsReturnedToReview)console.log(`Repaired ${repair.repaired} legacy closed-contract status record(s) and returned ${repair.lotsReturnedToReview} legacy cancelled lot(s) to property-release review.`)}
+      else console.warn('Closed-contract status reconciliation deferred until contract schema readiness is verified.');
     } catch {console.warn('Database readiness could not be verified. Open System Health & Database Readiness. No migration ran.');}
     startMonitoring();
     startBackupScheduler();

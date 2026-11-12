@@ -78,6 +78,7 @@ export const updateClient = async (req, res, next) => {
   try {
     const client = await Client.findById(req.params.id);
     if (!client || client.deletedAt) return res.status(404).json({ success: false, message: "Client not found." });
+    if (req.body.status === 'INACTIVE' && await PropertyAssignment.exists({ client: client._id, $or: [{ lifecycle: 'ACTIVE' }, { lifecycle: { $exists: false } }] })) return res.status(409).json({ success: false, message: 'This client still has an active contract. Close or transfer the contract through its approved workflow before deactivating the client.' });
     if (req.body.clientId !== undefined && req.body.clientId !== client.clientId) return res.status(400).json({ success: false, message: "Client ID cannot be changed." });
     const fields = ["firstName","middleName","lastName","suffix","contactNumber","email","address","notes","status"];
     for (const field of fields) {
