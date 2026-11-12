@@ -41,6 +41,7 @@ export default function AppLayout(){
  useEffect(()=>{const mq=window.matchMedia?.("(min-width: 1200px)");const change=e=>{if(e.matches)setOpen(false)};mq?.addEventListener("change",change);return()=>mq?.removeEventListener("change",change)},[]);
  return <div className={`app-shell${open?" menu-open":""}${compact?" sidebar-compact":""}${compact&&peek?" sidebar-peek":""}`}>
   <a className="skip-link" href="#workspace-content">Skip to content</a>
+  {import.meta.env.VITE_REMS_TEST_MODE==='true'&&<div className="alert alert-warning rounded-0 mb-0 py-2 text-center fw-semibold" role="status">TEST MODE — isolated fictional data only</div>}
   {open&&<button type="button" className="sidebar-backdrop" tabIndex={-1} aria-label="Close navigation overlay" onClick={close}/>}
   <aside ref={sidebar} id="workspace-navigation" className="app-sidebar" role={open?"dialog":undefined} aria-modal={open?true:undefined} aria-label="Main navigation" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget))setPeek(false)}}>
    <div className="sidebar-brand"><NavLink to="/" className="brand-link" onClick={()=>setOpen(false)}><REMSIcon size={40} decorative/><span className="brand-copy">REMS<span className="brand-subtitle">Real Estate Management System</span></span></NavLink><button type="button" className="icon-button sidebar-close" aria-label="Close navigation" onClick={close}><NavIcon name="close"/></button></div>

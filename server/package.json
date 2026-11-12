@@ -9,7 +9,10 @@
     "test": "node --test",
     "seed:admin": "node src/scripts/seedAdmin.js",
     "test:integration": "node --test integration/payment-flow.test.js",
-    "test:migration": "node --test integration/historical-migration.test.js"
+    "test:migration": "node --test integration/historical-migration.test.js",
+    "testdata:seed": "node src/scripts/remsTestData.js seed",
+    "testdata:reset": "node src/scripts/remsTestData.js reset",
+    "testdata:migration-samples": "node src/scripts/generateMigrationTestSamples.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
