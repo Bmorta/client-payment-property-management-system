@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import FeedbackMessage from "./FeedbackMessage.jsx";
 import PagedAccountPenalties from "./PagedAccountPenalties.jsx";
 import Pagination from "./Pagination.jsx";
@@ -14,8 +15,8 @@ import ClientPenaltyOverview from './ClientPenaltyOverview.jsx';
 import {pesos,lotName,localDate} from '../utils/finance.js';
 import {clientPenaltyDocument,printAccountDocument} from '../utils/printAccountReports.js';
 export default function ClientPenaltyWorkspace({clientId,mode='history',refreshKey=0}){
- const {user}=useAuth();const [limit,setLimit]=useState(25);
- const [filters,setFilters]=useState({property:'',month:'',status:'ALL',q:'',sort:'DESC',asOf:localDate()}),[page,setPage]=useState(1),[groupPage,setGroupPage]=useState(1),[data,setData]=useState(null),[error,setError]=useState(''),[preview,setPreview]=useState(null),[busy,setBusy]=useState(false),[receipt,setReceipt]=useState(null),[version,setVersion]=useState(0),[expanded,setExpanded]=useState(null),[cyclePage,setCyclePage]=useState(1);
+ const {user}=useAuth();const [limit,setLimit]=usePageState("ClientPenaltyWorkspace.jsx:ClientPenaltyWorkspace:limit",25,clientId+':'+mode);
+ const [filters,setFilters]=usePageState("ClientPenaltyWorkspace.jsx:ClientPenaltyWorkspace:filters",{property:'',month:'',status:'ALL',q:'',sort:'DESC',asOf:localDate()},clientId+':'+mode),[page,setPage]=usePageState("ClientPenaltyWorkspace.jsx:ClientPenaltyWorkspace:page",1,clientId+':'+mode),[groupPage,setGroupPage]=useState(1),[data,setData]=useState(null),[error,setError]=useState(''),[preview,setPreview]=useState(null),[busy,setBusy]=useState(false),[receipt,setReceipt]=useState(null),[version,setVersion]=useState(0),[expanded,setExpanded]=useState(null),[cyclePage,setCyclePage]=useState(1);
  const key=JSON.stringify({...filters,page,limit,groupPage});useEffect(()=>{let live=true;setData(null);const t=setTimeout(()=>api.get(`/finance/clients/${clientId}/penalties`,{params:{...filters,page,limit,groupPage}}).then(r=>{if(live){setData(r.data.data);setError('')}}).catch(e=>{if(live)setError(e.response?.data?.message||'Unable to load penalty records.')}),200);return()=>{live=false;clearTimeout(t)}},[clientId,key,refreshKey,version]);
  const set=(k,v)=>{setFilters(f=>({...f,[k]:v}));setPage(1);setGroupPage(1);setExpanded(null);setPreview(null)};
  const open=async()=>{setBusy(true);try{const r=await api.get(`/finance/clients/${clientId}/penalties`,{params:{...filters,all:1,expectedSnapshot:data.snapshot}});setPreview(r.data.data)}catch(e){setError(e.response?.data?.message||'Refresh the report before previewing.')}finally{setBusy(false)}};

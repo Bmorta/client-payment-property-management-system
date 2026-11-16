@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import {Link} from 'react-router-dom';
 import CloseButton from "../components/CloseButton.jsx";
 import {filterInventory} from "../../../shared/inventoryFilters.js";
@@ -34,8 +35,8 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
   const [generator, setGenerator] = useState("");
   const [selectedPhase, setSelectedPhase] = useState("");
   const [selectedBlock, setSelectedBlock] = useState("");
-  const [filters, setFilters] = useState({ phase: "", block: "", lot: "", status: "" });
-  const [page,setPage]=useState(1),[limit,setLimit]=useState(25);
+  const [filters, setFilters] = usePageState("PropertyInventory.jsx:filters",{ phase: "", block: "", lot: "", status: "" },project?._id||'all');
+  const [page,setPage]=usePageState("PropertyInventory.jsx:page",1,project?._id||'all'),[limit,setLimit]=usePageState("PropertyInventory.jsx:limit",25,project?._id||'all');
   useEffect(()=>{if(externalFilters)setFilters(f=>({...f,...externalFilters}))},[JSON.stringify(externalFilters)]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);

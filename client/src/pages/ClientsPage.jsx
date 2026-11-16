@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import {MultiSelectFilter} from "../components/PaymentMethodFilter.jsx";
 import {CLIENT_ACCOUNT_STATUSES} from "../../../shared/clientAccountStatuses.js";
 import ClientLookup from "../components/ClientLookup.jsx";
@@ -23,11 +24,11 @@ const blank={clientId:"",firstName:"",middleName:"",lastName:"",suffix:"",contac
 export default function ClientsPage(){
  const {user}=useAuth(),canManage=["ADMIN","STAFF"].includes(user?.role);
  const [deleted,setDeleted]=useState(false),[deleteTarget,setDeleteTarget]=useState(null),[deleteReason,setDeleteReason]=useState(''),[deleteConfirm,setDeleteConfirm]=useState(false);
- const [accountStatuses,setAccountStatuses]=useState([]);
- const [statusFilter,setStatusFilter]=useState("ACTIVE"),[statusTarget,setStatusTarget]=useState(null);
- const [params]=useSearchParams();const navigate=useNavigate(),workspace=params.get("workspace"),workspaceTitle=({accounts:"Contracts & Accounts",transfers:"Lot Transfers",cancellations:"Cancellations, Credits & Refunds"})[workspace];const [page,setPage]=useState(1),[total,setTotal]=useState(0);const loadCounter=useRef(0);
+ const [accountStatuses,setAccountStatuses]=usePageState("ClientsPage.jsx:accountStatuses",[],'');
+ const [statusFilter,setStatusFilter]=usePageState("ClientsPage.jsx:statusFilter","ACTIVE",''),[statusTarget,setStatusTarget]=useState(null);
+ const [params]=useSearchParams();const navigate=useNavigate(),workspace=params.get("workspace"),workspaceTitle=({accounts:"Contracts & Accounts",transfers:"Lot Transfers",cancellations:"Cancellations, Credits & Refunds"})[workspace];const [page,setPage]=usePageState("ClientsPage.jsx:page",1,''),[total,setTotal]=useState(0);const loadCounter=useRef(0);
  const [assignment,setAssignment]=useState(blankAssignment),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[version,setVersion]=useState(0);
- const [clients,setClients]=useState([]),[form,setForm]=useState(blank),[editing,setEditing]=useState(null),[query,setQuery]=useState(""),[message,setMessage]=useState(""),[error,setError]=useState(""),[loading,setLoading]=useState(true);
+ const [clients,setClients]=useState([]),[form,setForm]=useState(blank),[editing,setEditing]=useState(null),[query,setQuery]=usePageState("ClientsPage.jsx:query","",''),[message,setMessage]=useState(""),[error,setError]=useState(""),[loading,setLoading]=useState(true);
  const load=async()=>{const request=++loadCounter.current;try{setLoading(true);const {data}=await api.get("/clients",{params:{deleted:deleted?1:undefined,q:query,status:statusFilter,accountStatuses:accountStatuses.join(","),page,limit:25,penalties:1}});if(request===loadCounter.current){setClients(data.data);setTotal(data.total)}}catch(e){if(request===loadCounter.current)setError(e.response?.data?.message||"Unable to load clients.")}finally{if(request===loadCounter.current)setLoading(false)}};
  useEffect(()=>{const timer=setTimeout(load,200);return()=>{clearTimeout(timer);loadCounter.current++}},[query,page,statusFilter,accountStatuses,deleted]);
  const reset=()=>{setForm(blank);setEditing(null)};

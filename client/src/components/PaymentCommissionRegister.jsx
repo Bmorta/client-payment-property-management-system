@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import FeedbackMessage from "./FeedbackMessage.jsx";
 import {useState} from 'react';
 import api from '../services/api.js';
@@ -5,7 +6,7 @@ import {pesos} from '../utils/finance.js';
 import {paymentRegisterPrintDocument} from '../utils/printPaymentRegister.js';
 import {reportLogoHtml} from '../utils/reportBrand.js';
 export default function PaymentCommissionRegister({filters}){
- const [data,setData]=useState(null),[scope,setScope]=useState(null),[page,setPage]=useState(1),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [data,setData]=useState(null),[scope,setScope]=useState(null),[page,setPage]=usePageState("PaymentCommissionRegister.jsx:page",1,''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const open=async()=>{setBusy(true);setError('');try{const r=await api.get('/finance/reports/payment-register',{params:{...filters,page:1}});setData(r.data.data);setScope({...filters});setPage(1)}catch(e){setError(e.response?.data?.message||'Unable to preview register.')}finally{setBusy(false)}};
  const navigate=async n=>{setBusy(true);try{const r=await api.get('/finance/reports/payment-register',{params:{...scope,page:n,expectedSnapshot:data.snapshot}});setData(r.data.data);setPage(n)}catch(e){setError(e.response?.data?.message||'Register changed. Reopen the preview.')}finally{setBusy(false)}};
  const exportData=async kind=>{setBusy(true);setError('');try{

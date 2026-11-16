@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import {useSearchParams} from "react-router-dom";
 import CenterPopup from "../components/CenterPopup.jsx";
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
@@ -230,10 +231,10 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [success, setSuccess] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePageState("UsersPage.jsx:search","",'');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [statusFilter,setStatusFilter]=useState(""),[statusTarget,setStatusTarget]=useState(null),[statusBusy,setStatusBusy]=useState(false);
+  const [statusFilter,setStatusFilter]=usePageState("UsersPage.jsx:statusFilter","",''),[statusTarget,setStatusTarget]=useState(null),[statusBusy,setStatusBusy]=useState(false);
 
   const loadUsers = async () => {
     try {

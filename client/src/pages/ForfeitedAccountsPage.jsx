@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import {useEffect,useState} from 'react';
 import {Link,useLocation} from 'react-router-dom';
 import api from '../services/api.js';
@@ -10,7 +11,7 @@ import {reportCompanyHeader} from '../utils/reportBrand.js';
 const summaryLabels={totalForfeitedProperties:'Total Forfeited Properties',pendingReopening:'Pending Reopening',over90:'Forfeited Over 90 Days',over180:'Forfeited Over 180 Days',approvedReopened:'Approved for Reopening',reactivated:'Reactivated Contracts',replacementContracts:'Replacement Contracts'};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export default function ForfeitedAccountsPage(){
- const location=useLocation(),reopen=location.pathname==='/reopen-properties';const [filters,setFilters]=useState({q:'',project:'',phase:'',block:'',lot:'',status:'',duration:'',from:'',to:'',sort:'LONGEST'}),[page,setPage]=useState(1),[data,setData]=useState(null),[selected,setSelected]=useState(null),[projects,setProjects]=useState([]),[version,setVersion]=useState(0),[error,setError]=useState(''),[message,setMessage]=useState(''),[report,setReport]=useState(null),[busy,setBusy]=useState(false);
+ const location=useLocation(),reopen=location.pathname==='/reopen-properties';const [filters,setFilters]=usePageState("ForfeitedAccountsPage.jsx:filters",{q:'',project:'',phase:'',block:'',lot:'',status:'',duration:'',from:'',to:'',sort:'LONGEST'},''),[page,setPage]=usePageState("ForfeitedAccountsPage.jsx:page",1,''),[data,setData]=useState(null),[selected,setSelected]=useState(null),[projects,setProjects]=useState([]),[version,setVersion]=useState(0),[error,setError]=useState(''),[message,setMessage]=useState(''),[report,setReport]=useState(null),[busy,setBusy]=useState(false);
  const change=(key,value)=>{setFilters(f=>({...f,[key]:value}));setPage(1);setReport(null)};
  useEffect(()=>{setFilters(f=>({...f,status:reopen?'PENDING':''}));setPage(1);setSelected(null)},[reopen]);
  useEffect(()=>{const timer=setInterval(()=>setVersion(v=>v+1),60000);return()=>clearInterval(timer)},[]);

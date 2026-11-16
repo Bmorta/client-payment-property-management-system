@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import {useEffect,useState} from 'react';
 import {Link} from 'react-router-dom';
 import api from '../services/api.js';
@@ -7,7 +8,7 @@ import {pesos,clientName,lotName} from '../utils/finance.js';
 import {settlementReportDocument} from '../utils/settlementDocuments.js';
 import {printAccountDocument} from '../utils/printAccountReports.js';
 const labels={accounts:'Matching Contracts',paying:'Active / Paying',principalFullyPaid:'Principal Fully Paid',settled:'Fully Settled',thisMonth:'Settled This Month',thisYear:'Settled This Year',outstandingCharges:'With Outstanding Charges'};
-export default function SettlementPage(){const [filters,setFilters]=useState({q:'',project:'',phase:'',block:'',lot:'',status:'ALL',from:'',to:'',direction:'desc'}),[page,setPage]=useState(1),[data,setData]=useState(null),[projects,setProjects]=useState([]),[error,setError]=useState(''),[preview,setPreview]=useState(null),[version,setVersion]=useState(0),[busy,setBusy]=useState(false);const change=(k,v)=>{setFilters(f=>({...f,[k]:v}));setPage(1);setPreview(null)};
+export default function SettlementPage(){const [filters,setFilters]=usePageState("SettlementPage.jsx:filters",{q:'',project:'',phase:'',block:'',lot:'',status:'ALL',from:'',to:'',direction:'desc'},''),[page,setPage]=usePageState("SettlementPage.jsx:page",1,''),[data,setData]=useState(null),[projects,setProjects]=useState([]),[error,setError]=useState(''),[preview,setPreview]=useState(null),[version,setVersion]=useState(0),[busy,setBusy]=useState(false);const change=(k,v)=>{setFilters(f=>({...f,[k]:v}));setPage(1);setPreview(null)};
  useEffect(()=>{api.get('/projects').then(r=>setProjects(r.data.data)).catch(()=>setError('Unable to load projects.'))},[]);
  useEffect(()=>{let active=true;const timer=setTimeout(()=>api.get('/finance/settlements',{params:{...filters,page}}).then(r=>{if(active)setData(r.data.data)}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to load settlement accounts.')}),200);return()=>{active=false;clearTimeout(timer)}},[JSON.stringify(filters),page,version]);
  const loadPreview=async()=>{setBusy(true);try{setPreview({...(await api.get('/finance/settlements',{params:{...filters,all:1}})).data.data,filters})}catch(e){setError(e.response?.data?.message||'Unable to preview report.')}finally{setBusy(false)}};

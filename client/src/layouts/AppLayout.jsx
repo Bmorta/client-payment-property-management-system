@@ -1,3 +1,4 @@
+import SmartBackButton from '../components/SmartBackButton.jsx';
 import {topDialog} from '../utils/dialogStack.js';
 import AppearanceSelect from '../components/AppearanceSelect.jsx';
 import REMSIcon from "../components/REMSIcon.jsx";
@@ -58,7 +59,7 @@ export default function AppLayout(){
   </aside>
   <div className="app-workspace">
    <header className="workspace-header"><div className="workspace-heading"><button ref={menuButton} type="button" className="icon-button menu-toggle" aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded={open} onClick={()=>setOpen(true)}><NavIcon name="menu"/></button><div><p className="workspace-eyebrow">REMS · Office workspace</p><span className="workspace-title">{title}</span></div></div><div className="workspace-tools"><FeatureSearch/><div className="header-clock"><HeaderClock/><span className="header-timezone">Philippine Standard Time</span></div><AppearanceSelect compact/><NotificationBell/><span className="header-avatar user-avatar" title={user?.fullName} aria-hidden="true">{initials}</span></div></header>
-   <div id="workspace-content" className="workspace-content" tabIndex={-1}><Outlet/></div>
+   <div id="workspace-content" className="workspace-content" tabIndex={-1}><div className="mb-3">{!/^\/(clients\/[^/]+\/accounts|projects\/[^/]+\/lots|property-history)$/.test(pathname)&&<SmartBackButton/>}</div><Outlet/></div>
   </div>
  </div>;
 }

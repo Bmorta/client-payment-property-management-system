@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import StatusBadge from '../components/StatusBadge.jsx';
 import {useEffect,useState} from 'react';
@@ -6,7 +7,7 @@ import {useAuth} from '../context/AuthContext.jsx';
 import FieldLabel,{RequiredNote} from '../components/FieldLabel.jsx';
 const encode=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file)});
 export default function CompaniesPage(){
- const {user}=useAuth(),admin=user?.role==='ADMIN';const [rows,setRows]=useState([]),[projects,setProjects]=useState([]),[q,setQ]=useState(''),[direction,setDirection]=useState('asc'),[version,setVersion]=useState(0),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[form,setForm]=useState(null),[file,setFile]=useState(null),[logoUrl,setLogoUrl]=useState(''),[removeLogo,setRemoveLogo]=useState(false),[confirm,setConfirm]=useState(null),[mapping,setMapping]=useState(null),[selected,setSelected]=useState([]),[reason,setReason]=useState('');
+ const {user}=useAuth(),admin=user?.role==='ADMIN';const [rows,setRows]=useState([]),[projects,setProjects]=useState([]),[q,setQ]=usePageState("CompaniesPage.jsx:q",'',''),[direction,setDirection]=useState('asc'),[version,setVersion]=useState(0),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[form,setForm]=useState(null),[file,setFile]=useState(null),[logoUrl,setLogoUrl]=useState(''),[removeLogo,setRemoveLogo]=useState(false),[confirm,setConfirm]=useState(null),[mapping,setMapping]=useState(null),[selected,setSelected]=useState([]),[reason,setReason]=useState('');
  useEffect(()=>{let active=true;const timer=setTimeout(()=>api.get('/companies',{params:{q,direction}}).then(r=>{if(active)setRows(r.data.data)}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to load companies.')}),200);return()=>{active=false;clearTimeout(timer)}},[q,direction,version]);
  useEffect(()=>{if(admin)api.get('/projects').then(r=>setProjects(r.data.data)).catch(()=>setError('Unable to load projects.'))},[admin]);
  useEffect(()=>()=>{if(logoUrl)URL.revokeObjectURL(logoUrl)},[logoUrl]);

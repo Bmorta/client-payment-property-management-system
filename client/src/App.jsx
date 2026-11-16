@@ -1,3 +1,4 @@
+import {NavigationHistoryProvider} from './context/NavigationHistoryContext.jsx';
 import {AppearanceProvider} from './context/AppearanceContext.jsx';
 import AppearancePage from './pages/AppearancePage.jsx';
 import BackupRequirementNotice from './components/BackupRequirementNotice.jsx';
@@ -52,7 +53,7 @@ const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
 export default function App() {
   return (
     <AuthProvider><AppearanceProvider>
-      <BrowserRouter><BackupRequirementNotice/><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
+      <BrowserRouter><NavigationHistoryProvider><BackupRequirementNotice/><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
@@ -85,7 +86,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Suspense></BrowserRouter>
+      </Suspense></NavigationHistoryProvider></BrowserRouter>
     </AppearanceProvider></AuthProvider>
   );
 }

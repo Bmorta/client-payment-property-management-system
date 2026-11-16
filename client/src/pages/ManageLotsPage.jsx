@@ -1,3 +1,4 @@
+import SmartBackButton from '../components/SmartBackButton.jsx';
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import ProjectMap from "../components/ProjectMap.jsx";
 import { useEffect, useState } from "react";
@@ -44,7 +45,7 @@ export default function ManageLotsPage() {
           <StatusBadge status={project.status} />
         </div>}
       </div>
-      <Link className="btn btn-outline-secondary" to="/projects">Back to Project List</Link>
+      <SmartBackButton fallback="/projects"/>
     </div>
 
     {loading && <p className="text-secondary" role="status">Loading project...</p>}

@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
 import SearchInput from '../components/SearchInput.jsx';
 import FieldLabel from '../components/FieldLabel.jsx';
@@ -11,8 +12,8 @@ import {pesos,clientName,lotName,downloadCsv,localDate} from '../utils/finance.j
 import {printFinancialReport} from '../utils/printFinancialReport.js';
 export default function PaymentTransactionsPage(){
  const [params]=useSearchParams();
- const [version,setVersion]=useState(0),[origin,setOrigin]=useState('');
- const [query,setQuery]=useState(params.get('q')||''),[receipt,setReceipt]=useState(params.get('receipt')||''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[methods,setMethods]=useState([]),[project,setProject]=useState(''),[projects,setProjects]=useState([]),[client,setClient]=useState(null),[status,setStatus]=useState(''),[sort,setSort]=useState('date'),[direction,setDirection]=useState('desc'),[page,setPage]=useState(1),[data,setData]=useState(null),[loading,setLoading]=useState(true),[exporting,setExporting]=useState(false),[error,setError]=useState('');
+ const [version,setVersion]=useState(0),[origin,setOrigin]=usePageState("PaymentTransactionsPage.jsx:origin",'','');
+ const [query,setQuery]=usePageState("PaymentTransactionsPage.jsx:query",params.get('q')||'',''),[receipt,setReceipt]=usePageState("PaymentTransactionsPage.jsx:receipt",params.get('receipt')||'',''),[from,setFrom]=usePageState("PaymentTransactionsPage.jsx:from",'',''),[to,setTo]=usePageState("PaymentTransactionsPage.jsx:to",'',''),[methods,setMethods]=usePageState("PaymentTransactionsPage.jsx:methods",[],''),[project,setProject]=usePageState("PaymentTransactionsPage.jsx:project",'',''),[projects,setProjects]=useState([]),[client,setClient]=useState(null),[status,setStatus]=usePageState("PaymentTransactionsPage.jsx:status",'',''),[sort,setSort]=usePageState("PaymentTransactionsPage.jsx:sort",'date',''),[direction,setDirection]=useState('desc'),[page,setPage]=usePageState("PaymentTransactionsPage.jsx:page",1,''),[data,setData]=useState(null),[loading,setLoading]=useState(true),[exporting,setExporting]=useState(false),[error,setError]=useState('');
  const filters={origin,paged:1,q:query,receipt,from,to,methods:methods.join(','),project,client:client?._id||'',status,sort,direction},key=JSON.stringify({...filters,page,version});
  useEffect(()=>{let active=true;api.get('/projects').then(r=>{if(active)setProjects(r.data.data)}).catch(()=>{});return()=>{active=false}},[]);
  useEffect(()=>{let active=true;setLoading(true);setData(null);setError('');const timer=setTimeout(()=>api.get('/finance/payments',{params:{...filters,page}}).then(r=>{if(active)setData(r.data.data)}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to load transactions. Check the filters.')} ).finally(()=>{if(active)setLoading(false)}),250);return()=>{active=false;clearTimeout(timer)}},[key]);

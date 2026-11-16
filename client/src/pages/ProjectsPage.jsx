@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import CenterPopup from "../components/CenterPopup.jsx";
 import {useAuth} from "../context/AuthContext.jsx";
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
@@ -14,8 +15,8 @@ const initialForm = { projectId:"", projectName:"", projectCode:"", description:
 
 export default function ProjectsPage() {
   const {user}=useAuth(),canManage=["ADMIN","STAFF"].includes(user?.role);
-  const [pendingStatus,setPendingStatus]=useState(null),[saving,setSaving]=useState(false),[statusFilter,setStatusFilter]=useState("");
-  const [query,setQuery]=useState("");
+  const [pendingStatus,setPendingStatus]=useState(null),[saving,setSaving]=useState(false),[statusFilter,setStatusFilter]=usePageState("ProjectsPage.jsx:statusFilter","",'');
+  const [query,setQuery]=usePageState("ProjectsPage.jsx:query","",'');
   const [projects,setProjects]=useState([]), [form,setForm]=useState(initialForm);
   const [editingId,setEditingId]=useState(null), [message,setMessage]=useState(""), [error,setError]=useState(""), [loading,setLoading]=useState(true);
   const loadProjects=async()=>{try{setLoading(true);const {data}=await api.get("/projects");setProjects(data.data)}catch(e){setError(e.response?.data?.message||"Unable to load projects.")}finally{setLoading(false)}};

@@ -1,3 +1,4 @@
+import {usePageState} from '../hooks/usePageState.js';
 import SiteRequestDashboard from '../components/SiteRequestDashboard.jsx';
 import {SettlementBadge} from '../components/SettlementReview.jsx';
 import FeedbackMessage from "../components/FeedbackMessage.jsx";
@@ -12,7 +13,7 @@ import {clientName,lotName,pesos,localDate} from "../utils/finance.js";
 export default function PaymentMonitoringPage({dashboard=false}){
  const [forfeitureStats,setForfeitureStats]=useState(null);
  const [showPenalty,setShowPenalty]=useState(false);
- const [data,setData]=useState(null),[project,setProject]=useState(""),[projects,setProjects]=useState([]),[asOf,setAsOf]=useState(localDate),[status,setStatus]=useState(""),[version,setVersion]=useState(0),[error,setError]=useState("");
+ const [data,setData]=useState(null),[project,setProject]=usePageState("PaymentMonitoringPage.jsx:project","",''),[projects,setProjects]=useState([]),[asOf,setAsOf]=useState(localDate),[status,setStatus]=usePageState("PaymentMonitoringPage.jsx:status","",''),[version,setVersion]=useState(0),[error,setError]=useState("");
  useEffect(()=>{let active=true;api.get("/projects").then(r=>{if(active)setProjects(r.data.data)}).catch(()=>{});return()=>{active=false}},[]);
  useEffect(()=>{let active=true;api.get("/finance/monitoring",{params:{project,asOf,status}}).then(r=>{if(active){setData(r.data.data);setError("")}}).catch(e=>{if(active)setError(e.response?.data?.message||"Unable to load monitoring.")});return()=>{active=false}},[project,asOf,status,version]);
  useEffect(()=>{const refresh=()=>{if(document.visibilityState!=="hidden")setVersion(v=>v+1)},timer=setInterval(refresh,60000);window.addEventListener("cpm:financial-data-changed",refresh);return()=>{clearInterval(timer);window.removeEventListener("cpm:financial-data-changed",refresh)}},[]);
