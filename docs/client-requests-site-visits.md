@@ -58,3 +58,12 @@ Unit and mocked service tests cover actual property ownership, unrelated propert
 The opt-in HTTP/MongoDB integration test uses REMS_SITE_REQUEST_TEST_URI, creates a separate randomly named rems_site_requests_test_ database and removes only that disposable database. It does not load the office connection from .env. It covers HTTP roles, booking conflict, report completion, file roundtrip, prospect requests and audit persistence. No isolated MongoDB binary/URI was available here, so this test was skipped rather than executed on office data.
 
 Actual browser usability, native print output, real replica-set concurrency, large-volume performance and office-device behavior still need acceptance testing. No browser session or running office service was touched. This module records requests; it is not a construction permit, legal boundary certification, financial approval or automated site dispatch service.
+
+## Simplified registration form
+New Request opens a keyboard-accessible three-step dialog: request details; client/agent/property; preferences and review. Required fields are marked, each step validates before proceeding, and focus moves into each step. Location is optional. Put extra instructions in Request Description; existing remarks remain preserved and readable.
+
+Site Tripping supports an existing client or manually entered prospect, and an existing authorized agent or manually entered unregistered agent name. Manual names do not create client or agent records or grant permissions. Other property request types still require the actual client's active property account. Confirmed scheduling, personnel assignments and notifications follow the existing workflow.
+
+History uses readable activity/status wording and structured details instead of raw database JSON. The immutable underlying history remains intact.
+
+Validation: targeted request/notification tests and production frontend build. Live browser, keyboard, and office workflow acceptance testing remains necessary.

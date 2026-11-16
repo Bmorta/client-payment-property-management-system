@@ -12,3 +12,6 @@ const transitions={NEW:['FOR_SCHEDULING','ON_HOLD','CANCELLED','REJECTED'],FOR_S
 export function assertRequestTransition(current,next){if(!transitions[current]?.includes(next))throw Object.assign(new Error('This request cannot move from '+current+' to '+next+'. Refresh its history.'),{statusCode:409})}
 
 export const nextRequestStatuses=current=>transitions[current]||[];
+
+export const requestStatusLabel=value=>({NEW:'New request',FOR_SCHEDULING:'For scheduling',SCHEDULED:'Scheduled',ASSIGNED:'Assigned',IN_PROGRESS:'In progress',COMPLETED:'Completed',ON_HOLD:'On hold',RESCHEDULED:'Rescheduled',CANCELLED:'Cancelled',REJECTED:'Rejected'})[value]||'Request updated';
+export const requestActivityLabel=event=>({NEW_REQUEST:'Request created',EDIT:'Request details updated',SCHEDULE:'Visit scheduled',RESCHEDULE:'Schedule changed',ASSIGN:'Assigned to field staff',REPORT:'Visit report submitted',ATTACHMENT_ADDED:'Supporting document added',STATUS:({COMPLETED:'Request completed',CANCELLED:'Request cancelled',REJECTED:'Request rejected',IN_PROGRESS:'Visit started',ON_HOLD:'Request put on hold',FOR_SCHEDULING:'Sent for scheduling'})[event.status]||'Request status updated'})[event.action]||'Request updated';
