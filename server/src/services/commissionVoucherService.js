@@ -1,3 +1,4 @@
+import {reviewActor} from '../utils/auditValues.js';
 import {commissionReleaseHold,assertCommissionReleaseAllowed} from '../utils/commissionHold.js';
 import {createHash} from 'node:crypto';
 import mongoose from 'mongoose';
@@ -6,7 +7,7 @@ import Voucher from '../models/CommissionVoucher.js';
 import PropertyAssignment from '../models/PropertyAssignment.js';
 import {effectivePayout} from '../utils/commissionLedger.js';
 export const voucherFail=(message,code=409)=>{throw Object.assign(new Error(message),{statusCode:code})};
-export const voucherActor=req=>({userId:String(req.user._id),username:req.user.username,role:req.user.role,timestamp:new Date()});
+export const voucherActor=req=>({...reviewActor(req.user),timestamp:new Date()});
 export const entryPaid=(a,voucherId,entryId,exclude='')=>(a.commissionPayouts||[]).filter(p=>String(p.voucherId)===String(voucherId)&&p.voucherEntryId===entryId&&p.payoutId!==exclude).map(effectivePayout).reduce((n,p)=>n+p.amountCents,0);
 export async function lockVoucher(req,a,record,amountCents){
  assertCommissionReleaseAllowed(a);

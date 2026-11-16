@@ -1,3 +1,4 @@
+import {reviewActor} from '../utils/auditValues.js';
 import {randomUUID} from 'node:crypto';
 import {calculateLedger} from '../utils/contractMonitoring.js';
 import {effectivePayment} from '../utils/paymentLedger.js';
@@ -6,7 +7,7 @@ import {normalizeMigrationRow,possibleDuplicate,hash,fail} from '../utils/migrat
 import {today} from '../utils/accounting.js';
 import PropertyAssignment from '../models/PropertyAssignment.js';
 import MigrationBatch from '../models/MigrationBatch.js';
-export const actor=user=>({userId:String(user._id),username:user.username,role:user.role,timestamp:new Date()});
+export const actor=user=>({...reviewActor(user),timestamp:new Date()});
 export function materialize(account,batch){
  const proposed=structuredClone(account),rows=batch.rows.filter(r=>!r.excluded),payments=rows.filter(r=>r.kind==='PAYMENT').map(r=>({paymentId:`HIS-${r.rowId}`,requestId:`migration-${r.rowId}`,receiptNumber:r.receiptNumber,receiptScope:r.series,type:r.type,amountCents:r.amountCents,paymentDate:r.date,method:r.method,fundingAccount:r.fundingAccount,reference:r.reference,notes:r.remarks,createdAt:r.encodedAt,postedAt:new Date(),createdBy:r.encodedBy,actorUsername:r.encoderUsername,actorRole:'MIGRATION',origin:'HISTORICAL',migrationBatchId:batch.batchId,migrationRowId:r.rowId,configuration:{allocationPriority:'PRINCIPAL_FIRST'},revisions:[]}));
  const newPayments=payments.filter(p=>!(account.payments||[]).some(old=>old.paymentId===p.paymentId));

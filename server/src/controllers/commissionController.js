@@ -1,3 +1,4 @@
+import {reviewActor} from '../utils/auditValues.js';
 import {commissionWorkflowReview} from '../utils/commissionWorkflowWarnings.js';
 import {assertCommissionReleaseAllowed,mongoCommissionHold} from '../utils/commissionHold.js';
 import {commissionReconciliationPlan} from "../utils/commissionEarningPlan.js";
@@ -17,7 +18,7 @@ import {attachMonitoringUpdate} from "../services/monitoringService.js";
 import {moneyCents,validDate,today,METHODS} from "../utils/accounting.js";
 const fail=(code,message)=>{throw Object.assign(new Error(message),{statusCode:code})};
 const id=value=>{if(typeof value!=="string"||!mongoose.isValidObjectId(value))fail(400,"Invalid identifier.");return new mongoose.Types.ObjectId(value)};
-const actor=req=>({userId:req.user._id,username:req.user.username,role:req.user.role,timestamp:new Date()});
+const actor=req=>({...reviewActor(req.user),timestamp:new Date()});
 const optionalReason=req=>{const value=String(req.body.reason||"").trim();if(value.length>500)fail(400,"Reason must not exceed 500 characters.");return value};
 const reason=req=>{const value=String(req.body.reason||"").trim();if(value.length<5||value.length>500)fail(400,"Enter a reason (5–500 characters).");return value};
 const key=value=>{if(typeof value!=="string"||!/^[A-Za-z0-9_-]{16,100}$/.test(value))fail(400,"Invalid submission ID.");return value};

@@ -1,3 +1,4 @@
+import {reviewActor} from '../utils/auditValues.js';
 import {currentPenaltyPolicy} from '../../../shared/penaltyPolicy.js';
 import Client from '../models/Client.js';
 import Project from '../models/Project.js';
@@ -13,7 +14,7 @@ import {allocatePayments} from '../utils/paymentLedger.js';
 import {reportIdentity} from '../services/companyBranding.js';
 import {assertContractOperationsReady} from '../services/databaseReadiness.js';
 const fail=message=>{throw Object.assign(new Error(message),{statusCode:400})};
-const actor=req=>({userId:String(req.user._id),username:req.user.username,role:req.user.role});
+const actor=req=>({...reviewActor(req.user)});
 export async function previewForfeiture(req,res,next){try{const p=await forfeiturePreview(req.params.id,req.body);const [client,project]=await Promise.all([Client.findById(p.account.client).select('clientId firstName middleName lastName suffix').lean(),Project.findById(p.account.project).select('projectId projectName').lean()]);res.json({success:true,data:{token:p.token,action:p.action,plan:p.plan,accountId:p.account._id,assignmentId:p.account.assignmentId,property:p.property,contract:p.account.contract,client,project,terms:currentPenaltyPolicy(p.account),reviewStatus:p.account.forfeitureReviews?.at(-1)?.status||null,obligations:{refundDecision:'SEPARATE_REVIEW_REQUIRED',priorCreditDisposition:p.account.forfeiturePeriods?.at(-1)?.creditDisposition||null,transferredCreditCents:p.plan.ledger?.transferCreditCents||0}}})}catch(e){next(e)}}
 export async function postForfeiture(req,res,next){try{res.json({success:true,data:await approveForfeitureAction(req.params.id,req.body,actor(req)),message:'Administrator decision saved atomically. Original receipts and financial history preserved.'})}catch(e){next(e)}}
 export async function releaseCancelledProperty(req,res,next){

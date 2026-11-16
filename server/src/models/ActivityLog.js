@@ -4,6 +4,7 @@ const activityLogSchema = new mongoose.Schema(
   {
     module: { type: String, default: "" },
     username: { type: String, default: "" },
+    fullName: { type: String, default: "" },
     userRole: { type: String, default: "" },
     description: { type: String, default: "" },
     outcome: { type: String, enum: ["PENDING", "SUCCEEDED", "FAILED"], default: "SUCCEEDED" },

@@ -6,7 +6,7 @@ import {searchClients} from '../src/controllers/clientSearchController.js';
 import Client from '../src/models/Client.js';
 test('client overall status stays separate from every related contract status',()=>{
  const c={clientId:'CL-1',status:'ACTIVE',accounts:[{assignmentId:'CT-1',project:'p',property:'l',lifecycle:'FORFEITED'},{assignmentId:'CT-2',lifecycle:'ACTIVE',pendingCancellation:{}}],projects:[{_id:'p',projectName:'Project A'}],lots:[{_id:'l',propertyId:'LOT-1',phaseNumber:1,blockNumber:2,lotNumber:3,status:'UNAVAILABLE'}]};
- const badges=recordStatusBadges(c);assert.equal(badges[0].label,'Client: Active');assert.ok(badges.some(b=>b.status==='FORFEITED'));assert.ok(badges.some(b=>b.status==='CANCELLATION_REVIEW'));
+ const badges=recordStatusBadges(c);assert.deepEqual(badges,[{status:'ACTIVE',label:'Active'}]);assert.deepEqual(contractSearchStatus(c.accounts[0]),['FORFEITED']);assert.ok(contractSearchStatus(c.accounts[1]).includes('CANCELLATION_REVIEW'));
  assert.match(clientSearchDetail(c),/CT-1.*Forfeited.*Project A.*LOT-1.*Unavailable/);assert.match(clientSearchDetail(c),/CT-2.*Active/);
  assert.deepEqual(contractSearchStatus({lifecycle:'ACTIVE',summary:{category:'HISTORICAL_CANCELLED'}}),['HISTORICAL_CANCELLED']);assert.equal(recordStatusBadges({agentId:'AG-1',status:'INACTIVE'})[0].label,'Agent: Inactive');
 });

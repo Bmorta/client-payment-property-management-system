@@ -8,7 +8,7 @@ export function contractSearchStatus(account){
 }
 export function recordStatusBadges(record){
  if(!record)return [];
- if(record.clientId)return [{status:record.status,label:`Client: ${statusLabel(record.status)}`},...Object.entries((record.accounts||record.matchingAccounts||[]).reduce((out,a)=>{for(const status of contractSearchStatus(a))out[status]=(out[status]||0)+1;return out},{})).map(([status,count])=>({status,label:`Contracts: ${statusLabel(status)} (${count})`}))];
+ if(isClientSearchRecord(record))return [{status:record.status,label:statusLabel(record.status)}];
  if(record.assignmentId)return contractSearchStatus(record).map(status=>({status,label:`Contract: ${statusLabel(status)}`}));
  if(record.agentId)return [{status:record.status,label:`Agent: ${statusLabel(record.status)}`}];
  if(record.propertyId)return [{status:record.status,label:`Lot: ${statusLabel(record.status)}`}];
@@ -23,3 +23,7 @@ export function clientSearchDetail(client){
  if(client.accounts?.length)return client.accounts.map(a=>{const project=client.projects?.find(p=>String(p._id)===String(a.project)),property=client.lots?.find(p=>String(p._id)===String(a.property));return [contractSearchLabel(a),project?.projectName,property?propertySearchLabel(property):''].filter(Boolean).join(' · ')}).join('; ');
  return [client.projects?.map(p=>p.projectName).join(', '),client.lots?.map(propertySearchLabel).join('; ')||'No assigned property'].filter(Boolean).join(' · ');
 }
+
+export const clientSuggestionLabel=c=>[c.fullName||[c.firstName,c.middleName,c.lastName,c.suffix].filter(Boolean).join(' '),c.clientId].filter(Boolean).join(' · ');
+
+export const isClientSearchRecord=r=>!!r?.clientId&&!r?.paymentId&&!r?.assignmentId&&!r?.commissionId&&!r?.propertyId;

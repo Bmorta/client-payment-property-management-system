@@ -551,3 +551,11 @@ button, input, select, textarea { font: inherit; }
 .search-status-badges{display:inline-flex;flex-wrap:wrap;gap:.25rem;vertical-align:middle;margin-inline-start:.3rem}
 .search-status-badges .badge{font-size:.7rem;white-space:normal;max-width:100%;line-height:1.3}
 .search-suggestions [aria-disabled="true"]{cursor:not-allowed;opacity:.8}
+
+.sidebar-review-entry{text-decoration:none;justify-content:flex-start}
+.review-category-tabs>button{display:inline-flex;align-items:center;gap:.4rem;flex-wrap:wrap;text-align:left}
+.review-count{flex-shrink:0;min-width:1.6em;text-align:center;white-space:nowrap}
+.review-count[data-pending="true"]{background-color:#dc3545!important;color:#fff!important}
+.review-count[data-pending="false"]{background-color:#6c757d!important;color:#fff!important}
+.review-center-table td,.review-center-table th{padding:.6rem;overflow-wrap:anywhere;vertical-align:middle}
+.review-center-table{min-width:740px}

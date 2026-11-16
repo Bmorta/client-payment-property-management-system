@@ -1,3 +1,4 @@
+import {reviewActor} from '../utils/auditValues.js';
 import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
 import {validateReceipt,checkReceipt,receiptScope} from "../services/receiptService.js";
 import {generateRecordId} from "../utils/generateRecordId.js";
@@ -15,7 +16,7 @@ async function load(req){
  const account=await PropertyAssignment.findById(req.params.id).lean();if(!account)fail(404,"Account not found.");
  return account;
 }
-function actor(req){return {userId:req.user._id,username:req.user.username,role:req.user.role,timestamp:new Date()}}
+function actor(req){return {...reviewActor(req.user),timestamp:new Date()}}
 async function save(account,req,action,before) {
  const event={...actor(req),eventId:req.auditEvent?._id,action,previousValues:before,updatedValues:summarizeAccount(account)};
  const paymentId=req.params.paymentId||account.correctionRequests?.find(r=>r.requestId===req.params.requestId)?.paymentId;
@@ -69,13 +70,13 @@ export async function correctPayment(req,res,next){
    if(values.receiptNumber&&values.receiptNumber!==current.receiptNumber)await checkReceipt(values.receiptNumber,payment.receiptScope||receiptScope(),account._id,payment.paymentId,requestId,true);
    revision(account,payment,values,reason,req,requestId);
    for(const pending of account.correctionRequests.filter(r=>r.paymentId===payment.paymentId&&r.status==="PENDING")){
-    pending.status="STALE";pending.decisionReason="An administrator changed the original payment.";pending.decidedBy=req.user._id;pending.decidedAt=new Date();account.notifications.push(notification(pending,"STALE",String(pending.requestedBy)));
+    pending.status="STALE";pending.decisionReason="An administrator changed the original payment.";pending.decidedBy=req.user._id;pending.reviewer=reviewActor(req.user);pending.decidedAt=new Date();account.notifications.push(notification(pending,"STALE",String(pending.requestedBy)));
    }
    await save(account,req,"PAYMENT_CORRECTED",before);
    return res.json({success:true,message:"Payment corrected. Original values and IDs preserved."});
   }
   if(account.correctionRequests.some(r=>r.paymentId===payment.paymentId&&r.status==="PENDING"))fail(409,"A pending correction already exists for this payment.");
-  const request={requestNumber:await generateRecordId("request"),signature:req.correctionSignature,requestId,paymentId:payment.paymentId,baseRevision:current.revision,originalValues:paymentValues(current),originalAllocations:allocatePayments(account).allocations[payment.paymentId],proposedAllocations:preview.allocations,values,reason,requestedBy:req.user._id,requestedUsername:req.user.username,requestedAt:new Date(),status:"PENDING"};
+  const request={requestNumber:await generateRecordId("request"),signature:req.correctionSignature,requestId,paymentId:payment.paymentId,baseRevision:current.revision,originalValues:paymentValues(current),originalAllocations:allocatePayments(account).allocations[payment.paymentId],proposedAllocations:preview.allocations,values,reason,requester:reviewActor(req.user),requestedBy:req.user._id,requestedUsername:req.user.username,requestedAt:new Date(),status:"PENDING"};
   account.correctionRequests.push(request);account.notifications.push(notification(request,"PENDING","ADMIN"));
   await save(account,req,"PAYMENT_CORRECTION_REQUESTED",before);
   res.status(201).json({success:true,data:request,message:"Correction sent for approval. Original payment is unchanged."});
@@ -108,7 +109,7 @@ export async function decideCorrection(req,res,next){
     else {if(request.values.receiptNumber&&request.values.receiptNumber!==current.receiptNumber)await checkReceipt(request.values.receiptNumber,payment.receiptScope||receiptScope(),account._id,payment.paymentId,request.requestId,true);revision(account,payment,request.values,request.reason,reviewReq,request.requestId)}
    }catch(e){if(e.statusCode!==409)throw e;status="STALE";decisionReason=e.message}}
   }
-  Object.assign(request,{status,decisionReason,decidedAt:new Date(),decidedBy:req.user._id,decidedUsername:req.user.username});
+  Object.assign(request,{status,decisionReason,decidedAt:new Date(),reviewer:reviewActor(req.user),decidedBy:req.user._id,decidedUsername:req.user.username});
   account.notifications ||= [];account.notifications.push(notification(request,status,String(request.requestedBy)));
   await save(account,req,`PAYMENT_CORRECTION_${status}`,before);
   res.json({success:true,data:request,message:`Correction ${status.toLowerCase()}.`});

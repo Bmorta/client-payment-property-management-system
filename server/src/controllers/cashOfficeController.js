@@ -1,3 +1,4 @@
+import {reviewActor} from '../utils/auditValues.js';
 import {randomUUID,createHash} from 'node:crypto';
 import OfficeCashReview from '../models/OfficeCashReview.js';
 import CashLedgerEntry from '../models/CashLedgerEntry.js';
@@ -35,7 +36,7 @@ export async function createOfficeReview(req,res,next){try{
  const input={type,date,amountCents,recipient,reference,remarks};const duplicate=await OfficeCashReview.findOne({requestId}).lean();if(duplicate){if(Object.entries(input).some(([k,v])=>duplicate[k]!==v))fail('Submission ID belongs to another request.',409);return res.json({success:true,data:duplicate,message:'This review was already saved.'})}
  const data=await loadFinancialData(date),view=cashOfficeView(data,date,date);if(!view.cash.available)fail(view.cash.reasons.join(' '),409);
  if(type==='TURNOVER'&&amountCents>view.cash.closingCents)fail('Turnover exceeds available cash on its date.',409);
- const row=await OfficeCashReview.create({_id:createHash('sha256').update(requestId).digest('hex').slice(0,24),...input,reviewId:`${type==='COUNT'?'CCR':'TOR'}-${randomUUID()}`,requestId,systemCents:view.cash.closingCents,differenceCents:type==='COUNT'?amountCents-view.cash.closingCents:undefined,systemSnapshot:view.snapshot,createdBy:req.user._id,preparedBy:req.user.username,history:[{action:'DRAFT_CREATED',username:req.user.username,timestamp:new Date()}]});
+ const row=await OfficeCashReview.create({_id:createHash('sha256').update(requestId).digest('hex').slice(0,24),...input,reviewId:`${type==='COUNT'?'CCR':'TOR'}-${randomUUID()}`,requestId,systemCents:view.cash.closingCents,differenceCents:type==='COUNT'?amountCents-view.cash.closingCents:undefined,systemSnapshot:view.snapshot,createdBy:req.user._id,preparedBy:req.user.username,history:[{action:'DRAFT_CREATED',...reviewActor(req.user),timestamp:new Date()}]});
  await logActivity({req,action:'OFFICE_CASH_REVIEW_CREATED',entityType:'OfficeCashReview',entityId:String(row._id),metadata:input});res.status(201).json({success:true,data:row,message:'Draft saved. No cash movement was recorded.'});
 }catch(e){if(e.code===11000)return next(Object.assign(new Error('Submission already exists. Refresh the review list before retrying.'),{statusCode:409}));next(e)}}
 export async function officeReviewAction(req,res,next){try{
@@ -56,7 +57,7 @@ export async function officeReviewAction(req,res,next){try{
  const entryId='CASH-'+randomUUID();await CashLedgerEntry.create([{entryId,requestId:'TURNOVER-'+row._id,kind:'OWNER_TURNOVER',effectiveDate:releaseDate,amountCents:row.amountCents,recipient:row.recipient,reference:row.reference||row.reviewId,reason:row.remarks,createdBy:req.user._id,actorUsername:req.user.username,authorizedBy:row.approvedBy,history:[{action:'APPROVED_TURNOVER_RELEASED',reviewId:row.reviewId,username:req.user.username,timestamp:new Date()}]}],{session});
  await validateCashTimeline(session);Object.assign(values,{releasedDate:releaseDate,releasedBy:req.user.username,entryId});
  }
- const saved=await OfficeCashReview.findOneAndUpdate({_id:row._id,__v:row.__v},{$set:values,$inc:{__v:1},$push:{history:{action,username:req.user.username,timestamp:new Date(),remarks:String(req.body.reason||'').slice(0,500)}}},{new:true,session});if(!saved)fail('Review changed. Refresh first.',409);return saved;
+ const saved=await OfficeCashReview.findOneAndUpdate({_id:row._id,__v:row.__v},{$set:values,$inc:{__v:1},$push:{history:{action,...reviewActor(req.user),timestamp:new Date(),remarks:String(req.body.reason||'').slice(0,500)}}},{new:true,session});if(!saved)fail('Review changed. Refresh first.',409);return saved;
  };
  const result=action==='RELEASE'?await cashMutation(work):await work(null);
  await logActivity({req,action:'OFFICE_CASH_REVIEW_'+action,entityType:'OfficeCashReview',entityId:String(result._id),metadata:{status:result.status,entryId:result.entryId}});

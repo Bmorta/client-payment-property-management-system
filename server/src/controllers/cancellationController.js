@@ -1,3 +1,4 @@
+import {reviewActor} from '../utils/auditValues.js';
 import {refundAcknowledgement} from '../../../shared/refundAcknowledgement.js';
 import {reportIdentity} from '../services/companyBranding.js';
 import ExcelJS from 'exceljs';
@@ -7,7 +8,7 @@ import {previewCancellationAgreement,verifyCancellationAgreement,prepareCancella
 import {cancellationReport} from '../../../shared/cancellationReport.js';
 import {fail} from '../utils/financialReporting.js';
 import mongoose from 'mongoose';
-const actor=req=>({userId:req.user._id,username:req.user.username,role:req.user.role});
+const actor=req=>({...reviewActor(req.user)});
 const action=(fn)=>async(req,res,next)=>{try{res.json({success:true,data:await fn(req)})}catch(e){if(e.code===11000)return res.status(409).json({success:false,message:'A cancellation or refund already claimed these sources/submission. Refresh history before retrying.'});next(e)}};
 export const cancellationPreview=action(async req=>{if(req.body.quoteOnly===true)return quoteCancellation(req.params.clientId,req.body);const p=await prepareCancellation(req.params.clientId,req.body);return {snapshot:p.snapshot,previewToken:p.previewToken}});
 export const cancellationApprove=action(req=>approveCancellation(req.params.clientId,req.body,actor(req)));
