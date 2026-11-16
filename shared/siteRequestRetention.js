@@ -1,7 +1,7 @@
 export function requestDeletionPolicy(request,accounts=[]){
  const same=(a,b)=>a&&b&&String(a?._id||a)===String(b?._id||b);
  const linked=accounts.filter(a=>same(a._id,request.account)||same(a.property,request.property)&&same(a.client,request.client));
- const active=linked.filter(a=>!a.lifecycle||['ACTIVE','CANCELLATION_PENDING'].includes(a.lifecycle)||a.pendingCancellation);
+ const active=linked.filter(a=>{const lifecycle=a.lifecycle;const terminal=['TRANSFERRED','ASSUMED','CANCELLED','FORFEITED','SUPERSEDED'].includes(lifecycle);return !terminal&&(!lifecycle||['ACTIVE','CANCELLATION_PENDING'].includes(lifecycle)||!!a.pendingCancellation)});
  const reasons=[];
  if(active.length)reasons.push('The linked property has an active contract. Use Disregard instead.');
  if(request.account&&!linked.some(a=>same(a._id,request.account)))reasons.push('The linked contract could not be verified. An administrator must reconcile the relationship first.');
