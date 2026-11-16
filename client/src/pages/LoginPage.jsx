@@ -1,123 +1,13 @@
-import REMSIcon from "../components/REMSIcon.jsx";
+import REMSIcon from '../components/REMSIcon.jsx';
 import FeedbackMessage from '../components/FeedbackMessage.jsx';
 import {safeReturnPath} from '../utils/sessionRecovery.js';
-import {default as FieldLabel,RequiredNote} from "../components/FieldLabel.jsx";
-import { useState } from "react";
-import { Navigate, useNavigate,useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext.jsx";
-
-export default function LoginPage() {
-  const { user, login,sessionNotice } = useAuth();
-  const navigate = useNavigate(),location=useLocation(),returnTo=safeReturnPath(location.state?.from);
-
-  const [form, setForm] = useState({
-    identifier: "",
-    password: ""
-  });
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  if (user) {
-    return <Navigate to={returnTo} replace />;
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-
-    if (!form.identifier.trim() || !form.password) {
-      setError("Enter your username/email and password.");
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      await login(form.identifier, form.password);
-      navigate(returnTo, { replace: true });
-    } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          (err.response?"Unable to sign in. Check the message and try again.":"Unable to reach the server. Check the backend or connection, then try again.")
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <main className="login-page d-flex min-vh-100 align-items-center">
-      <div className="container py-5">
-        <div className="row justify-content-center">
-          <div className="col-12 col-md-8 col-lg-5">
-            <div className="card border-0 shadow-sm">
-              <div className="card-body p-4 p-md-5">
-                <div className="mb-4"><REMSIcon size={96} className="mb-3" decorative/>
-                  <p className="text-uppercase small fw-semibold text-secondary mb-2">
-                    REMS · Secure workspace
-                  </p>
-                  <h1 className="h3 fw-bold mb-2">
-                    Real Estate Management System
-                  </h1>
-                  <p className="text-secondary mb-0">
-                    Integrated Property, Client, Financial & Commission Management
-                  </p>
-                </div>
-
-                <form onSubmit={handleSubmit} noValidate><RequiredNote/>
-                  <FeedbackMessage kind="error" message={error}/>
-                  {sessionNotice&&<p className="alert alert-warning" role="status">{sessionNotice}</p>}
-
-                  <div className="mb-3">
-                    <FieldLabel className="form-label" htmlFor="identifier">
-                      Username or Email
-
-                    <input
-                      id="identifier" required
-                      type="text"
-                      className="form-control form-control-lg"
-                      value={form.identifier}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          identifier: event.target.value
-                        }))
-                      }
-                      autoComplete="username"
-                    /></FieldLabel>
-                  </div>
-
-                  <div className="mb-4">
-                    <FieldLabel className="form-label" htmlFor="password">
-                      Password
-
-                    <input
-                      id="password" required
-                      type="password"
-                      className="form-control form-control-lg"
-                      value={form.password}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          password: event.target.value
-                        }))
-                      }
-                      autoComplete="current-password"
-                    /></FieldLabel>
-                  </div>
-
-                  <button
-                    className="btn btn-primary btn-lg w-100"
-                    type="submit"
-                    disabled={submitting}
-                  >
-                    {submitting ? "Signing in..." : "Sign in"}
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+import {useRef,useState} from 'react';
+import {Navigate,useNavigate,useLocation} from 'react-router-dom';
+import {useAuth} from '../context/AuthContext.jsx';
+export default function LoginPage(){
+ const {user,login,sessionNotice}=useAuth(),navigate=useNavigate(),location=useLocation(),returnTo=safeReturnPath(location.state?.from),lock=useRef(false);
+ const [form,setForm]=useState({identifier:'',password:''}),[error,setError]=useState(''),[submitting,setSubmitting]=useState(false),[visible,setVisible]=useState(false);
+ if(user)return <Navigate to={returnTo} replace/>;
+ const submit=async e=>{e.preventDefault();if(lock.current)return;setError('');if(!form.identifier.trim()||!form.password){setError('Enter your username or email and password.');return}lock.current=true;setSubmitting(true);try{await login(form.identifier.trim(),form.password);setVisible(false);navigate(returnTo,{replace:true})}catch(err){setError(!err.response?'Unable to reach the office server. Check your connection and try again.':err.response.status===429?'Too many sign-in attempts. Please wait and try again.':err.response.status>=500?'Sign-in is temporarily unavailable. Please try again.':'Unable to sign in. Check your credentials or contact your administrator.')}finally{lock.current=false;setSubmitting(false)}};
+ return <main className="login-page rems-login"><section className="rems-login-card card" aria-labelledby="login-heading"><header className="rems-login-brand"><REMSIcon size={56} decorative/><div><p className="rems-login-eyebrow">REMS · Office workspace</p><p className="small text-secondary mb-0">Real Estate Management System</p></div></header><h1 id="login-heading">Welcome back</h1><p className="text-secondary">Sign in to your office workspace.</p><form onSubmit={submit} aria-busy={submitting}><FeedbackMessage kind="error" message={error}/>{sessionNotice&&<p className="alert alert-warning small" role="status">{sessionNotice}</p>}<label className="form-label w-100" htmlFor="identifier">Username or email<input id="identifier" name="username" required autoFocus autoComplete="username" autoCapitalize="none" spellCheck={false} className="form-control" value={form.identifier} disabled={submitting} onChange={e=>setForm(f=>({...f,identifier:e.target.value}))}/></label><label className="form-label mt-3" htmlFor="password">Password</label><div className="rems-password-field"><input id="password" name="password" required autoComplete="current-password" className="form-control" type={visible?'text':'password'} value={form.password} disabled={submitting} onChange={e=>setForm(f=>({...f,password:e.target.value}))}/><button className="rems-password-toggle" type="button" aria-label={visible?'Hide password':'Show password'} aria-pressed={visible} aria-controls="password" onClick={()=>setVisible(v=>!v)}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>{visible&&<path d="m3 3 18 18"/>}</svg></button></div><button className="btn btn-primary w-100 mt-4" type="submit" disabled={submitting}>{submitting?'Signing in…':'Sign in'}</button><p className="small text-secondary mt-3 mb-0" role="status">{submitting?'Checking your credentials…':'Use the account provided by your office administrator.'}</p></form></section></main>
 }
