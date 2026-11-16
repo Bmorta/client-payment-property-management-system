@@ -1,3 +1,4 @@
+import {requestContact} from '../../../shared/siteRequestContact.js';
 import mongoose from 'mongoose';
 import {createHash} from 'node:crypto';
 import SiteRequest from '../models/SiteRequest.js';
@@ -22,6 +23,7 @@ const assigned=(r,u)=>r.personnel?.some(p=>String(p)===String(u._id));
 const q=(query,s)=>query.session(s||null);
 export async function requestTypes(session){return (await q(Settings.findById('OFFICE'),session).lean())?.types||REQUEST_TYPES}
 export async function inRequestTransaction(fn){const hello=await mongoose.connection.db.admin().command({hello:1});if(!hello.setName&&hello.msg!=='isdbgrid')fail('Request changes require MongoDB replica-set transaction support.',409);const session=await mongoose.startSession();try{let result;await session.withTransaction(async()=>{await Guard.findOneAndUpdate({_id:'site-visit-scheduling'},{$inc:{revision:1}},{upsert:true,session});result=await fn(session)});return result}finally{await session.endSession()}}
+function validatedContact(client,input){const {contact,errors}=requestContact(client,input);if(Object.keys(errors).length)fail(Object.values(errors).join(' '));return contact}
 export async function validateRequestInput(input,session){
  const type=(await requestTypes(session)).find(t=>t.code===input.type&&t.active);if(!type)fail('Choose an enabled request type.');
  const project=await q(Project.findById(id(input.project,'project')),session).lean();if(!project||project.status==='ARCHIVED')fail('Choose a current project.');
@@ -34,16 +36,16 @@ export async function validateRequestInput(input,session){
   const client=await q(Client.findById(id(input.client,'client')),session).lean(),account=await q(Account.findById(id(input.account,'client property account')),session).lean();
   if(!client||client.deletedAt||!account||String(account.client)!==String(client._id)||account.lifecycle&&account.lifecycle!=='ACTIVE'||account.pendingCancellation||String(account.project)!==String(project._id))fail('Choose an active property contract actually owned by this client.');
   const property=await q(Property.findById(account.property),session).lean();if(!property||String(property.client)!==String(client._id)||String(property.project)!==String(project._id))fail('The client property ownership needs reconciliation.');
-  v.client=client._id;v.account=account._id;v.property=property._id;v.requestingAgent=null;v.requestingAgentName='';if(!client.contactNumber&&!client.email)fail('Add contact information to the client record before registering a visit.');v.contact={name:[client.firstName,client.middleName,client.lastName,client.suffix].filter(Boolean).join(' '),phone:client.contactNumber||'',email:client.email||''};
+  v.client=client._id;v.account=account._id;v.property=property._id;v.requestingAgent=null;v.requestingAgentName='';v.contact=validatedContact(client,input.contact);
  }else{
   v.requestingAgent=null;v.requestingAgentName='';
   if(v.trippingInitiator==='AGENT'){
   if(input.requestingAgent){const agent=await q(Agent.findById(id(input.requestingAgent,'requesting agent')),session).lean();if(!agent||agent.status!=='ACTIVE'||agent.assignedProjects?.length&&!agent.assignedProjects.some(p=>String(p)===String(project._id)))fail('Choose an active requesting agent authorized for this project.');v.requestingAgent=agent._id;}else v.requestingAgentName=text(input.requestingAgentName,'Requesting agent name',160,true);
   }
   v.client=null;v.account=null;v.property=input.property||null;
-  if(input.client){const client=await q(Client.findById(id(input.client,'client')),session).lean();if(!client||client.deletedAt)fail('Choose an existing client.');v.client=client._id;v.contact={name:[client.firstName,client.middleName,client.lastName,client.suffix].filter(Boolean).join(' '),phone:client.contactNumber||'',email:client.email||''};}
+  if(input.client){const client=await q(Client.findById(id(input.client,'client')),session).lean();if(!client||client.deletedAt)fail('Choose an existing client.');v.client=client._id;v.contact=validatedContact(client,input.contact);}
   if(v.property){const property=await q(Property.findById(id(v.property,'viewing lot')),session).lean();if(!property||String(property.project)!==String(project._id)||property.status!=='AVAILABLE'||property.client)fail('Choose an available viewing lot in this project.')}
-  if(!v.client)v.contact={name:text(input.contact?.name,'Prospective buyer name',160,true),phone:text(input.contact?.phone,'Contact number',80,true),email:text(input.contact?.email,'Email',160)};
+  if(!v.client)v.contact=validatedContact(null,input.contact);
  }
  return v;
 }

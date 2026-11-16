@@ -337,7 +337,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
         </div>}
       </div>
       {changed.length > 0 && <p className="small text-secondary">Save or cancel lot edits before printing or exporting saved inventory.</p>}
-      <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([]);setPage(1)}} items={properties.map(p=>({key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
+      <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([]);setPage(1)}} items={properties.map(p=>({record:p,key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>
           <FieldLabel htmlFor={`filter-${key}`} className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}

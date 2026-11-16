@@ -306,7 +306,7 @@ export default function UsersPage() {
       <div className="card border-0 shadow-sm">
         <div className="card-body">
           <div className="mb-3">
-            <SearchInput label="Search users" value={search} onChange={value=>{setSearch(value);}} items={users.map(u=>({key:u._id,label:u.username,detail:`${u.firstName} ${u.lastName} ${u.email} ${u.role}`}))}/>
+            <SearchInput label="Search users" value={search} onChange={value=>{setSearch(value);}} items={users.map(u=>({record:u,key:u._id,label:u.username,detail:`${u.firstName} ${u.lastName} ${u.email} ${u.role}`}))}/>
           </div>
 
           <FieldLabel>Status<select className="form-select mb-3" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="">All users</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></select></FieldLabel><ListReportActions module="users" filters={{q:search,status:statusFilter}} onRefresh={loadUsers} disabled={loading}/>
