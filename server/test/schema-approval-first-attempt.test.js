@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {createHash,randomUUID} from 'node:crypto';
+import mongoose from 'mongoose';
+import ActivityLog from '../src/models/ActivityLog.js';
+import {databaseModels} from '../src/services/databaseReadiness.js';
+import {upgradePreview,approveUpgrade,assertEligibleBackup} from '../src/services/databaseMaintenance.js';
+const sha=value=>createHash('sha256').update(value).digest('hex');
+test('one valid verified backup authorizes first-attempt repair and changed financial data still blocks reuse',async t=>{
+ const models=await databaseModels(),indexes=new Map();
+ for(const m of Object.values(models)){const name=m.collection.collectionName;if(!indexes.has(name))indexes.set(name,[{name:'_id_',key:{_id:1}}]);for(const [key,options] of m.schema.indexes()){const nameIndex=options.name||Object.entries(key).map(([k,v])=>`${k}_${v}`).join('_');if(!indexes.get(name).some(i=>i.name===nameIndex))indexes.get(name).push({key,...options,name:nameIndex})}}
+ const [target,definitions]=[...indexes].find(([,defs])=>defs.some(i=>i.name!=='_id_'&&!i.partialFilterExpression));const missing=definitions.find(i=>i.name!=='_id_'&&!i.partialFilterExpression);indexes.set(target,definitions.filter(i=>i!==missing));
+ let raw=mongoose.mongo.BSON.serialize({_id:new mongoose.Types.ObjectId(),lifecycle:'ACTIVE',financialValue:100}),created=0,audits=0,recorded=null;
+ const session={startTransaction(){},async abortTransaction(){},inTransaction(){return false},async endSession(){},async withTransaction(fn){return fn()}};
+ const db={databaseName:'approval_test',admin:()=>({command:async()=>({setName:'rs0',logicalSessionTimeoutMinutes:30,isWritablePrimary:true})}),listCollections(filter={}){const rows=[...indexes.keys()].filter(name=>!filter.name||filter.name===name).map(name=>({name}));return {toArray:async()=>rows,hasNext:async()=>rows.length>0}},collection(name){return {indexes:async()=>indexes.get(name)||[],aggregate:()=>({toArray:async()=>[]}),countDocuments:async filter=>name==='propertyassignments'&&!filter?1:0,findOne:async()=>name==='rems_schema_state'?recorded:name==='propertyassignments'?{_id:'populated'}:null,find:()=>({async *[Symbol.asyncIterator](){if(name==='propertyassignments')yield raw}}),async createIndex(key,options){created++;indexes.get(name).push({key,...options,name:options.name||Object.entries(key).map(([k,v])=>`${k}_${v}`).join('_')})},async updateMany(){return {modifiedCount:0}},async updateOne(filter,update){if(name==='rems_schema_state')recorded=update.$set}}},client:{startSession:()=>session}};
+ const conn=mongoose.connection,previous={db:conn.db,name:conn.name,client:conn.client,state:conn._readyState},env={dir:process.env.REMS_BACKUP_DIR,uri:process.env.MONGODB_URI};const root=await fs.mkdtemp(path.join(os.tmpdir(),'rems-first-approval-'));
+ conn.db=db;conn.name='approval_test';conn.client={startSession:()=>session};conn._readyState=1;process.env.REMS_BACKUP_DIR=root;process.env.MONGODB_URI='mongodb://localhost/approval_test?replicaSet=rs0';t.mock.method(ActivityLog,'create',async()=>{audits++});
+ t.after(async()=>{conn.db=previous.db;conn.name=previous.name;conn.client=previous.client;conn._readyState=previous.state;for(const [key,value]of [['REMS_BACKUP_DIR',env.dir],['MONGODB_URI',env.uri]]){if(value===undefined)delete process.env[key];else process.env[key]=value}await fs.rm(root,{recursive:true,force:true})});
+ const id='BKP-'+Date.now()+'-'+randomUUID(),folder=path.join(root,id),dumpDir=path.join(folder,'dump');await fs.mkdir(dumpDir,{recursive:true});const content=Buffer.from('fixture verified manifest');await fs.writeFile(path.join(dumpDir,'records.bson'),content);
+ const metrics=Object.fromEntries([...indexes.keys()].sort().map(name=>[name,{count:name==='propertyassignments'?1:0,checksum:name==='propertyassignments'?sha(raw):'0'.repeat(64)}]));
+ const sortedIndexes=Object.fromEntries([...indexes].map(([name,defs])=>[name,defs.map(i=>({name:i.name,key:i.key,unique:!!i.unique,partialFilterExpression:i.partialFilterExpression,expireAfterSeconds:i.expireAfterSeconds,sparse:i.sparse,collation:i.collation})).sort((a,b)=>a.name.localeCompare(b.name))]));
+ const job={id,state:'RECOVERY_VERIFIED',database:'approval_test',binding:sha(process.env.MONGODB_URI),environment:sha(JSON.stringify([process.env.NODE_ENV||'development',process.env.REMS_ENVIRONMENT||'default'])),createdAt:new Date().toISOString(),recoveryVerifiedAt:new Date().toISOString(),recoveryTarget:'rems_recovery_fixture',dumpDir,files:{'records.bson':sha(content)},collections:metrics,indexes:sortedIndexes};await fs.writeFile(path.join(folder,'job.json'),JSON.stringify(job));
+ const preview=await upgradePreview();assert.equal(preview.canApply,true);assert.equal(preview.indexes.missing.length,1);assert.equal(preview.schema.contractReady,true);
+ const operation=await approveUpgrade(id,{username:'admin'},{token:preview.token,confirmation:'APPLY ACTIVE CONTRACT UPGRADE',singleBackendConfirmed:true});assert.equal(operation,id);
+ let finished;for(let i=0;i<200;i++){finished=JSON.parse(await fs.readFile(path.join(folder,'job.json'),'utf8'));if(['UPGRADED','UPGRADE_REVIEW_REQUIRED'].includes(finished.state))break;await new Promise(r=>setTimeout(r,5))}await new Promise(r=>setImmediate(r));
+ assert.equal(finished.state,'UPGRADED',finished.error);assert.equal(created,1);assert.equal(recorded.schemaVersion,2);assert.equal(audits,1);
+ raw=mongoose.mongo.BSON.serialize({_id:new mongoose.Types.ObjectId(),lifecycle:'ACTIVE',financialValue:200});await assert.rejects(assertEligibleBackup(id),/propertyassignments/);assert.equal(created,1);
+});

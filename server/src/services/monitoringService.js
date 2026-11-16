@@ -61,15 +61,15 @@ export async function reconcileAccount(accountId,actor,reason){
  throw Object.assign(new Error("Account changed during monitoring. Refresh and retry."),{statusCode:409});
 }
 let running=false;
-export async function reconcileAll(){
+export async function reconcileAll({inspect=inspectDatabaseReadiness}={}){
  if(running||maintenanceActive())return;running=true;
  try{
   // Do not let scheduled account snapshots mutate protected contract records
-  // while the one-time active-contract schema/index upgrade is pending. Those
+  // while ANY required schema/index upgrade is pending. Those
   // writes can otherwise make a freshly recovery-verified maintenance backup
   // stale before the administrator approves the repair.
-  const readiness=await inspectDatabaseReadiness();
-  if(!readiness.contractReady)return;
+  const readiness=await inspect();
+  if(!readiness.ready)return;
   for await(const account of PropertyAssignment.find({$or:[{"contract.monitoringTerms":{$ne:null}},{commissionAgreement:{$ne:null}}]}).select("_id").cursor()){
    try{await trackedBackgroundWrite(()=>reconcileAccount(account._id))}
    catch(error){console.error("Monitoring reconciliation failed for account",String(account._id),error.message)}

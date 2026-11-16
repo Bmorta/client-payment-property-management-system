@@ -2,7 +2,7 @@ import DatabaseReadinessPanel from '../components/DatabaseReadinessPanel.jsx';
 import IdentifierMaintenanceTools from '../components/IdentifierMaintenanceTools.jsx';
 import {Link,useLocation} from 'react-router-dom';
 import {safeWorkflowReturn} from '../utils/backupNavigation.js';
-import {useEffect,useState} from 'react';
+import {useEffect,useState,useRef} from 'react';
 import api from '../services/api.js';
 import CenterPopup from '../components/CenterPopup.jsx';
 export default function DatabaseMaintenancePage(){
@@ -12,7 +12,8 @@ export default function DatabaseMaintenancePage(){
  const load=async()=>{try{const r=await api.get('/maintenance/status');setData(r.data.data)}catch(e){setError(e.response?.data?.message||'Unable to check database readiness.')}};
  useEffect(()=>{load();const timer=setInterval(load,5000);return()=>clearInterval(timer)},[]);
  const financialPoints=async()=>{try{setRestorePoints((await api.get('/maintenance/financial-restore-points')).data.data)}catch(e){setError(e.response?.data?.message||'Unable to inspect financial restore points.')}};
- const perform=async()=>{const a=action;setAction(null);setBusy(true);try{const r=await api.post(a.url,a.body);setMessage(r.data.message||'Operation started. Check the job status below.');await load()}catch(e){setError(e.response?.data?.message||'Operation could not start. Check the backend log.')}finally{setBusy(false)}};
+ const actionLock=useRef(false);
+ const perform=async()=>{if(actionLock.current||!action)return;actionLock.current=true;const a=action;setAction(null);setBusy(true);try{const r=await api.post(a.url,a.body);setMessage(r.data.message||'Operation started. Check the job status below.');await load()}catch(e){setError(e.response?.data?.message||'Operation could not start. Check the backend log.')}finally{actionLock.current=false;setBusy(false)}};
  const review=async()=>{setBusy(true);try{setPreview((await api.get('/maintenance/active-contract-upgrade/preview')).data.data)}catch(e){setError(e.response?.data?.message||'Unable to inspect contracts.')}finally{setBusy(false)}};
  const locked=busy||data?.jobRunning,confirmed={confirm:true,singleBackendConfirmed:single};
  return <main className="container-fluid py-3"><h1 className="h3">Database &amp; Backups</h1>{returnTo&&<div className="alert alert-info"><Link to={returnTo}>Return to the original workflow</Link> or return to its existing browser tab to preserve unsaved inputs. Refresh its preview and confirm again; backup completion never executes it.</div>}<p>Manage this office server. Git pulls update code; they do not synchronize databases on different computers.</p><div className="alert alert-info">Use one authoritative office backend and database. Backups run on this server. Upgrades require a separate review and approval. Use the REMS Setup and Status desktop shortcut for the one-time Windows server setup. Other office computers connect to that server.</div>

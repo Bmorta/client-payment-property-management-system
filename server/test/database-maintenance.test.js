@@ -17,3 +17,27 @@ test('maintenance drains requests and blocks read-triggered reconciliation and w
  res.emit('finish');await assert.rejects(operation,/test failure/);assert.equal(maintenanceActive(),false);
 });
 test('migration requires backup reference before accessing database',async()=>{await assert.rejects(applyActiveContractUpgrade({},{}),/backup/)});
+
+import fs from 'node:fs/promises';
+import mongoose from 'mongoose';
+import {createBackup,assertProtectedMetricsUnchanged} from '../src/services/databaseMaintenance.js';
+import {reconcileAll} from '../src/services/monitoringService.js';
+import PropertyAssignment from '../src/models/PropertyAssignment.js';
+test('pending non-contract index maintenance pauses scheduled financial snapshots before backup approval',async t=>{
+ let scans=0;t.mock.method(PropertyAssignment,'find',()=>{scans++;return {select(){return this},cursor(){return (async function*(){})()}}});
+ await reconcileAll({inspect:async()=>({ready:false,contractReady:true,pendingMaintenance:true})});assert.equal(scans,0);
+ await reconcileAll({inspect:async()=>({ready:true,contractReady:true,pendingMaintenance:false})});assert.equal(scans,1);
+});
+test('backup validation ignores collection/property ordering and existing workflow metadata only',()=>{
+ const baseline={propertyassignments:{count:1,checksum:'source'},payments:{count:2,checksum:'payments'},activitylogs:{count:1,checksum:'audit'}};
+ assert.doesNotThrow(()=>assertProtectedMetricsUnchanged({activitylogs:{count:20,checksum:'new audit'},payments:{checksum:'payments',count:2},propertyassignments:{checksum:'source',count:1}},baseline));
+ for(const current of [{...baseline,propertyassignments:{count:1,checksum:'changed financial snapshot'}},{...baseline,payments:{count:3,checksum:'new payment'}},{...baseline,cashledgerentries:{count:1,checksum:'new cash movement'}}])assert.throws(()=>assertProtectedMetricsUnchanged(current,baseline),/Protected database records changed/);
+ const {payments,...missing}=baseline;assert.throws(()=>assertProtectedMetricsUnchanged(missing,baseline),/payments/);
+});
+test('concurrent backup requests are reserved before asynchronous preflight, and failure releases reservation',async t=>{
+ let unblock;const gate=new Promise(resolve=>{unblock=resolve});t.mock.method(fs,'stat',async()=>{await gate;throw Object.assign(new Error('No tools in test'),{code:'ENOENT'})});
+ const first=createBackup({username:'test'},{singleBackendConfirmed:true});
+ await assert.rejects(createBackup({username:'test'},{singleBackendConfirmed:true}),/Another backup, recovery or upgrade/);
+ unblock();await assert.rejects(first,/mongodump was not found/);
+ await assert.rejects(createBackup({username:'test'},{singleBackendConfirmed:true}),/mongodump was not found/);
+});
