@@ -33,7 +33,7 @@ test('single acknowledgement excludes original payments and gross, and tracks pa
 });
 test('noncash credits are reserved until posting; final and personal declarations are conditional',()=>{
  const c=example();c.snapshot.distribution={totalNetCents:40000,refundCents:0,creditCents:40000,unusedCents:0};c.snapshot.refundSchedule=[];c.snapshot.targets=[{assignmentId:'CT-2',property:{propertyId:'LOT-2'},creditCents:40000}];
- let a=refundAcknowledgement(c,[],brand);assert.equal(a.creditApplied,false);assert.equal(a.finalWording,false);assert.match(refundAcknowledgementDocument(a),/approved but remains reserved/);
+ let a=refundAcknowledgement(c,[],brand);assert.equal(a.creditApplied,false);assert.equal(a.finalWording,false);assert.match(refundAcknowledgementDocument(a),/Approved and reserved/);
  c.finalSnapshot={effectiveDate:'2027-01-02',targets:c.snapshot.targets};a=refundAcknowledgement(c,[],brand);assert.equal(a.fulfilled,true);assert.equal(a.finalWording,false);
  c.snapshot.acknowledgementTerms={legalWordingReviewed:true,legalReviewReference:'Reviewed agreement',clientVoluntaryPersonalReasons:true,clientConfirmationReference:'Signed statement'};a=refundAcknowledgement(c,[],brand);assert.equal(a.finalWording,true);assert.equal(a.personalDeclaration,true);assert.match(refundAcknowledgementDocument(a),/not cash received/);
 });

@@ -19,16 +19,17 @@ export async function postForfeiture(req,res,next){try{res.json({success:true,da
 export async function releaseCancelledProperty(req,res,next){
  let session;
  try{
-  const requestId=req.body.requestId,reason=String(req.body.reason||'').trim();
+  const requestId=req.body.requestId,reason=String(req.body.reason||'').trim(),legalResaleReference=String(req.body.legalResaleReference||'').trim();
   if(req.body.confirm!==true||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)||reason.length<5||reason.length>1000)fail('Confirm the property release, provide a unique request ID and enter a reason of 5–1000 characters.');
+  if(req.body.legalResaleConfirmed!==true||legalResaleReference.length<5||legalResaleReference.length>1000)fail('Verify legal permission for resale and record its clearance reference before reopening the cancelled lot.');
   await assertContractOperationsReady();session=await mongoose.startSession();let saved;
   await session.withTransaction(async()=>{
    const account=await PropertyAssignment.findById(req.params.id).session(session).lean();if(!account)throw Object.assign(new Error('Contract not found.'),{statusCode:404});
-   const previous=account.propertyReleaseEvents?.find(e=>e.requestId===requestId);if(previous){if(previous.reason!==reason)throw Object.assign(new Error('Request ID was already used for a different release.'),{statusCode:409});saved=previous;return;}
+   const previous=account.propertyReleaseEvents?.find(e=>e.requestId===requestId);if(previous){if(previous.reason!==reason||previous.legalResaleReference!==legalResaleReference)throw Object.assign(new Error('Request ID was already used for a different release.'),{statusCode:409});saved=previous;return;}
    if(account.lifecycle!=='CANCELLED'||!account.cancellationOut)throw Object.assign(new Error('Only a finalized cancelled contract can enter property release review.'),{statusCode:409});
    const property=await Property.findById(account.property).session(session).lean();if(!property||property.status!=='UNAVAILABLE'||String(property.client)!==String(account.client)||property.reopeningStatus!=='PENDING')throw Object.assign(new Error('The cancelled lot is no longer awaiting release. Refresh inventory and review its history.'),{statusCode:409});
    const occupied=await PropertyAssignment.exists({property:property._id,_id:{$ne:account._id},lifecycle:{$in:['ACTIVE','CANCELLATION_PENDING']}}).session(session);if(occupied)throw Object.assign(new Error('Another active contract owns this lot. Property release is blocked.'),{statusCode:409});
-   const stamp=new Date(),event={eventId:requestId,requestId,action:'CANCELLED_PROPERTY_RELEASE_APPROVED',reason,effectiveDate:today(),...actor(req),timestamp:stamp};
+   const stamp=new Date(),event={eventId:requestId,requestId,action:'CANCELLED_PROPERTY_RELEASE_APPROVED',reason,legalResaleConfirmed:true,legalResaleReference,effectiveDate:today(),...actor(req),timestamp:stamp};
    const lot=await Property.updateOne({_id:property._id,__v:property.__v,status:'UNAVAILABLE',client:account.client,reopeningStatus:'PENDING'},{$set:{status:'AVAILABLE',client:null,reopeningStatus:'APPROVED'},$push:{history:{...event,contractId:account.assignmentId,client:account.client}},$inc:{__v:1}},{session});if(lot.modifiedCount!==1)throw Object.assign(new Error('Inventory changed during release. Nothing was released.'),{statusCode:409});
    const update=await PropertyAssignment.updateOne({_id:account._id,__v:account.__v,'propertyReleaseEvents.requestId':{$ne:requestId}},{$push:{propertyReleaseEvents:event,auditEvents:event},$inc:{__v:1}},{session});if(update.modifiedCount!==1)throw Object.assign(new Error('Contract history changed during release. Nothing was released.'),{statusCode:409});saved=event;
   });res.json({success:true,data:saved,message:'Cancelled lot released through administrator reopening approval. Contract, payment, receipt and commission history remain unchanged.'});

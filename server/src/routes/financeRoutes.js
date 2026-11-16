@@ -6,7 +6,7 @@ import {previewForfeiture,postForfeiture,forfeitureAccounts,propertyLifecycleHis
 import {cashHistoryExport} from "../controllers/cashHistoryExportController.js";
 import {paymentAcknowledgement} from "../controllers/paymentAcknowledgementController.js";
 import {addOfficeCash} from "../controllers/cashAdditionController.js";
-import {cancellationAcknowledgement,cancellationPreview,cancellationApprove,cancellationFinalPreview,cancellationFinalize,refundPost,cancellationList,cancellationDetails,cancellationExport} from '../controllers/cancellationController.js';
+import {cancellationAgreementPreview,cancellationAgreementVerify,cancellationAcknowledgement,cancellationPreview,cancellationApprove,cancellationFinalPreview,cancellationFinalize,refundPost,cancellationList,cancellationDetails,cancellationExport} from '../controllers/cancellationController.js';
 import {accountLifecycleGuard} from '../middleware/accountLifecycleGuard.js';
 import {transferOptions,previewLotTransfer,postLotTransfer,transferHistory,exportLotTransfer} from '../controllers/lotTransferController.js';
 import {createAssumptionRequest,listAssumptionRequests,decideAssumptionRequest} from '../controllers/assumptionController.js';
@@ -38,6 +38,8 @@ router.get('/clients/:clientId/cancellations',cancellationList);
 router.post('/clients/:clientId/cancellations/preview',authorize('ADMIN'),cancellationPreview);
 router.post('/clients/:clientId/cancellations',authorize('ADMIN'),cancellationApprove);
 router.get('/cancellations/:caseId',cancellationDetails);
+router.post('/cancellations/:caseId/acknowledgement/preview',authorize('ADMIN'),cancellationAgreementPreview);
+router.post('/cancellations/:caseId/acknowledgement/verify',authorize('ADMIN'),cancellationAgreementVerify);
 router.get('/cancellations/:caseId/acknowledgement',authorize('ADMIN','STAFF'),cancellationAcknowledgement);
 router.get('/cancellations/:caseId/export',cancellationExport);
 router.post('/cancellations/:caseId/finalize/preview',authorize('ADMIN'),cancellationFinalPreview);
