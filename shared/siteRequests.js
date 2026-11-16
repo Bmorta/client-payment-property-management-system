@@ -1,7 +1,7 @@
 import {scheduleWindow} from './siteVisitScheduling.js';
 export const REQUEST_TYPES=[['PROPERTY_LOCATING','Property Locating'],['LOCATE_KURAL','Locate Kural'],['LIGHT_CONSTRUCTION','Light-Material Construction'],['ROAD_DEVELOPMENT','Road Development'],['IMPROVEMENTS','Property Improvements'],['MOHON_CHECK','Mohon / Landmark Check'],['PROPERTY_CHECK','Property Check'],['SITE_TRIPPING','Site Tripping'],['OTHERS','Others']].map(([code,label])=>({code,label,mode:code==='SITE_TRIPPING'?'AGENT_TRIPPING':'CLIENT_PROPERTY',active:true}));
-export const REQUEST_STATUSES=['NEW','FOR_SCHEDULING','SCHEDULED','ASSIGNED','IN_PROGRESS','COMPLETED','ON_HOLD','RESCHEDULED','CANCELLED','REJECTED'];
-export const TERMINAL_REQUEST_STATUSES=['COMPLETED','CANCELLED','REJECTED'];
+export const REQUEST_STATUSES=['NEW','FOR_SCHEDULING','SCHEDULED','ASSIGNED','IN_PROGRESS','COMPLETED','ON_HOLD','RESCHEDULED','CANCELLED','REJECTED','DISREGARDED','DELETED'];
+export const TERMINAL_REQUEST_STATUSES=['COMPLETED','CANCELLED','REJECTED','DISREGARDED','DELETED'];
 export const PRIORITIES=['LOW','NORMAL','HIGH','URGENT'];
 export function overlaps(a,b){const x=scheduleWindow(a),y=scheduleWindow(b);return !!x&&!!y&&x.start<y.end&&y.start<x.end}
 export function requestFlags(r,now=new Date()){
@@ -15,5 +15,5 @@ export function assertRequestTransition(current,next){if(!transitions[current]?.
 
 export const nextRequestStatuses=current=>transitions[current]||[];
 
-export const requestStatusLabel=value=>({NEW:'New request',FOR_SCHEDULING:'For scheduling',SCHEDULED:'Scheduled',ASSIGNED:'Assigned',IN_PROGRESS:'In progress',COMPLETED:'Completed',ON_HOLD:'On hold',RESCHEDULED:'Rescheduled',CANCELLED:'Cancelled',REJECTED:'Rejected'})[value]||'Request updated';
-export const requestActivityLabel=event=>({NEW_REQUEST:'Request created',EDIT:'Request details updated',SCHEDULE:'Visit scheduled',RESCHEDULE:'Schedule changed',ASSIGN:'Assigned to field staff',REPORT:'Visit report submitted',ATTACHMENT_ADDED:'Supporting document added',STATUS:({COMPLETED:'Request completed',CANCELLED:'Request cancelled',REJECTED:'Request rejected',IN_PROGRESS:'Visit started',ON_HOLD:'Request put on hold',FOR_SCHEDULING:'Sent for scheduling'})[event.status]||'Request status updated'})[event.action]||'Request updated';
+export const requestStatusLabel=value=>({NEW:'New request',FOR_SCHEDULING:'For scheduling',SCHEDULED:'Scheduled',ASSIGNED:'Assigned',IN_PROGRESS:'In progress',COMPLETED:'Completed',ON_HOLD:'On hold',RESCHEDULED:'Rescheduled',CANCELLED:'Cancelled',REJECTED:'Rejected',DISREGARDED:'Disregarded',DELETED:'Deleted / Archived'})[value]||'Request updated';
+export const requestActivityLabel=event=>({DISREGARD:'Request disregarded',DELETE:'Request deleted / archived',REOPEN:'Request reopened',NEW_REQUEST:'Request created',EDIT:'Request details updated',SCHEDULE:'Visit scheduled',RESCHEDULE:'Schedule changed',ASSIGN:'Assigned to field staff',REPORT:'Visit report submitted',ATTACHMENT_ADDED:'Supporting document added',STATUS:({COMPLETED:'Request completed',CANCELLED:'Request cancelled',REJECTED:'Request rejected',IN_PROGRESS:'Visit started',ON_HOLD:'Request put on hold',FOR_SCHEDULING:'Sent for scheduling'})[event.status]||'Request status updated'})[event.action]||'Request updated';
