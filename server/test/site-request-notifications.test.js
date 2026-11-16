@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
+import SiteRequest from '../src/models/SiteRequest.js';
+import Account from '../src/models/PropertyAssignment.js';
+import Read from '../src/models/NotificationRead.js';
+import {notificationData,readNotifications} from '../src/controllers/notificationController.js';
+const oid=()=>String(new mongoose.Types.ObjectId());
+const q=value=>({select(){return this},async lean(){return value}});
+test('request notifications and reminders reuse bell scoping and individual read state',async t=>{const assigned=oid(),other=oid(),request=oid();const r={_id:request,__v:1,requestId:'SRQ-TEST',createdBy:assigned,personnel:[assigned],status:'ASSIGNED',schedule:{start:'2020-01-01T01:00Z',end:'2020-01-01T02:00Z'},reports:[],notifications:[{id:'assigned',recipient:assigned,message:'Assigned visit',createdAt:new Date(),href:'/site-requests?request='+request}]};t.mock.method(Account,'find',()=>q([]));t.mock.method(SiteRequest,'find',()=>q([r]));t.mock.method(Read,'find',()=>q([]));const data=await notificationData({_id:assigned,role:'STAFF'});assert.ok(data.rows.some(n=>n.id==='assigned'));assert.ok(data.rows.some(n=>n.status==='OVERDUE'));assert.ok(data.rows.every(n=>n.sourceModel==='SiteRequest'));assert.equal((await notificationData({_id:other,role:'STAFF'})).rows.length,0);const write=t.mock.method(Read,'bulkWrite',async()=>{});let error;await readNotifications({body:{accountId:request},params:{notificationId:'assigned'},user:{_id:assigned,role:'STAFF'}},{json(){}},e=>{error=e});assert.ifError(error);assert.equal(write.mock.calls[0].arguments[0][0].updateOne.update.$setOnInsert.sourceModel,'SiteRequest');assert.equal(write.mock.calls[0].arguments[0][0].updateOne.update.$setOnInsert.account,request)});

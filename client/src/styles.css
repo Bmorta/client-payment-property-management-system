@@ -497,3 +497,10 @@ button, input, select, textarea { font: inherit; }
 .cashier-workspace .table td,.forfeiture-review-summary .table td {overflow-wrap:anywhere}
 @media(max-width:1023px){.cashier-workspace {grid-template-columns:minmax(0,1fr)}.cashier-client-panel {position:static}.cashier-client-panel .cashier-contract {display:block}}
 @media(max-width:390px){.cashier-workspace .card-body {padding:.75rem}.cashier-property-form {padding:.65rem!important}.cashier-facts {column-gap:.5rem}.cashier-grand-total {align-items:start;flex-direction:column}}
+
+/* Site request workspace follows Bootstrap light/dark theme variables. */
+.site-request-workspace .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem}
+.site-request-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;overflow-x:auto;min-width:640px}
+.site-request-workspace{overflow-x:auto}.site-request-calendar-day{min-height:140px;padding:.4rem;border:1px solid var(--bs-border-color);border-radius:.4rem;background:var(--bs-body-bg)}
+.site-request-description,.site-request-history{white-space:pre-wrap;overflow-wrap:anywhere}.site-request-history{max-height:300px;overflow:auto;background:var(--bs-tertiary-bg);padding:.75rem}
+@media(max-width:767px){.site-request-calendar-day{min-height:105px}.site-request-calendar button{font-size:.75rem}.site-request-workspace .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

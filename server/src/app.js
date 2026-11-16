@@ -1,3 +1,4 @@
+import siteRequestRoutes from './routes/siteRequestRoutes.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
@@ -30,6 +31,7 @@ app.use(cors({
 app.use("/api/projects/:projectId/map",express.json({limit:"6mb"}));
 app.use("/api/companies",express.json({limit:"4mb"}));
 app.use("/api/migration",express.json({limit:"6mb"}));
+app.use("/api/site-requests",express.json({limit:"4mb"}));
 app.use(express.json({ limit: "1mb" }));
 app.use(maintenanceWriteGate);
 
@@ -47,6 +49,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/clients", clientRoutes);
+app.use("/api/site-requests",siteRequestRoutes);
 app.use("/api/agents",agentRoutes);
 app.use("/api/companies",companyRoutes);
 app.use("/api/commissions",commissionRoutes);

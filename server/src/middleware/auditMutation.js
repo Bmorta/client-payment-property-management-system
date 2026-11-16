@@ -1,3 +1,5 @@
+import SiteRequest from '../models/SiteRequest.js';
+import SiteRequestSettings from '../models/SiteRequestSettings.js';
 import OfficePayout from "../models/OfficePayout.js";
 import CancellationCase from '../models/CancellationCase.js';
 import CommissionVoucher from '../models/CommissionVoucher.js';
@@ -21,6 +23,7 @@ function target(req) {
   const parts = req.path.split("/").filter(Boolean), base = req.baseUrl;
   let model, module, filter = {};
   const one = id => /^[a-fA-F0-9]{24}$/.test(String(id || "")) ? { _id: id } : { _id: null };
+  if(base.endsWith("/site-requests")){model=parts[0]==="types"?SiteRequestSettings:SiteRequest;module="Client Requests and Site Visits";filter=parts[0]==="types"?{_id:"OFFICE"}:one(parts[0]);}
   if (base.endsWith("/office-payouts")){model=OfficePayout;module="Office Payouts";filter=one(parts[0]);}
   if (base.endsWith("/companies")){model=Company;module="Companies";filter=one(parts[0]);}
   if (base.endsWith("/migration")){model=parts[0]==="config"?MigrationConfig:MigrationBatch;module="Historical Data Migration";filter=parts[0]==="config"?{_id:"OFFICE"}:one(parts[1]);}

@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
+import {randomUUID} from 'node:crypto';
+import app from '../src/app.js';
+import User from '../src/models/User.js';
+import Client from '../src/models/Client.js';
+import Project from '../src/models/Project.js';
+import Property from '../src/models/Property.js';
+import Account from '../src/models/PropertyAssignment.js';
+import Agent from '../src/models/Agent.js';
+import SiteRequest from '../src/models/SiteRequest.js';
+import Settings from '../src/models/SiteRequestSettings.js';
+import Attachment from '../src/models/SiteRequestAttachment.js';
+import Guard from '../src/models/AdministrationGuard.js';
+import Activity from '../src/models/ActivityLog.js';
+import {signAccessToken} from '../src/utils/jwt.js';
+import {buildSchedule} from '../../shared/paymentSchedule.js';
+test('request HTTP lifecycle, permissions, conflicting bookings and attachment persistence on disposable replica set',{skip:!process.env.REMS_SITE_REQUEST_TEST_URI},async()=>{
+ const dbName='rems_site_requests_test_'+randomUUID().replaceAll('-','');await mongoose.connect(process.env.REMS_SITE_REQUEST_TEST_URI,{dbName});process.env.JWT_SECRET||='isolated-site-request-integration-secret';let server;
+ try{await Promise.all([User,Client,Project,Property,Account,Agent,SiteRequest,Settings,Attachment,Guard,Activity].map(async m=>{await m.createCollection();await m.init()}));
+ const createUser=(username,role)=>User.create({username,firstName:username,lastName:'Test',email:username+'@example.invalid',role,passwordHash:'isolated-test-only',isActive:true});const admin=await createUser('requestadmin','ADMIN'),staff=await createUser('requeststaff','STAFF'),field=await createUser('requestfield','STAFF'),viewer=await createUser('requestviewer','VIEWER');
+ const client=await Client.create({clientId:'TEST-CLIENT',firstName:'Test',lastName:'Buyer',contactNumber:'09000000000',createdBy:admin._id});const project=await Project.create({projectId:'TEST-PROJECT',projectCode:'TEST-PROJECT',projectName:'Test Site',status:'ACTIVE',createdBy:admin._id});const property=await Property.create({propertyId:'TEST-PROPERTY',project:project._id,phaseNumber:1,blockNumber:1,lotNumber:1,status:'RESERVED',client:client._id,createdBy:admin._id});const account=await Account.create({assignmentId:'TEST-ACCOUNT',client:client._id,project:project._id,property:property._id,lifecycle:'ACTIVE',contract:{totalCents:600000,months:1,termType:'CUSTOM',contractDate:'2026-01-01',firstDueDate:'2026-01-05',schedule:buildSchedule(600000,1,'2026-01-05')},createdBy:admin._id});
+ const agent=await Agent.create({agentId:'TEST-AGENT',fullName:'Test Agent',agentType:'Broker',status:'ACTIVE',createdBy:admin._id});
+ server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const url='http://127.0.0.1:'+server.address().port+'/api/site-requests';
+ const api=async(path,method='GET',body,user=staff,status=200)=>{const response=await fetch(url+path,{method,headers:{Authorization:'Bearer '+signAccessToken(user),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const data=await response.json();assert.equal(response.status,status,JSON.stringify(data));return data.data};
+ const base={type:'PROPERTY_LOCATING',client:String(client._id),account:String(account._id),project:String(project._id),requestDate:new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date()),area:'Test Block 1',description:'Locate the actual purchased property'};
+ await api('','POST',{...base,requestKey:randomUUID()},viewer,403);let r=await api('','POST',{...base,requestKey:randomUUID()},staff,201);const second=await api('','POST',{...base,requestKey:randomUUID()},staff,201);const action=(r,kind,extra={})=>({action:kind,requestKey:randomUUID(),expectedVersion:r.__v,reason:'Reviewed test activity',...extra});const slot={start:'2026-01-02T01:00Z',end:'2026-01-02T02:00Z'};r=await api('/'+r._id+'/actions','POST',action(r,'SCHEDULE',{schedule:slot,personnel:[String(field._id)]}));await api('/'+second._id+'/actions','POST',action(second,'SCHEDULE',{schedule:slot,personnel:[String(field._id)]}),staff,409);r=await api('/'+r._id+'/actions','POST',action(r,'ASSIGN',{personnel:[String(field._id)]}));await api('/'+r._id+'/actions','POST',action(r,'STATUS',{status:'IN_PROGRESS'}),staff,403);r=await api('/'+r._id+'/actions','POST',action(r,'STATUS',{status:'IN_PROGRESS'}),field);
+ r=await api('/'+r._id+'/attachments','POST',{requestKey:randomUUID(),name:'field-note.pdf',mime:'application/pdf',base64:Buffer.from('%PDF-1.4\nIsolated sample').toString('base64')},field);assert.equal(r.attachments.length,1);const evidence=await fetch(url+'/'+r._id+'/attachments/'+r.attachments[0].id,{headers:{Authorization:'Bearer '+signAccessToken(field)}});assert.equal(evidence.status,200);assert.equal(await evidence.text(),'%PDF-1.4\nIsolated sample');
+ r=await api('/'+r._id+'/actions','POST',action(r,'REPORT',{report:{actualStart:slot.start,actualEnd:slot.end,area:'Lot 1',actions:'Located boundaries',findings:'Markers present',attendance:'Buyer and agent attended',completionRemarks:'Complete',followUpRequired:false}}),field);r=await api('/'+r._id+'/actions','POST',action(r,'STATUS',{status:'COMPLETED'}),field);assert.equal(r.status,'COMPLETED');assert.equal(r.reports.length,1);
+ const trip=await api('','POST',{...base,type:'SITE_TRIPPING',client:null,account:null,requestingAgent:String(agent._id),contact:{name:'Prospect',phone:'09000000001'},requestKey:randomUUID()},staff,201);assert.equal(trip.account,null);assert.equal((await api('?client='+client._id)).total,2);assert.ok((await Activity.find({module:'Client Requests and Site Visits'})).length>0);
+ }finally{if(server){server.closeAllConnections();await new Promise(r=>server.close(r))}await mongoose.connection.dropDatabase();await mongoose.disconnect()}
+});

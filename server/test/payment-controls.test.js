@@ -1,3 +1,4 @@
+import SiteRequest from '../src/models/SiteRequest.js';
 import NotificationRead from "../src/models/NotificationRead.js";
 import SequenceCounter from "../src/models/SequenceCounter.js";
 import test from "node:test";
@@ -47,6 +48,7 @@ test("changed source values cause stale approval rather than overwrite",async t=
 test("void retains original transaction and removes amount from effective balance",async t=>{const a=account();mockAccount(t,a);await correctPayment(req("ADMIN",{confirm:true,voided:true}),response(),next);assert.equal(a.payments[0].amountCents,30000);assert.equal(effectivePayment(a.payments[0]).status,"VOIDED");assert.equal(summarizeAccount(a).paidCents,0)});
 test("overpayment correction and stale base revision never write",async t=>{const a=account(),write=mockAccount(t,a);await assert.rejects(()=>correctPayment(req("ADMIN",{confirm:true,amount:"1300"}),response(),next),/exceeds/);await assert.rejects(()=>correctPayment(req("ADMIN",{confirm:true,baseRevision:2}),response(),next),/changed/);assert.equal(write.mock.callCount(),0)});
 test("notification reads expose only own or admin-role notifications without changing financial documents",async t=>{
+ t.mock.method(SiteRequest,"find",()=>({select:()=>({lean:async()=>[]})}));
  const a=account();a.notifications=[{id:"own",recipient:staff,readBy:[]},{id:"admin",recipient:"ADMIN",readBy:[]},{id:"other",recipient:"another",readBy:[]}];
  t.mock.method(PropertyAssignment,"find",()=>({select:()=>({lean:async()=>[a]})}));
  t.mock.method(NotificationRead,"find",()=>({select:()=>({lean:async()=>[]})}));

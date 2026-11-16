@@ -1,3 +1,5 @@
+import SiteRequest from '../models/SiteRequest.js';
+import {requestFlags} from '../../../shared/siteRequests.js';
 import {createHash} from "node:crypto";
 import mongoose from "mongoose";
 import PropertyAssignment from "../models/PropertyAssignment.js";
@@ -7,9 +9,12 @@ import {verifyAccessToken} from "../utils/jwt.js";
 const visible=(n,user)=>n.recipient===String(user._id)||(["ADMIN","STAFF"].includes(n.recipient)&&user.role===n.recipient);
 const readKey=(user,account,id)=>createHash('sha256').update(JSON.stringify([String(user),String(account),id])).digest('hex');
 async function visibleRows(user){
- const accounts=await PropertyAssignment.find({notifications:{$elemMatch:{recipient:{$in:[String(user._id),...(["ADMIN","STAFF"].includes(user.role)?[user.role]:[])]}}}}).select("notifications __v").lean();
+ let accounts=await PropertyAssignment.find({notifications:{$elemMatch:{recipient:{$in:[String(user._id),...(["ADMIN","STAFF"].includes(user.role)?[user.role]:[])]}}}}).select("notifications __v").lean();
+ const requests=await SiteRequest.find(user.role==='ADMIN'?{}:{$or:[{createdBy:user._id},{personnel:user._id},{'notifications.recipient':String(user._id)}]}).select('requestId createdBy personnel status schedule reports followUp notifications __v').lean();
+ const reminders=requests.map(r=>{const flags=requestFlags(r),recipients=[...new Set(['ADMIN',String(r.createdBy),...(r.personnel||[]).map(String)])],dynamic=Object.entries(flags).filter(([kind,on])=>on&&kind!=='today').flatMap(([kind])=>recipients.map(recipient=>({id:'site-reminder-'+kind+'-'+r._id+'-'+(r.followUp?.dueAt||r.schedule?.start||'')+'-'+recipient,recipient,eventOnly:true,status:kind.toUpperCase(),message:r.requestId+': '+kind.replaceAll('followUp','follow-up required'),href:'/site-requests?request='+r._id,createdAt:r.schedule?.end||r.preferredStart||r.followUp?.dueAt||new Date(0),readBy:[]})));return {...r,sourceModel:'SiteRequest',notifications:[...(r.notifications||[]),...dynamic]}});
+ accounts=[...accounts.map(a=>({...a,sourceModel:'PropertyAssignment'})),...reminders];
  const reads=await NotificationRead.find({user:user._id,account:{$in:accounts.map(a=>a._id)}}).select('_id').lean(),keys=new Set(reads.map(r=>r._id));
- const rows=accounts.flatMap(a=>(a.notifications||[]).map((n,index)=>({...n,id:n.id||'legacy-'+createHash('sha256').update(JSON.stringify([String(a._id),index,n.createdAt,n.message,n.recipient])).digest('hex')})).filter(n=>visible(n,user)).map(n=>({...n,accountId:a._id,read:(n.readBy||[]).includes(String(user._id))||keys.has(readKey(user._id,a._id,n.id))}))).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)||String(a.id).localeCompare(String(b.id)));
+ const rows=accounts.flatMap(a=>(a.notifications||[]).map((n,index)=>({...n,id:n.id||'legacy-'+createHash('sha256').update(JSON.stringify([String(a._id),index,n.createdAt,n.message,n.recipient])).digest('hex')})).filter(n=>visible(n,user)).map(n=>({...n,accountId:a._id,sourceModel:a.sourceModel,read:(n.readBy||[]).includes(String(user._id))||keys.has(readKey(user._id,a._id,n.id))}))).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)||String(a.id).localeCompare(String(b.id)));
  return {accounts,reads,rows};
 }
 export async function notificationData(user,{page=1,limit=100,q=''}={}){
@@ -26,7 +31,7 @@ export async function readNotifications(req,res,next){try{
  const {rows}=await visibleRows(req.user),matching=rows.filter(n=>(!req.params.notificationId||n.id===req.params.notificationId)&&(!accountId||String(n.accountId)===accountId));
  if(req.params.notificationId&&!matching.length)return res.status(404).json({success:false,message:'Notification not found or not available to your role.'});
  if(req.params.notificationId&&!accountId&&new Set(matching.map(n=>String(n.accountId))).size>1)return res.status(400).json({success:false,message:'Select the specific account notification before marking it read.'});
- const operations=matching.filter(n=>!n.read).map(n=>({updateOne:{filter:{_id:readKey(req.user._id,n.accountId,n.id)},update:{$setOnInsert:{user:req.user._id,account:n.accountId,notificationId:n.id,readAt:new Date()}},upsert:true}}));
+ const operations=matching.filter(n=>!n.read).map(n=>({updateOne:{filter:{_id:readKey(req.user._id,n.accountId,n.id)},update:{$setOnInsert:{user:req.user._id,account:n.accountId,notificationId:n.id,sourceModel:n.sourceModel,readAt:new Date()}},upsert:true}}));
  for(let i=0;i<operations.length;i+=500)await NotificationRead.bulkWrite(operations.slice(i,i+500),{ordered:false});
  res.json({success:true,data:await notificationData(req.user)});
 }catch(e){next(e)}}

@@ -1,0 +1,14 @@
+export const REQUEST_TYPES=[['PROPERTY_LOCATING','Property Locating'],['LOCATE_KURAL','Locate Kural'],['LIGHT_CONSTRUCTION','Light-Material Construction'],['ROAD_DEVELOPMENT','Road Development'],['IMPROVEMENTS','Property Improvements'],['MOHON_CHECK','Mohon / Landmark Check'],['PROPERTY_CHECK','Property Check'],['SITE_TRIPPING','Site Tripping'],['OTHERS','Others']].map(([code,label])=>({code,label,mode:code==='SITE_TRIPPING'?'AGENT_TRIPPING':'CLIENT_PROPERTY',active:true}));
+export const REQUEST_STATUSES=['NEW','FOR_SCHEDULING','SCHEDULED','ASSIGNED','IN_PROGRESS','COMPLETED','ON_HOLD','RESCHEDULED','CANCELLED','REJECTED'];
+export const TERMINAL_REQUEST_STATUSES=['COMPLETED','CANCELLED','REJECTED'];
+export const PRIORITIES=['LOW','NORMAL','HIGH','URGENT'];
+export function overlaps(a,b){return new Date(a.start)<new Date(b.end)&&new Date(b.start)<new Date(a.end)}
+export function requestFlags(r,now=new Date()){
+ const live=!TERMINAL_REQUEST_STATUSES.includes(r.status),start=(r.schedule?.start||r.preferredStart)&&new Date(r.schedule?.start||r.preferredStart),end=(r.schedule?.end||r.preferredStart)&&new Date(r.schedule?.end||r.preferredStart),date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'});
+ return {overdue:live&&!!end&&end<now,unattended:live&&!!r.schedule?.end&&!!end&&end<now&&!r.reports?.length,upcoming:live&&!!start&&start>now&&start-now<=86400000,today:live&&!!r.schedule?.start&&!!start&&date.format(start)===date.format(now),followUp:live&&!!r.followUp?.required&&(!r.followUp.dueAt||new Date(r.followUp.dueAt)<=now)};
+}
+export function validateSchedule(schedule){const start=new Date(schedule?.start),end=new Date(schedule?.end);if(!Number.isFinite(+start)||!Number.isFinite(+end)||end<=start||end-start>86400000)throw Object.assign(new Error('Choose a valid confirmed visit interval of at most 24 hours.'),{statusCode:400});return {start:start.toISOString(),end:end.toISOString()}}
+const transitions={NEW:['FOR_SCHEDULING','ON_HOLD','CANCELLED','REJECTED'],FOR_SCHEDULING:['ON_HOLD','CANCELLED','REJECTED'],SCHEDULED:['IN_PROGRESS','ON_HOLD','CANCELLED','REJECTED'],ASSIGNED:['IN_PROGRESS','ON_HOLD','CANCELLED','REJECTED'],RESCHEDULED:['IN_PROGRESS','ON_HOLD','CANCELLED','REJECTED'],IN_PROGRESS:['COMPLETED','ON_HOLD','CANCELLED'],ON_HOLD:['FOR_SCHEDULING','CANCELLED','REJECTED']};
+export function assertRequestTransition(current,next){if(!transitions[current]?.includes(next))throw Object.assign(new Error('This request cannot move from '+current+' to '+next+'. Refresh its history.'),{statusCode:409})}
+
+export const nextRequestStatuses=current=>transitions[current]||[];
