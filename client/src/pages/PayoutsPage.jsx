@@ -1,3 +1,4 @@
+import {useReviewRefresh} from '../hooks/useReviewRefresh.js';
 import {usePageState} from '../hooks/usePageState.js';
 import {fitPayoutPrint} from '../utils/fitPayoutPrint.js';
 import {useEffect,useState} from 'react';
@@ -14,13 +15,15 @@ import {payoutAcknowledgement} from '../utils/printAcknowledgements.js';
 import {printAccountDocument} from '../utils/printAccountReports.js';
 import {localDate,submissionId,pesos} from '../utils/finance.js';
 const blank=()=>({payee:'',payeeType:'SUPPLIER',paymentDate:localDate(),amount:'',purpose:'',classification:'EXPENSE',category:'OTHER',projectId:'',propertyId:'',method:'CASH',fundingAccount:'CASH',reference:'',remarks:'',receivedBy:'',requestId:submissionId()});
-export default function PayoutsPage(){
+export default function PayoutsPage({initialPayoutId=null}){
  const [params]=useSearchParams();
  const {user}=useAuth(),admin=user?.role==='ADMIN';const [form,setForm]=useState(blank),[editing,setEditing]=useState(null),[projects,setProjects]=useState([]),[properties,setProperties]=useState([]),[data,setData]=useState(null),[selected,setSelected]=useState(params.get('selected')||null),[details,setDetails]=useState(null),[q,setQ]=usePageState("PayoutsPage.jsx:q",params.get('q')||'',''),[status,setStatus]=usePageState("PayoutsPage.jsx:status",'',''),[page,setPage]=usePageState("PayoutsPage.jsx:page",1,''),[range,setRange]=usePageState("PayoutsPage.jsx:range",{from:'',to:''},''),[version,setVersion]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[action,setAction]=useState(null),[confirm,setConfirm]=useState(false),[ack,setAck]=useState(null),[release,setRelease]=useState(()=>({...blank(),existingExpenseId:'',reason:''}));
+ useReviewRefresh(()=>setVersion(v=>v+1));
  const set=(k,v)=>setForm(f=>({...f,[k]:v,...(k==='method'?{fundingAccount:''}:{}),...(k==='projectId'?{propertyId:''}:{})}));
  useEffect(()=>{api.get('/projects').then(r=>setProjects(r.data.data)).catch(()=>setError('Unable to load projects.'))},[]);
  useEffect(()=>{let active=true;setProperties([]);if(form.projectId)api.get(`/projects/${form.projectId}/properties`).then(r=>{if(active)setProperties(r.data.data)}).catch(()=>{if(active)setError('Unable to load property choices.')});return()=>{active=false}},[form.projectId]);
  useEffect(()=>{let active=true;const timer=setTimeout(()=>api.get('/office-payouts',{params:{q,status,page,...(range.from&&range.to?range:{})}}).then(r=>{if(active)setData(r.data.data)}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to load payouts.')}),200);return()=>{active=false;clearTimeout(timer)}},[q,status,page,range.from,range.to,version]);
+ useEffect(()=>{if(initialPayoutId)setSelected(initialPayoutId)},[initialPayoutId]);
  useEffect(()=>{let active=true;setDetails(null);if(selected)api.get(`/office-payouts/${selected}`).then(r=>{if(active)setDetails(r.data.data)}).catch(e=>{if(active)setError(e.response?.data?.message||'Unable to open payout.')});return()=>{active=false}},[selected,version]);
  const save=async()=>{setBusy(true);try{const r=editing?await api.put(`/office-payouts/${editing}`,{...form,expectedVersion:form.__v}):await api.post('/office-payouts',form);setSelected(r.data.data._id);setForm(blank());setEditing(null);setVersion(v=>v+1);setMessage(r.data.message);setConfirm(false)}catch(e){setConfirm(false);setError(e.response?.data?.message||'Save result uncertain. Check history before retrying; the submission ID was retained.')}finally{setBusy(false)}};
  const chooseAction=(name,record)=>{setAction({action:name,releaseId:record?.releaseId});setRelease({...blank(),amount:String((details.remainingCents||0)/100),method:details.method,fundingAccount:details.fundingAccount,receivedBy:details.receivedBy||details.payee,reason:'',existingExpenseId:'',requestId:submissionId()})};

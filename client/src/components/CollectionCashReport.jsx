@@ -1,3 +1,4 @@
+import {useReviewRefresh} from '../hooks/useReviewRefresh.js';
 import {usePageState} from '../hooks/usePageState.js';
 import FeedbackMessage from "./FeedbackMessage.jsx";
 import {reportLogoHtml} from "../utils/reportBrand.js";
@@ -25,6 +26,7 @@ function MethodChart({data,field,label}){const rows=data.filter(b=>b[field]>0).m
 export default function CollectionCashReport({openCashTools=false,projects=[]}){
  const classificationTarget=useRef(null);const [origin,setOrigin]=usePageState("CollectionCashReport.jsx:origin",'','');
  const {user}=useAuth(),[period,setPeriod]=usePageState("CollectionCashReport.jsx:period",'today',''),[range,setRange]=usePageState("CollectionCashReport.jsx:range",()=>cashReportDates('today'),''),[methods,setMethods]=usePageState("CollectionCashReport.jsx:methods",[],''),[project,setProject]=usePageState("CollectionCashReport.jsx:project",'',''),[collectionQ,setCollectionQ]=usePageState("CollectionCashReport.jsx:collectionQ",'',''),[expenseQ,setExpenseQ]=usePageState("CollectionCashReport.jsx:expenseQ",'',''),[collectionPage,setCollectionPage]=usePageState("CollectionCashReport.jsx:collectionPage",1,''),[expensePage,setExpensePage]=usePageState("CollectionCashReport.jsx:expensePage",1,''),[collectionSort,setCollectionSort]=usePageState("CollectionCashReport.jsx:collectionSort",'date',''),[expenseSort,setExpenseSort]=usePageState("CollectionCashReport.jsx:expenseSort",'date',''),[collectionDirection,setCollectionDirection]=usePageState("CollectionCashReport.jsx:collectionDirection",'asc',''),[expenseDirection,setExpenseDirection]=usePageState("CollectionCashReport.jsx:expenseDirection",'asc',''),[data,setData]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[version,setVersion]=useState(0),[classifying,setClassifying]=useState(null),[message,setMessage]=useState('');
+ useReviewRefresh(()=>setVersion(v=>v+1));
  useEffect(()=>{if(classifying)revealTarget(classificationTarget.current)},[classifying?._id]);
  const filters={origin,...range,methods:methods.join(','),project,collectionQ,expenseQ,collectionSort,expenseSort,collectionDirection,expenseDirection},queryKey=JSON.stringify({...filters,collectionPage,expensePage}),key=JSON.stringify([queryKey,version]);
  const previousQuery=useRef(null);

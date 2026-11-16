@@ -1,3 +1,4 @@
+import {useReviewRefresh} from '../hooks/useReviewRefresh.js';
 import {usePageState} from '../hooks/usePageState.js';
 import {useEffect,useState} from 'react';
 import {Link,useLocation} from 'react-router-dom';
@@ -12,6 +13,7 @@ const summaryLabels={totalForfeitedProperties:'Total Forfeited Properties',pendi
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export default function ForfeitedAccountsPage(){
  const location=useLocation(),reopen=location.pathname==='/reopen-properties';const [filters,setFilters]=usePageState("ForfeitedAccountsPage.jsx:filters",{q:'',project:'',phase:'',block:'',lot:'',status:'',duration:'',from:'',to:'',sort:'LONGEST'},''),[page,setPage]=usePageState("ForfeitedAccountsPage.jsx:page",1,''),[data,setData]=useState(null),[selected,setSelected]=useState(null),[projects,setProjects]=useState([]),[version,setVersion]=useState(0),[error,setError]=useState(''),[message,setMessage]=useState(''),[report,setReport]=useState(null),[busy,setBusy]=useState(false);
+ useReviewRefresh(()=>setVersion(v=>v+1));
  const change=(key,value)=>{setFilters(f=>({...f,[key]:value}));setPage(1);setReport(null)};
  useEffect(()=>{setFilters(f=>({...f,status:reopen?'PENDING':''}));setPage(1);setSelected(null)},[reopen]);
  useEffect(()=>{const timer=setInterval(()=>setVersion(v=>v+1),60000);return()=>clearInterval(timer)},[]);

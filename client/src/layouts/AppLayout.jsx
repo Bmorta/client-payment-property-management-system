@@ -1,3 +1,5 @@
+import {useAdminReviews} from '../context/AdminReviewContext.jsx';
+import QuickAdminReview from '../components/QuickAdminReview.jsx';
 import SmartBackButton from '../components/SmartBackButton.jsx';
 import {topDialog} from '../utils/dialogStack.js';
 import AppearanceSelect from '../components/AppearanceSelect.jsx';
@@ -13,6 +15,7 @@ import {visibleGroups,activeDestination} from "../utils/workspaceNavigation.js";
 const readPreference=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
 export default function AppLayout(){
  const {user,logout}=useAuth(),location=useLocation(),{pathname,search}=location,[open,setOpen]=useState(false),menuButton=useRef(null),sidebar=useRef(null);
+ const reviews=useAdminReviews();
  const groups=visibleGroups(user?.role),active=activeDestination(location),activeGroup=groups.find(g=>g.items.some(i=>i.to===active));
  const [peek,setPeek]=useState(false),[compact,setCompact]=useState(()=>readPreference('rems:compact',false)),[expanded,setExpanded]=useState(()=>readPreference('rems:groups',{}));
  const title=pathname.startsWith('/projects/')?'Manage Lots':groups.flatMap(g=>g.items).find(i=>i.to===active)?.label||'Workspace';
@@ -49,17 +52,17 @@ export default function AppLayout(){
    <div className="sidebar-brand"><NavLink to="/" className="brand-link" onClick={()=>setOpen(false)}><REMSIcon size={40} decorative/><span className="brand-copy">REMS<span className="brand-subtitle">Real Estate Management System</span></span></NavLink><button type="button" className="icon-button sidebar-close" aria-label="Close navigation" onClick={close}><NavIcon name="close"/></button></div>
    <button type="button" className="desktop-collapse" aria-label={compact?'Expand sidebar':'Collapse sidebar'} aria-pressed={compact} onClick={()=>{setPeek(false);setCompact(v=>!v)}}><NavIcon name="menu"/><span>{compact?'Expand':'Collapse sidebar'}</span></button>
    <nav className="sidebar-nav" aria-label="Workspace modules">{groups.map(group=>{
-    const isOpen=expanded[group.id]??group.id===activeGroup?.id;
+    const isOpen=expanded[group.id]??(group.id==='reviews'||group.id===activeGroup?.id);
     return <div className={`nav-group${isOpen?' group-open':''}${activeGroup?.id===group.id?' group-active':''}`} key={group.id}>
-     <button type="button" className="nav-category" aria-label={group.label} aria-expanded={!!isOpen} aria-controls={`nav-${group.id}`} title={group.label} onClick={()=>{if(compact&&!open){setPeek(true);setExpanded(old=>({...old,[group.id]:true}))}else setExpanded(old=>({...old,[group.id]:!isOpen}))}}><NavIcon name={group.icon}/><span>{group.label}</span><span className="nav-chevron" aria-hidden="true">{isOpen?'−':'+'}</span></button>
-     <div className="nav-items" id={`nav-${group.id}`}><span className="flyout-label">{group.label}</span>{group.items.map(({to,label,icon})=><Link key={to} to={to} aria-current={active===to?'page':undefined} className={`sidebar-link${active===to?' active':''}`} onClick={()=>{setOpen(false);setPeek(false)}}><NavIcon name={icon}/><span>{label}</span></Link>)}</div>
+     <button type="button" className="nav-category" aria-label={group.label} aria-expanded={!!isOpen} aria-controls={`nav-${group.id}`} title={group.label} onClick={()=>{if(compact&&!open){setPeek(true);setExpanded(old=>({...old,[group.id]:true}))}else setExpanded(old=>({...old,[group.id]:!isOpen}))}}><NavIcon name={group.icon}/><span>{group.label}</span>{group.id==='reviews'&&user?.role==='ADMIN'&&<span className="badge text-bg-danger">{reviews?.data?.pending??'…'}</span>}<span className="nav-chevron" aria-hidden="true">{isOpen?'−':'+'}</span></button>
+     <div className="nav-items" id={`nav-${group.id}`}><span className="flyout-label">{group.label}</span>{group.items.map(({to,label,icon})=><Link key={to} to={to} aria-current={active===to?'page':undefined} className={`sidebar-link${active===to?' active':''}`} onClick={()=>{setOpen(false);setPeek(false)}}><NavIcon name={icon}/><span>{label}</span>{to==='/approval-requests'&&user?.role==='ADMIN'&&<span className="badge text-bg-danger" aria-label="Pending administrator reviews">{reviews?.data?.pending??'…'}</span>}</Link>)}</div>
     </div>
    })}</nav>
    <div className="sidebar-account"><span className="user-avatar" aria-hidden="true">{initials}</span><div className="sidebar-user"><strong>{user?.fullName||user?.username}</strong><span>{user?.role?.toLowerCase()} · {user?.username}</span></div><button type="button" className="icon-button" onClick={logout} aria-label="Logout" title="Logout"><NavIcon name="logout"/></button></div>
   </aside>
   <div className="app-workspace">
    <header className="workspace-header"><div className="workspace-heading"><button ref={menuButton} type="button" className="icon-button menu-toggle" aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded={open} onClick={()=>setOpen(true)}><NavIcon name="menu"/></button><div><p className="workspace-eyebrow">REMS · Office workspace</p><span className="workspace-title">{title}</span></div></div><div className="workspace-tools"><FeatureSearch/><div className="header-clock"><HeaderClock/><span className="header-timezone">Philippine Standard Time</span></div><AppearanceSelect compact/><NotificationBell/><span className="header-avatar user-avatar" title={user?.fullName} aria-hidden="true">{initials}</span></div></header>
-   <div id="workspace-content" className="workspace-content" tabIndex={-1}><div className="mb-3">{!/^\/(clients\/[^/]+\/accounts|projects\/[^/]+\/lots|property-history)$/.test(pathname)&&<SmartBackButton/>}</div><Outlet/></div>
+   <div id="workspace-content" className="workspace-content" tabIndex={-1}><div className="mb-3">{!/^\/(clients\/[^/]+\/accounts|projects\/[^/]+\/lots|property-history)$/.test(pathname)&&<SmartBackButton/>}</div>{user?.role==='ADMIN'&&reviews?.error&&<p className="alert alert-warning">{reviews.error}</p>}<Outlet/><QuickAdminReview/></div>
   </div>
  </div>;
 }

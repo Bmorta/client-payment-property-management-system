@@ -1,3 +1,4 @@
+import adminReviewRoutes from './routes/adminReviewRoutes.js';
 import siteRequestRoutes from './routes/siteRequestRoutes.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -46,6 +47,7 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/maintenance",maintenanceRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/admin-reviews",adminReviewRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/clients", clientRoutes);

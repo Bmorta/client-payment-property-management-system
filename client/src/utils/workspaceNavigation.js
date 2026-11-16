@@ -1,5 +1,6 @@
 const item=(to,label,icon,roles)=>({to,label,icon,roles});
 export const workspaceGroups=[
+ {id:'reviews',label:'Admin Reviews & Approvals',icon:'check',items:[item('/approval-requests','Admin Reviews & Approvals','check',['ADMIN','STAFF'])]},
  {id:'dashboard',label:'Dashboard',icon:'grid',items:[item('/','Dashboard','grid')]},
  {id:'property',label:'Property Management',icon:'building',items:[item('/projects','Projects & Lots','building'),item('/property-inventory','Property Inventory','building'),item('/reopen-properties','Reopen Properties','building')]},
  {id:'clients',label:'Clients & Contracts',icon:'people',items:[item('/clients','Client List','people'),item('/site-requests','Client Requests & Site Visits','bell'),item('/clients?workspace=accounts','Contracts & Accounts','receipt'),item('/settlements','Fully Paid & Settlement','check')]},
@@ -9,9 +10,9 @@ export const workspaceGroups=[
  {id:'financial',label:'Financial Management',icon:'expense',items:[item('/expenses','Expenses & Remittances','expense'),item('/payouts','Payout Management','wallet',['ADMIN','STAFF']),item('/reports?view=cash&focus=movements','Cash Management & Turnovers','wallet')]},
  {id:'reports',label:'Reports',icon:'chart',items:[item('/reports?view=general','Operational Reports','chart'),item('/reports?view=cash','Financial Reports','chart')]},
  {id:'migration',label:'Historical Data Migration',icon:'receipt',items:[item('/historical-migration','Migration Workspace','receipt',['ADMIN','STAFF'])]},
- {id:'admin',label:'Administration',icon:'settings',items:[item('/database-maintenance','System Health & Database Readiness','settings',['ADMIN']),item('/companies','Company Settings','building'),item('/settings/appearance','Settings · Appearance','settings'),item('/users?tab=users','Users','people',['ADMIN']),item('/users?tab=activity','Activity Logs','history',['ADMIN']),item('/approval-requests','Approval Requests','check',['ADMIN','STAFF'])]},
+ {id:'admin',label:'Administration',icon:'settings',items:[item('/database-maintenance','System Health & Database Readiness','settings',['ADMIN']),item('/companies','Company Settings','building'),item('/settings/appearance','Settings · Appearance','settings'),item('/users?tab=users','Users','people',['ADMIN']),item('/users?tab=activity','Activity Logs','history',['ADMIN'])]},
 ];
-export function visibleGroups(role){return workspaceGroups.map(g=>({...g,items:g.items.filter(i=>!i.roles||i.roles.includes(role))})).filter(g=>g.items.length)}
+export function visibleGroups(role){return workspaceGroups.map(g=>({...g,...(g.id==='reviews'&&role==='STAFF'?{label:'Payment Correction Requests'}:{}),items:g.items.filter(i=>!i.roles||i.roles.includes(role)).map(i=>g.id==='reviews'&&role==='STAFF'?{...i,label:'My Payment Corrections'}:i)})).filter(g=>g.items.length)}
 export function activeDestination({pathname,search}){
  const q=new URLSearchParams(search);
  if(pathname==='/clients')return q.has('workspace')?`/clients?workspace=${q.get('workspace')}`:'/clients';

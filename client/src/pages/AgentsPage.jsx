@@ -1,3 +1,4 @@
+import {useReviewRefresh} from '../hooks/useReviewRefresh.js';
 import {usePageState} from '../hooks/usePageState.js';
 import {Link} from 'react-router-dom';
 import ListReportActions from "../components/ListReportActions.jsx";
@@ -15,6 +16,7 @@ const blank=()=>({fullName:"",contactNumber:"",email:"",address:"",agentType:"",
 export default function AgentsPage(){
  const {user}=useAuth(),admin=user.role==="ADMIN";
  const [rows,setRows]=useState([]),[total,setTotal]=useState(0),[page,setPage]=usePageState("AgentsPage.jsx:page",1,''),[q,setQ]=usePageState("AgentsPage.jsx:q","",''),[status,setStatus]=usePageState("AgentsPage.jsx:status","",''),[project,setProject]=usePageState("AgentsPage.jsx:project","",''),[projects,setProjects]=useState([]),[selected,setSelected]=usePageState("AgentsPage.jsx:selected","",''),[profile,setProfile]=useState(null),[editing,setEditing]=useState(null),[form,setForm]=useState(blank),[showForm,setShowForm]=useState(false),[version,setVersion]=useState(0),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
+ useReviewRefresh(()=>setVersion(v=>v+1));
  useEffect(()=>{let active=true;api.get("/projects").then(r=>{if(active)setProjects(r.data.data)}).catch(()=>{});return()=>{active=false}},[]);
  useEffect(()=>{let active=true;const timer=setTimeout(()=>api.get("/agents",{params:{q,status,project,page}}).then(r=>{if(active){setRows(r.data.data);setTotal(r.data.total)}}).catch(e=>{if(active)setError(e.response?.data?.message||"Unable to load agents.")}),200);return()=>{active=false;clearTimeout(timer)}},[q,status,project,page,version]);
  useEffect(()=>{let active=true;setProfile(null);if(selected)api.get(`/agents/${selected}`).then(r=>{if(active)setProfile(r.data.data)}).catch(e=>{if(active)setError(e.response?.data?.message||"Unable to load profile.")});return()=>{active=false}},[selected,version]);

@@ -1,3 +1,4 @@
+import {AdminReviewProvider} from './context/AdminReviewContext.jsx';
 import {NavigationHistoryProvider} from './context/NavigationHistoryContext.jsx';
 import {AppearanceProvider} from './context/AppearanceContext.jsx';
 import AppearancePage from './pages/AppearancePage.jsx';
@@ -53,7 +54,7 @@ const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
 export default function App() {
   return (
     <AuthProvider><AppearanceProvider>
-      <BrowserRouter><NavigationHistoryProvider><BackupRequirementNotice/><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
+      <BrowserRouter><NavigationHistoryProvider><AdminReviewProvider><BackupRequirementNotice/><DialogNavigation/><FeedbackHost/><Suspense fallback={<AppLoading/>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
@@ -86,7 +87,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Suspense></NavigationHistoryProvider></BrowserRouter>
+      </Suspense></AdminReviewProvider></NavigationHistoryProvider></BrowserRouter>
     </AppearanceProvider></AuthProvider>
   );
 }

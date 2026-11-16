@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {workspaceGroups,visibleGroups,activeDestination} from '../../client/src/utils/workspaceNavigation.js';
 test('REMS preserves module destinations without duplicate navigation entries',()=>{
- const all=workspaceGroups.flatMap(g=>g.items.map(i=>i.to));assert.equal(new Set(all).size,all.length);assert.equal(workspaceGroups.length,10);
+ const all=workspaceGroups.flatMap(g=>g.items.map(i=>i.to));assert.equal(new Set(all).size,all.length);assert.equal(workspaceGroups.length,11);
  for(const path of ['/','/projects','/property-inventory','/clients','/agents','/commissions','/payment','/payment-transactions','/payment-monitoring','/expenses','/historical-migration','/companies','/approval-requests'])assert.ok(all.includes(path),path);
 });
 test('REMS permissions preserve company read access and staff request history',()=>{

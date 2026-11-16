@@ -531,3 +531,8 @@ button, input, select, textarea { font: inherit; }
 .rems-password-toggle {position:absolute;right:.2rem;top:.15rem;bottom:.15rem;width:2.7rem;display:grid;place-items:center;border:0;border-radius:.4rem;background:transparent;color:var(--bs-body-color);}
 .rems-password-toggle:focus-visible,.rems-login-card input:focus-visible {outline:3px solid var(--bs-primary);outline-offset:2px;}
 .notification-item p,.notification-breakdown {overflow-wrap:anywhere;}
+.admin-review-backdrop {position:fixed;inset:0;z-index:6050;background:#0008;padding:1rem;display:flex;align-items:center;justify-content:center;}
+.admin-review-dialog {width:min(1100px,100%);max-height:calc(100dvh - 2rem);display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.admin-review-dialog>header {flex:none;gap:1rem;margin:0;}
+.admin-review-scroll {overflow:auto;min-height:0;overscroll-behavior:contain;}
+@media(max-width:575px){.admin-review-backdrop{padding:.25rem}.admin-review-dialog{max-height:calc(100dvh - .5rem)}}

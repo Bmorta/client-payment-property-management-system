@@ -1,3 +1,4 @@
+import {useReviewRefresh} from '../hooks/useReviewRefresh.js';
 import FinancialCorrection from "./FinancialCorrection.jsx";
 import CancellationReviewHold from './CancellationReviewHold.jsx';
 import ForfeitureActions from './ForfeitureActions.jsx';
@@ -26,7 +27,8 @@ export default function ClientAccounts({ client, refreshKey = 0, onAssigned }) {
   const [allProperties,setAllProperties]=useState(false);
   const [editingAgreement,setEditingAgreement]=useState(null);
   const [accounts, setAccounts] = useState([]), [form, setForm] = useState(blankAssignment), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [error, setError] = useState(""), [version, setVersion] = useState(0);
-  useEffect(() => { let cancelled = false; setLoading(true); api.get(`/finance/accounts?client=${client._id}`).then(({ data }) => { if (!cancelled) {setAccounts(data.data);if(!params.get("account")&&data.data[0])setParams(p=>{const n=new URLSearchParams(p);n.set("account",data.data[0]._id);return n},{replace:true});} }).catch(e => { if (!cancelled) setError(e.response?.data?.message || "Unable to load client accounts."); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [client._id, version, refreshKey]);
+ useReviewRefresh(()=>setVersion(v=>v+1));
+  useEffect(() => { let cancelled = false; setLoading(accounts.length===0); api.get(`/finance/accounts?client=${client._id}`).then(({ data }) => { if (!cancelled) {setAccounts(data.data);if(!params.get("account")&&data.data[0])setParams(p=>{const n=new URLSearchParams(p);n.set("account",data.data[0]._id);return n},{replace:true});} }).catch(e => { if (!cancelled) setError(e.response?.data?.message || "Unable to load client accounts."); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [client._id, version, refreshKey]);
   const assign = async e => {
     e.preventDefault(); if (assigning.current || !form.propertyId) return;
     assigning.current=true;
