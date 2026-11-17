@@ -8,10 +8,17 @@ export default function useSidebarUnseen(user,review){
  useEffect(()=>{setSource({id,items:null});setLoaded(null);visit.current=null;const attention=e=>{if(e.detail?.userId===id&&e.detail.counts?.items)setSource({id,items:e.detail.counts?.items||{}})},ready=e=>{const c=current.current;if(c?.id===id&&e.detail?.page===c.page&&moduleLoadedBy(c.active,e.detail?.url))setLoaded(c.visitKey)},storage=e=>{if(e.key===seenStorageKey(id)||e.key===null)setStored({id,seen:read(id)})};window.addEventListener('rems:sidebar-attention',attention);window.addEventListener('rems:module-loaded',ready);window.addEventListener('storage',storage);return()=>{window.removeEventListener('rems:sidebar-attention',attention);window.removeEventListener('rems:module-loaded',ready);window.removeEventListener('storage',storage)}},[id]);
  // Review data is cached centrally, so opening its page need not issue another GET.
  const ready=active==='reviews'&&user?.role==='ADMIN'?!!review?.data:loaded===visitKey;
- const hasSource=active==='reviews'&&user?.role==='ADMIN'?!!review?.data:source.id===id&&source.items!==null&&(user?.role!=='ADMIN'||!!review?.data);
+ const notificationReady=source.id===id&&source.items!==null,reviewReady=user?.role!=='ADMIN'||!!review?.data;
+ const hasSource=notificationReady||user?.role==='ADMIN'&&!!review?.data;
  const previousLocation=useRef(null);
  useEffect(()=>{const old=previousLocation.current;if(old?.page===current.current.page&&old.visitKey!==visitKey&&loaded===old.visitKey)setLoaded(visitKey);previousLocation.current={page:current.current.page,visitKey}},[visitKey,loaded]);
  const signature=JSON.stringify(items[active]||{});
- useEffect(()=>{if(!id||!active||!ready||!hasSource||visit.current===visitKey)return;visit.current=visitKey;setStored(old=>{const fresh=read(id),next=markModuleSeen({...((old.id===id)?old.seen:{}),...fresh},active,items);try{localStorage.setItem(seenStorageKey(id),JSON.stringify(next))}catch{}return {id,seen:next}})},[id,active,ready,hasSource,visitKey,signature]);
+ useEffect(()=>{if(!id||!active||!ready||!hasSource)return;
+  const previous=visit.current?.key===visitKey?visit.current:{key:visitKey,notifications:false,reviews:false};
+  if(previous.notifications===notificationReady&&previous.reviews===reviewReady)return;
+  // Each initial source may acknowledge once; later activity during the visit stays unseen.
+  visit.current={key:visitKey,notifications:notificationReady,reviews:reviewReady};
+  setStored(old=>{const fresh=read(id),next=markModuleSeen({...((old.id===id)?old.seen:{}),...fresh},active,items);try{localStorage.setItem(seenStorageKey(id),JSON.stringify(next))}catch{}return {id,seen:next}})
+ },[id,active,ready,hasSource,notificationReady,reviewReady,visitKey,signature]);
  return unseenCounts(items,seen);
 }

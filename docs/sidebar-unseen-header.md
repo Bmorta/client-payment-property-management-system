@@ -25,3 +25,9 @@ Only the visited module's revisions are merged into its seen map; other modules'
 - Existing compact badge styling and theme tokens retained. Actual visual layout at desktop/mobile resolutions, browser zoom and live Windows/device behavior remain to be checked. DOM checks do not establish pixel layout.
 
 No production records were modified. No commit, push, merge or deployment performed.
+
+## Follow-up: commission page visit acknowledgement
+
+Agreements & Register now emits its successful-load signal after its commission data is rendered. Visit acknowledgement no longer requires the first notification stream snapshot to arrive when review data is already available. Each initial data source can acknowledge once per visit; a delayed initial stream does not restore the old badges, while subsequent real changes remain unseen until another visit. This applies to the shared visit tracker and does not change financial records or pending review state.
+
+Regression DOM checks passed for two commission review badges clearing on successful page load before the stream connects, remaining cleared after the delayed initial snapshot, returning for a genuinely new commission revision, preserving another module's badge, and clearing again on a new visit. Six focused unit tests and the client production build passed.
