@@ -572,3 +572,6 @@ button, input, select, textarea { font: inherit; }
 @media(min-width:1200px){.sidebar-compact:not(.sidebar-peek) .sidebar-attention-badge{right:5px;top:0;}}
 @media(max-width:767px){.daily-motivation{padding:4px 12px;gap:5px;font-size:.65rem;}}
 @media print{.workspace-topbar{display:none!important;}}
+
+.feature-search-copy { display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere; }
+.feature-search-option > .small { flex-shrink:0; }

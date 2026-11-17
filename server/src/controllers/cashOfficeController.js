@@ -21,7 +21,7 @@ export async function cashOffice(req,res,next){try{
  }
  const page=Math.max(1,parseInt(req.query.page)||1),limit=25,rows=req.query.preview==='1'?view.rows:view.rows.slice((page-1)*limit,page*limit);
  const currentData=to===today()?data:await loadFinancialData(today()),current=cashOfficeView(currentData,today(),today());
- res.json({success:true,data:{...view,...brand,rows,page,pageSize:limit,openingBaselineDate:data.entries.find(e=>e.kind==='OPENING'&&e.status==='POSTED')?.effectiveDate||current.cash.anchorDate,currentCashCents:current.cash.closingCents,currentAvailable:current.cash.available,currentReasons:current.cash.reasons,generatedOn:new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'})}});
+ res.json({success:true,data:{...view,...brand,rows,page,pageSize:limit,openingBaselineDate:data.entries.find(e=>e.kind==='OPENING'&&e.status==='POSTED')?.effectiveDate||current.cash.anchorDate,todaySummary:current.summary,todayDate:today(),currentCashCents:current.cash.closingCents,currentAvailable:current.cash.available,currentReasons:current.cash.reasons,generatedOn:new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'})}});
 }catch(e){next(e)}}
 export async function listOfficeReviews(req,res,next){try{
  const type=req.query.type||'TURNOVER';if(!['TURNOVER','COUNT'].includes(type))fail('Choose a valid office cash review type.');
