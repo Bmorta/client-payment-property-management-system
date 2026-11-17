@@ -1,3 +1,5 @@
+import {cashMutation,validateCashTimeline} from '../services/cashMovementService.js';
+import {isCashFunded} from '../utils/fundingAccount.js';
 import mongoose from 'mongoose';
 import Expense from '../models/Expense.js';
 import Project from '../models/Project.js';
@@ -41,9 +43,10 @@ export async function correctExpense(req,res,next){try{
  if(req.path.endsWith('/preview'))return res.json({success:true,data:{token,before,after,action,warnings,expectedVersion:old.__v??0}});
  if(req.body.confirm!==true||req.body.previewToken!==token)fail('Review and confirm a fresh expense correction preview.',409);
  const revision={revision:(old.revisions?.length||0)+1,requestId,signature,action,reason,previousValues:before,updatedValues:after,username:req.user.username,userId:req.user._id,timestamp:new Date()};
- const updated=await Expense.findOneAndUpdate({_id:old._id,__v:old.__v===undefined?{$exists:false}:old.__v,'revisions.requestId':{$ne:requestId}},
-  {$set:{...changes,...(!old.originalValues?{originalValues:before}:{})},$push:{revisions:revision},$inc:{__v:1}}, {new:true,runValidators:true});
- if(!updated)fail('Expense changed concurrently. Check history before retrying.',409);
+ const save=async session=>{const updated=await Expense.findOneAndUpdate({_id:old._id,__v:old.__v===undefined?{$exists:false}:old.__v,'revisions.requestId':{$ne:requestId}},
+  {$set:{...changes,...(!old.originalValues?{originalValues:before}:{})},$push:{revisions:revision},$inc:{__v:1}}, {new:true,runValidators:true,...(session?{session}:{})});
+ if(!updated)fail('Expense changed concurrently. Check history before retrying.',409);if(session)await validateCashTimeline(session);return updated};
+ const updated=isCashFunded(old)||isCashFunded({...old,...changes})?await cashMutation(save):await save(null);
  await logActivity({req,action:action==='VOID'?'EXPENSE_VOIDED':'EXPENSE_CORRECTED',entityType:'Expense',entityId:String(old._id),metadata:revision});
  res.json({success:true,data:updated,message:action==='VOID'?'Expense voided. Original details and audit history are preserved.':'Expense corrected. Original details and audit history are preserved.'});
 }catch(e){next(e)}}

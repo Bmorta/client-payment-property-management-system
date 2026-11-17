@@ -31,6 +31,7 @@ export const errorHandler = (error, _req, res, _next) => {
   return res.status(error.statusCode || 500).json({
     success: false,
     message: error.message || "Internal server error.",
-    ...(error.maintenance?{maintenance:error.maintenance}:{})
+    ...(error.maintenance?{maintenance:error.maintenance}:{}),
+    ...(error.cashReconciliation?{cashReconciliation:error.cashReconciliation}:{})
   });
 };

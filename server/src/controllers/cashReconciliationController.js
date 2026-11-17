@@ -1,0 +1,4 @@
+import {loadFinancialData} from '../services/financialReportService.js';
+import {reconcileCash} from '../services/cashReconciliation.js';
+import {today,validDate,moneyCents} from '../utils/accounting.js';
+export async function cashReconciliation(req,res,next){try{const asOf=req.query.asOf||today();if(!validDate(asOf)||asOf>today())throw Object.assign(new Error('Choose a valid release/inspection date through today.'),{statusCode:400});const amount=req.query.amount?moneyCents(req.query.amount):0;if(req.query.amount&&(!amount||amount<0))throw Object.assign(new Error('Enter a positive proposed payout amount.'),{statusCode:400});const data=await loadFinancialData(today());res.set('Cache-Control','no-store');res.json({success:true,data:reconcileCash(data,asOf,today(),amount)});}catch(e){next(e)}}

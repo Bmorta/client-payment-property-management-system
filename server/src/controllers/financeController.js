@@ -1,3 +1,4 @@
+import {cashMutation,validateCashTimeline} from '../services/cashMovementService.js';
 import {agreementSchedule} from "../../../shared/agreementSchedule.js";
 import {pagedExpenses} from "./expenseListController.js";
 import {attachBatchCounts} from "../services/paymentBatchCounts.js";
@@ -161,7 +162,8 @@ export async function createExpense(req, res, next) {
     }
     if (project && !(await Project.exists({ _id: project, status: { $ne: "ARCHIVED" } }))) fail(409, "Choose a project that is not archived.");
     await Expense.init();
-    const expense = await Expense.create({ ...data, expenseId: await generateRecordId("expense"), createdBy: req.user._id });
+    const expenseId=await generateRecordId("expense"),save=async session=>{const duplicate=await Expense.findOne({requestId}).session(session).lean();if(duplicate){if(Object.entries(data).some(([k,v])=>String(duplicate[k]??'')!==String(v??'')))fail(409,'Expense identity was reused for different values.');return duplicate}const [row]=await Expense.create([{...data,expenseId,createdBy:req.user._id}],{session});if(data.fundingAccount==='CASH')await validateCashTimeline(session,{releaseDate:expenseDate,amountCents});return row};
+    const expense=data.fundingAccount==='CASH'?await cashMutation(save):await save(null);
     await logActivity({ action: "EXPENSE_RECORDED", req, userId: req.user._id, entityType: "Expense", entityId: expense._id, metadata: { amountCents, category } });
     res.status(201).json({ success: true, data: expense, message: "Expense recorded." });
   } catch (e) {

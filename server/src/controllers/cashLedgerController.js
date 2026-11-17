@@ -1,5 +1,4 @@
-import RefundRelease from '../models/RefundRelease.js';
-import {cashMutation,validateCashTimeline,supportsCashTransactions} from '../services/cashMovementService.js';
+import {cashMutation,validateCashTimeline} from '../services/cashMovementService.js';
 import {escapeSearch} from "../utils/searchText.js";
 import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
 import mongoose from 'mongoose';
@@ -11,7 +10,7 @@ import {generateRecordId} from '../utils/generateRecordId.js';
 import {moneyCents,validDate,today,METHODS} from '../utils/accounting.js';
 import {logActivity} from '../utils/activityLogger.js';
 import {fail,isPosted} from '../utils/financialReporting.js';
-async function cashObligationExists(session=null){return await Expense.exists({businessPayoutId:{$type:'string'},fundingAccount:'CASH',status:'POSTED'}).session(session)||await CashLedgerEntry.exists({businessPayoutId:{$type:'string'},status:'POSTED'}).session(session)||await CashLedgerEntry.exists({kind:'OWNER_TURNOVER',status:'POSTED'}).session(session)||await RefundRelease.exists({status:'POSTED',fundingAccount:'CASH'}).session(session)}
+
 export async function expenseClassification(body){
  if(!METHODS.includes(body.method))fail('Select the actual expense payment method.');
  const fundingAccount=validateFunding(body.method,body.fundingAccount);
@@ -29,7 +28,7 @@ export async function classifyExpense(req,res,next){try{
  const classification=await expenseClassification({...req.body,amountCents:old.amountCents,expenseDate:old.expenseDate,category:old.category,projectId:old.project});
  const event={previousValues:{fundingAccount:old.fundingAccount||null,method:old.method||null,commissionPayoutId:old.commissionPayoutId||null,payoutLinkChecked:!!old.payoutLinkChecked},updatedValues:classification,reason,username:req.user.username,userId:req.user._id,timestamp:new Date()};
  await Expense.init();
- const updated=await Expense.findOneAndUpdate({_id:old._id,__v:old.__v===undefined?{$exists:false}:old.__v},{$set:classification,$push:{classificationHistory:event},$inc:{__v:1}},{new:true,runValidators:true});if(!updated)fail('Expense changed. Reload before classifying.',409);
+ const save=async session=>{const updated=await Expense.findOneAndUpdate({_id:old._id,__v:old.__v===undefined?{$exists:false}:old.__v},{$set:classification,$push:{classificationHistory:event},$inc:{__v:1}},{new:true,runValidators:true,...(session?{session}:{})});if(!updated)fail('Expense changed. Reload before classifying.',409);if(session)await validateCashTimeline(session);return updated};const updated=physicalFunding(old.method,old.fundingAccount)==='CASH'||classification.fundingAccount==='CASH'?await cashMutation(save):await save(null);
  await logActivity({req,action:'EXPENSE_CLASSIFIED',entityType:'Expense',entityId:String(old._id),metadata:event});res.json({success:true,data:updated,message:'Expense classification saved with its history.'});
 }catch(e){if(e.code===11000)return res.status(409).json({success:false,message:'This commission payout is already linked to another expense.'});next(e)}}
 export async function listCashEntries(req,res,next){try{
@@ -49,15 +48,14 @@ export async function createCashEntry(req,res,next){try{
  const extra=req.cashAddition||{};const input={kind,effectiveDate,amountCents,reason,reference,...extra,...(recipient?{recipient}:{})},old=await CashLedgerEntry.findOne({requestId}).lean();if(old){if(Object.entries(input).some(([k,v])=>old[k]!==v))fail('Submission ID belongs to another cash entry.',409);return res.json({success:true,data:old,message:'Cash entry already recorded.'})}
  await CashLedgerEntry.init();const entryId=await generateRecordId('cashEntry');
  const make=session=>CashLedgerEntry.create([{...input,entryId,requestId,createdBy:req.user._id,actorUsername:req.user.username,history:[{action:'CREATED',username:req.user.username,reason,timestamp:new Date()}]}],{session});
- const hasTurnovers=kind==='OWNER_TURNOVER'||await cashObligationExists(),protectedLedger=hasTurnovers||await supportsCashTransactions();
- const entry=protectedLedger?await cashMutation(async session=>{const duplicate=await CashLedgerEntry.findOne({requestId}).session(session);if(duplicate){if(Object.entries(input).some(([k,v])=>duplicate[k]!==v))fail('Submission ID belongs to another cash entry.',409);return duplicate}const [row]=await make(session);if(req.cashAddition||kind==='OWNER_TURNOVER'||await cashObligationExists(session))await validateCashTimeline(session);return row}):(await make(null))[0];
+ const entry=await cashMutation(async session=>{const duplicate=await CashLedgerEntry.findOne({requestId}).session(session);if(duplicate){if(Object.entries(input).some(([k,v])=>duplicate[k]!==v))fail('Submission ID belongs to another cash entry.',409);return duplicate}const [row]=await make(session);await validateCashTimeline(session);return row});
  await logActivity({req,action:'CASH_ENTRY_RECORDED',entityType:'CashLedgerEntry',entityId:String(entry._id),metadata:input});res.status(201).json({success:true,data:entry,message:'Cash entry recorded. Collections, expenses and commissions were not duplicated.'});
 }catch(e){if(e.code===11000)return res.status(409).json({success:false,message:'An active opening balance or this submission already exists. Review the ledger; do not post twice.'});next(e)}}
 export async function voidCashEntry(req,res,next){try{
  if(!mongoose.isValidObjectId(req.params.id))fail('Invalid cash entry.');const reason=String(req.body.reason||'').trim();if(req.body.confirm!==true||reason.length<5||reason.length>500)fail('Confirm the void and give a reason.');
  const old=await CashLedgerEntry.findById(req.params.id).lean();if(!old)fail('Cash entry not found.',404);if(old.businessPayoutId)fail('Void the linked release in Payout Management.',409);if(old.status==='VOIDED')return res.json({success:true,message:'Cash entry already voided.'});if(!Number.isSafeInteger(req.body.expectedVersion)||req.body.expectedVersion!==(old.__v??0))fail('Cash entry changed. Reload before voiding.',409);
- const mutate=async session=>{const entry=await CashLedgerEntry.findOneAndUpdate({_id:old._id,__v:req.body.expectedVersion,status:'POSTED'},{$set:{status:'VOIDED'},$push:{history:{action:'VOIDED',username:req.user.username,reason,timestamp:new Date()}},$inc:{__v:1}},{new:true,session});if(!entry)fail('Cash entry changed. Reload first.',409);if(session&&(old.kind==='OWNER_TURNOVER'||await cashObligationExists(session)))await validateCashTimeline(session);return entry};
- const hasTurnover=await cashObligationExists();const entry=hasTurnover||await supportsCashTransactions()?await cashMutation(mutate):await mutate(null);
+ const mutate=async session=>{const entry=await CashLedgerEntry.findOneAndUpdate({_id:old._id,__v:req.body.expectedVersion,status:'POSTED'},{$set:{status:'VOIDED'},$push:{history:{action:'VOIDED',username:req.user.username,reason,timestamp:new Date()}},$inc:{__v:1}},{new:true,session});if(!entry)fail('Cash entry changed. Reload first.',409);await validateCashTimeline(session);return entry};
+ const entry=await cashMutation(mutate);
  await logActivity({req,action:'CASH_ENTRY_VOIDED',entityType:'CashLedgerEntry',entityId:String(old._id),metadata:{previousValues:old,reason}});res.json({success:true,message:'Cash entry voided; original values preserved.'});
 }catch(e){next(e)}}
 

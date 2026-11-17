@@ -1,3 +1,5 @@
+import {previewCashReconciliationCorrection,applyCashReconciliationCorrection} from '../controllers/cashReconciliationCorrectionController.js';
+import {cashReconciliation} from '../controllers/cashReconciliationController.js';
 import {correctionOptions,previewFinancialCorrection,approveFinancialCorrection} from "../controllers/financialCorrectionController.js";
 import {cashOffice,listOfficeReviews,createOfficeReview,officeReviewAction} from '../controllers/cashOfficeController.js';
 import {cancellationCommissionReview} from '../controllers/commissionReviewController.js';
@@ -102,7 +104,7 @@ router.post("/accounts/:id/payments/:paymentId/corrections/preview",authorize("A
 router.post("/payments", authorize("ADMIN", "STAFF"), migrationPaymentGuard, acceptPayment);
 router.patch("/expenses/:id/classification",authorize("ADMIN"),classifyExpense);
 router.get("/cash-ledger/export",authorize("ADMIN"),cashHistoryExport);
-router.get("/cash-office",cashOffice);router.get("/cash-office/reviews",authorize("ADMIN"),listOfficeReviews);router.post("/cash-office/reviews",authorize("ADMIN"),createOfficeReview);router.post("/cash-office/reviews/:id/actions",authorize("ADMIN"),officeReviewAction);router.get("/cash-ledger",listCashEntries);
+router.get("/cash-office/reconciliation",authorize("ADMIN"),cashReconciliation);router.get("/cash-office",cashOffice);router.get("/cash-office/reviews",authorize("ADMIN"),listOfficeReviews);router.post("/cash-office/reviews",authorize("ADMIN"),createOfficeReview);router.post("/cash-office/reviews/:id/actions",authorize("ADMIN"),officeReviewAction);router.post("/cash-ledger/:entryId/reconciliation/preview",authorize("ADMIN"),previewCashReconciliationCorrection);router.post("/cash-ledger/:entryId/reconciliation/apply",authorize("ADMIN"),applyCashReconciliationCorrection);router.get("/cash-ledger",listCashEntries);
 router.post("/cash-ledger/add-cash",authorize("ADMIN"),addOfficeCash);
 router.post("/cash-ledger",authorize("ADMIN"),createCashEntry);
 router.post("/cash-ledger/:id/correct",authorize("ADMIN"),correctCashTurnover);

@@ -53,7 +53,7 @@ export async function officePayoutAction(req,res,next){try{
     if(r.cashEntryId){const result=await CashLedgerEntry.updateOne({_id:r.cashEntryId,payoutReleaseId:r.releaseId,status:'POSTED'},{$set:{status:'VOIDED'},$inc:{__v:1},$push:{history:{action:'PAYOUT_RELEASE_VOIDED',reason,...actor(req)}}},{session});if(result.modifiedCount!==1)fail('Linked cash movement changed.',409);}
    }
    const paid=releasedCents({releases}),status=current.status==='CANCELLED'?'CANCELLED':paid===current.amountCents?'PAID':paid>0?'PARTIALLY_PAID':'APPROVED';
-   const saved=await OfficePayout.findOneAndUpdate({_id:id,__v:current.__v},{$set:{releases,status},$inc:{__v:1},$push:{history:{action,releaseId,requestId,signature,reason,...actor(req)}}},{new:true,session}).lean();if(!saved)fail('Payout changed.',409);if(cash)await validateCashTimeline(session);return saved;
+   const saved=await OfficePayout.findOneAndUpdate({_id:id,__v:current.__v},{$set:{releases,status},$inc:{__v:1},$push:{history:{action,releaseId,requestId,signature,reason,...actor(req)}}},{new:true,session}).lean();if(!saved)fail('Payout changed.',409);if(cash)await validateCashTimeline(session,action==='RELEASE'?{releaseDate:paymentDate,amountCents:req.body.existingExpenseId?undefined:amountCents}:{});return saved;
   });
  }
  res.json({success:true,data:view(p),message:'Payout action recorded. Only actual releases affect financial records.'});
