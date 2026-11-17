@@ -1,6 +1,6 @@
 import DailyMotivation from '../components/DailyMotivation.jsx';
 import useDailyMotivation from '../hooks/useDailyMotivation.js';
-import {sidebarAttention} from '../../../shared/sidebarAttention.js';
+import useSidebarUnseen from '../hooks/useSidebarUnseen.js';
 import {useAdminReviews} from '../context/AdminReviewContext.jsx';
 import QuickAdminReview from '../components/QuickAdminReview.jsx';
 import SmartBackButton from '../components/SmartBackButton.jsx';
@@ -18,11 +18,10 @@ import {visibleGroups,activeDestination} from "../utils/workspaceNavigation.js";
 const readPreference=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
 export default function AppLayout(){
  const {user,logout}=useAuth(),location=useLocation(),{pathname,search}=location,[open,setOpen]=useState(false),menuButton=useRef(null),sidebar=useRef(null);
- const reviews=useAdminReviews(),motivation=useDailyMotivation(),[attention,setAttention]=useState({});
- useEffect(()=>{setAttention({});const update=e=>{if(e.detail?.userId===String(user?._id))setAttention(e.detail.counts||{})};window.addEventListener('rems:sidebar-attention',update);return()=>window.removeEventListener('rems:sidebar-attention',update)},[user?._id]);
- const counts=sidebarAttention(attention,reviews?.data?.rows||[],user?.role),badge=n=>n>0?<b className="sidebar-attention-badge" aria-label={`${n} items requiring attention`}>{n>99?'99+':n}</b>:null;
- const itemCount=to=>to==='/approval-requests'?counts.reviews:to==='/site-requests'?counts.requests:to==='/payment-transactions'?counts.payments:to==='/commissions'?counts.commissions:to==='/clients'?counts.clients:to==='/reopen-properties'?counts.reopening:to==='/historical-migration'?counts.migration:to==='/payouts'?counts.payouts:to.includes('focus=movements')?counts.cash:0;
- const groupCount=g=>g.id==='clients'?counts.clients+counts.requests:g.id==='agents'?counts.commissions:g.id==='financial'?counts.cash+counts.payouts:g.id==='property'?counts.reopening:counts[g.id]||0;
+ const reviews=useAdminReviews(),motivation=useDailyMotivation(),counts=useSidebarUnseen(user,reviews);
+ const badge=n=>n>0?<b className="sidebar-attention-badge" aria-label={`${n} unseen attention items`}>{n>99?'99+':n}</b>:null;
+ const itemCount=to=>to==='/forfeited-accounts'?counts.forfeiture:to==='/assumptions'?counts.assumptions:to==='/clients?workspace=cancellations'?counts.cancellation:to==='/clients?workspace=transfers'?counts.transfers:to==='/approval-requests'?counts.reviews:to==='/site-requests'?counts.requests:to==='/payment-transactions'?counts.payments:to==='/commissions'?counts.commissions:to==='/clients'?counts.clients:to==='/reopen-properties'?counts.reopening:to==='/historical-migration'?counts.migration:to==='/payouts'?counts.payouts:to.includes('focus=movements')?counts.cash:0;
+ const groupCount=g=>g.id==='adjustments'?(counts.forfeiture||0)+(counts.cancellation||0)+(counts.transfers||0)+(counts.assumptions||0):g.id==='clients'?(counts.clients||0)+(counts.requests||0):g.id==='agents'?counts.commissions:g.id==='financial'?(counts.cash||0)+(counts.payouts||0):g.id==='property'?counts.reopening:counts[g.id]||0;
  const groups=visibleGroups(user?.role),active=activeDestination(location),activeGroup=groups.find(g=>g.items.some(i=>i.to===active));
  const [peek,setPeek]=useState(false),[compact,setCompact]=useState(()=>readPreference('rems:compact',false)),[expanded,setExpanded]=useState(()=>readPreference('rems:groups',{}));
  const title=pathname.startsWith('/projects/')?'Manage Lots':groups.flatMap(g=>g.items).find(i=>i.to===active)?.label||'Workspace';

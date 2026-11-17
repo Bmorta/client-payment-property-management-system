@@ -1,3 +1,4 @@
+import {attentionItems} from '../../../shared/sidebarUnseen.js';
 import {notificationAttention} from '../../../shared/sidebarAttention.js';
 import {groupNotifications} from '../services/notificationGrouping.js';
 import Agent from '../models/Agent.js';
@@ -28,7 +29,7 @@ async function visibleRows(user){
 }
 export async function notificationData(user,{page=1,limit=100,q=''}={}){
  const {accounts,reads,rows:raw}=await visibleRows(user),rows=groupNotifications(raw),filtered=q?rows.filter(n=>[n.title,n.summary,n.message,...(n.details||[]).map(d=>d.message)].join(' ').toLowerCase().includes(q.toLowerCase())):rows;
- return {attention:notificationAttention(accounts,raw,user),version:createHash('sha256').update(JSON.stringify([accounts.map(a=>`${a._id}:${a.__v||0}`).sort(),reads.map(r=>r._id).sort(),rows.map(n=>[n.id,n.read,n.summary,n.count])])).digest('hex'),rows:filtered.slice((page-1)*limit,page*limit),total:filtered.length,page,pageSize:limit,unread:rows.filter(n=>!n.read&&(!n.monitoringAlert||n.active!==false||n.eventOnly)).length};
+ return {attention:{...notificationAttention(accounts,raw,user),items:attentionItems(accounts,raw,user)},version:createHash('sha256').update(JSON.stringify([accounts.map(a=>`${a._id}:${a.__v||0}`).sort(),reads.map(r=>r._id).sort(),rows.map(n=>[n.id,n.read,n.summary,n.count])])).digest('hex'),rows:filtered.slice((page-1)*limit,page*limit),total:filtered.length,page,pageSize:limit,unread:rows.filter(n=>!n.read&&(!n.monitoringAlert||n.active!==false||n.eventOnly)).length};
 }
 export async function listNotifications(req,res,next){try{
  const page=Number(req.query.page||1),limit=Number(req.query.limit||100),q=String(req.query.q||'').trim().slice(0,100);

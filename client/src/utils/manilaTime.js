@@ -1,1 +1,3 @@
 export const manilaTimestamp = value => value ? new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true }).format(new Date(value)) : "—";
+
+export const manilaHeaderTimestamp=value=>new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true}).format(new Date(value));

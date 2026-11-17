@@ -564,11 +564,11 @@ button, input, select, textarea { font: inherit; }
 .workspace-topbar{position:sticky;top:0;z-index:1030;}
 .workspace-topbar .workspace-header{position:relative;top:auto;}
 .daily-motivation{height:32px;display:flex;align-items:center;gap:8px;padding:4px 30px;min-width:0;background:var(--bs-tertiary-bg,#edf3f7);color:var(--workspace-ink,#233248);border-bottom:1px solid var(--workspace-border,#d6e0e8);font-size:.74rem;}
-.daily-motivation time{white-space:nowrap;font-weight:600;flex-shrink:0;}
+
 .daily-motivation-quote{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-style:italic;min-width:0;}
 .nav-category,.sidebar-link{position:relative;}
 .sidebar-attention-badge{position:absolute;right:7px;top:-4px;min-width:15px;height:15px;border-radius:99px;padding:0 3px;background:#dc3545;color:#fff;font:700 9px/15px Arial;text-align:center;pointer-events:none;box-shadow:0 0 0 1px var(--bs-body-bg,#142137);}
 .nav-category:has(.sidebar-attention-badge) .nav-chevron{visibility:hidden;}
 @media(min-width:1200px){.sidebar-compact:not(.sidebar-peek) .sidebar-attention-badge{right:5px;top:0;}}
-@media(max-width:767px){.daily-motivation{padding:4px 12px;gap:5px;font-size:.65rem;}.daily-motivation time{max-width:55%;overflow:hidden;text-overflow:ellipsis;}}
+@media(max-width:767px){.daily-motivation{padding:4px 12px;gap:5px;font-size:.65rem;}}
 @media print{.workspace-topbar{display:none!important;}}
