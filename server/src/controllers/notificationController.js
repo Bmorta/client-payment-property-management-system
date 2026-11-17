@@ -1,3 +1,4 @@
+import {notificationAttention} from '../../../shared/sidebarAttention.js';
 import {groupNotifications} from '../services/notificationGrouping.js';
 import Agent from '../models/Agent.js';
 import SiteRequest from '../models/SiteRequest.js';
@@ -11,11 +12,11 @@ import {verifyAccessToken} from "../utils/jwt.js";
 const visible=(n,user)=>n.recipient===String(user._id)||(["ADMIN","STAFF"].includes(n.recipient)&&user.role===n.recipient);
 const readKey=(user,account,id)=>createHash('sha256').update(JSON.stringify([String(user),String(account),id])).digest('hex');
 async function visibleRows(user){
- let query=PropertyAssignment.find({notifications:{$elemMatch:{recipient:{$in:[String(user._id),...(["ADMIN","STAFF"].includes(user.role)?[user.role]:[])]}}}}).select("notifications __v client assignmentId monitoring.schedule monitoring.outstandingPenaltyCents");
+ let query=PropertyAssignment.find({notifications:{$elemMatch:{recipient:{$in:[String(user._id),...(["ADMIN","STAFF"].includes(user.role)?[user.role]:[])]}}}}).select("notifications __v client assignmentId monitoring.schedule monitoring.outstandingPenaltyCents correctionRequests commissionSnapshot.records");
  if(query.populate)query=query.populate("client","firstName middleName lastName suffix clientId");
  let accounts=await query.lean();
  const requests=await SiteRequest.find(user.role==='ADMIN'?{}:{$or:[{createdBy:user._id},{personnel:user._id},{'notifications.recipient':String(user._id)}]}).select('requestId createdBy personnel status schedule reports followUp notifications __v preferredStart contact requestingAgent requestingAgentName history updatedAt').lean();
- const reminders=requests.filter(r=>r.status!=='DELETED').map(r=>{const flags=requestFlags(r),recipients=[...new Set(['ADMIN',String(r.createdBy),...(r.personnel||[]).map(String)])],dynamic=Object.entries(flags).filter(([kind,on])=>on&&kind!=='today').flatMap(([kind])=>recipients.map(recipient=>({id:'site-reminder-'+kind+'-'+r._id+'-'+(r.followUp?.dueAt||r.schedule?.start||'')+'-'+recipient,recipient,eventOnly:true,siteReminder:true,status:kind.toUpperCase(),message:r.requestId+': '+kind.replaceAll('followUp','follow-up required'),href:'/site-requests?request='+r._id,createdAt:r.schedule?.end||r.preferredStart||r.followUp?.dueAt||new Date(0),readBy:[]})));return {...r,sourceModel:'SiteRequest',notifications:[...(r.notifications||[]),...dynamic]}});
+ const reminders=requests.filter(r=>r.status!=='DELETED').map(r=>{const flags=requestFlags(r),recipients=[...new Set(['ADMIN',String(r.createdBy),...(r.personnel||[]).map(String)])],dynamic=Object.entries(flags).filter(([kind,on])=>on&&kind!=='today').flatMap(([kind])=>recipients.map(recipient=>({id:'site-reminder-'+kind+'-'+r._id+'-'+(r.followUp?.dueAt||r.schedule?.start||'')+'-'+recipient,recipient,eventOnly:true,siteReminder:true,status:kind.toUpperCase(),message:r.requestId+': '+kind.replaceAll('followUp','follow-up required'),href:'/site-requests?request='+r._id,createdAt:r.schedule?.end||r.preferredStart||r.followUp?.dueAt||new Date(0),readBy:[]})));return {...r,flags,sourceModel:'SiteRequest',notifications:[...(r.notifications||[]),...dynamic]}});
  accounts=[...accounts.map(a=>({...a,sourceModel:'PropertyAssignment'})),...reminders];
  const agentIds=[...new Set(accounts.flatMap(a=>(a.notifications||[]).filter(n=>n.commissionAlert&&visible(n,user)).map(n=>{try{return new URL(n.href,'http://rems.local').searchParams.get('agent')}catch{return null}})).filter(id=>mongoose.isValidObjectId(id)))];
  const agents=agentIds.length?await Agent.find({_id:{$in:agentIds}}).select('fullName').lean():[],agentNames=new Map(agents.map(a=>[String(a._id),a.fullName]));
@@ -27,7 +28,7 @@ async function visibleRows(user){
 }
 export async function notificationData(user,{page=1,limit=100,q=''}={}){
  const {accounts,reads,rows:raw}=await visibleRows(user),rows=groupNotifications(raw),filtered=q?rows.filter(n=>[n.title,n.summary,n.message,...(n.details||[]).map(d=>d.message)].join(' ').toLowerCase().includes(q.toLowerCase())):rows;
- return {version:createHash('sha256').update(JSON.stringify([accounts.map(a=>`${a._id}:${a.__v||0}`).sort(),reads.map(r=>r._id).sort(),rows.map(n=>[n.id,n.read,n.summary,n.count])])).digest('hex'),rows:filtered.slice((page-1)*limit,page*limit),total:filtered.length,page,pageSize:limit,unread:rows.filter(n=>!n.read&&(!n.monitoringAlert||n.active!==false||n.eventOnly)).length};
+ return {attention:notificationAttention(accounts,raw,user),version:createHash('sha256').update(JSON.stringify([accounts.map(a=>`${a._id}:${a.__v||0}`).sort(),reads.map(r=>r._id).sort(),rows.map(n=>[n.id,n.read,n.summary,n.count])])).digest('hex'),rows:filtered.slice((page-1)*limit,page*limit),total:filtered.length,page,pageSize:limit,unread:rows.filter(n=>!n.read&&(!n.monitoringAlert||n.active!==false||n.eventOnly)).length};
 }
 export async function listNotifications(req,res,next){try{
  const page=Number(req.query.page||1),limit=Number(req.query.limit||100),q=String(req.query.q||'').trim().slice(0,100);
