@@ -1,3 +1,6 @@
+import Reservation from '../models/Reservation.js';
+import {reservationDisplay} from '../services/reservationService.js';
+import {reservationMetrics} from './reservationController.js';
 import mongoose from 'mongoose';
 import Account from '../models/PropertyAssignment.js';
 import Property from '../models/Property.js';
@@ -25,7 +28,7 @@ export async function managementDashboard(req,res,next){
     const query={...scope,...(phase?{phaseNumber:Number(phase)}:{}),...(block?{blockNumber:Number(block)}:{})};
     const [projects,properties,accounts,ledger,activeClients,requests]=await Promise.all([
       Project.find().select('projectName status').sort({projectName:1}).lean(),
-      Property.find(query).select('project status client phaseNumber blockNumber').lean(),
+      Property.find(query).select('project status client reservation phaseNumber blockNumber').lean(),
       Account.find(scope).select(operations?
         '-notifications -auditEvents -commissionAgreementHistory -commissionHoldHistory -forfeitureEvents -propertyReleaseEvents':
         'property project lifecycle cancellationOut.effectiveDate contract.contractDate transferIn.sourceId assumptionIn.sourceId reactivationIn.sourceId').lean(),
@@ -34,10 +37,18 @@ export async function managementDashboard(req,res,next){
       operations?SiteRequest.find({...scope,status:{$nin:TERMINAL_REQUEST_STATUSES}}).select('status schedule.start preferredStart').lean():[]
     ]);
     const projectStates=new Map(projects.map(p=>[String(p._id),p.status]));
-    for(const property of properties)if(projectStates.get(String(property.project))==='ARCHIVED')property.status='UNAVAILABLE';
+    const activeLots=new Set(accounts.filter(a=>!a.lifecycle||a.lifecycle==='ACTIVE').map(a=>String(a.property)));
+    for(const property of properties){
+      if(projectStates.get(String(property.project))==='ARCHIVED')property.status='UNAVAILABLE';
+      else if(!property.reservation&&activeLots.has(String(property._id))&&['AVAILABLE','RESERVED'].includes(property.status))property.status='SOLD';
+    }
     const ids=new Set(activeClients.map(c=>String(c._id)));
     for(const a of accounts)a.clientStatus=ids.has(String(a.client))?'ACTIVE':null;
     const data=managementMetrics({accounts,properties,financial:ledger,from,to,today:now,permissions:{operations,financial},inventoryScoped:!!(project||phase||block)});
+    if(operations){
+      const holdRows=properties.length?await Reservation.find({property:{$in:properties.map(p=>p._id)}}).select('held expiresOn status payment disposition').lean():[];
+      data.reservations=reservationMetrics(holdRows.map(row=>({...row,...reservationDisplay(row,now)})),now);
+    }
     data.activeClientMasterCount=operations&&!project&&!phase&&!block?ids.size:undefined;
     data.filters={from,to,today:now,project:project||'',phase:phase||'',block:block||''};
     data.projectOptions=projects.map(p=>({id:String(p._id),name:p.projectName,status:p.status}));

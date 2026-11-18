@@ -8,7 +8,7 @@ export function continuedCommissionEarnings(account,ledger,{asOf='9999-12-31'}={
  const preserved=c.preservedRecords.map(r=>({...r,originalBudgetCents:r.originalBudgetCents??r.budgetCents,budgetCents:r.earnedCents,sourceAllocations:(r.sourceAllocations||[]).map(s=>({...s}))}));
  const excluded=new Set(c.excludedPaymentIds),sources=Object.entries(ledger.allocations).flatMap(([paymentId,rows])=>{
   const p=ledger.payments?.find(p=>p.paymentId===paymentId)||(account.payments||[]).find(p=>p.paymentId===paymentId);
-  if(!p||p.origin==='HISTORICAL'||excluded.has(paymentId))return [];
+  if(!p||p.reservationCreditId||p.origin==='HISTORICAL'||excluded.has(paymentId))return [];
   return rows.filter(r=>['DOWN_PAYMENT','INSTALLMENT','ADVANCE'].includes(r.allocationType)&&r.effectiveDate>=c.effectiveDate&&r.effectiveDate<=asOf).map(r=>({...r,paymentId,historical:false}));
  }).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate)||a.paymentId.localeCompare(b.paymentId)||a.installment-b.installment);
  const result=[...preserved];

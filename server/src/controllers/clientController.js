@@ -1,3 +1,4 @@
+import Reservation from '../models/Reservation.js';
 import mongoose from "mongoose";
 import Property from "../models/Property.js";
 import PaymentBatch from "../models/PaymentBatch.js";
@@ -101,6 +102,7 @@ export async function changeClientDeletion(req,res,next){try{
  const client=await Client.findById(req.params.id).lean();if(!client)return res.status(404).json({success:false,message:'Client not found.'});
  const restore=req.method==='POST',reason=String(req.body.reason||'').trim();
  if(req.body.confirm!==true||req.body.expectedVersion!==(client.__v||0)||reason.length<5||reason.length>500)return res.status(409).json({success:false,message:'Enter a reason and confirm the current client version.'});
+ if(!restore&&await Reservation.exists({client:client._id,$or:[{held:true},{disposition:'OUTSTANDING'}]}))return res.status(409).json({success:false,message:'Resolve this buyer’s active reservations and outstanding reservation fees before deleting the client.'});
  if(restore?!client.deletedAt:!!client.deletedAt)return res.status(409).json({success:false,message:'Client status changed. Refresh the list.'});
  if(!restore){const links=await Promise.all([PropertyAssignment.exists({client:client._id}),Property.exists({client:client._id}),PaymentBatch.exists({client:client._id}),RefundRelease.exists({client:client._id}),CancellationCase.exists({client:client._id})]);if(links.some(Boolean))return res.status(409).json({success:false,message:'This client has linked properties, contracts or financial history. Use Deactivate; deletion cannot remove those records.'});}
  const event={action:restore?'CLIENT_RESTORED':'CLIENT_DELETED',reason,userId:req.user._id,username:req.user.username,timestamp:new Date()},values=restore?{status:client.statusBeforeDeletion||'INACTIVE',deletedAt:null,deletedBy:null,deletionReason:''}:{status:'INACTIVE',statusBeforeDeletion:client.status,deletedAt:event.timestamp,deletedBy:req.user._id,deletionReason:reason};

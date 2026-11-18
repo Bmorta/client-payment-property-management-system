@@ -43,7 +43,7 @@ test("eligible deletion checks availability and client link again at write time"
   t.mock.method(Project, "findById", async () => ({ _id: projectId, status: "ACTIVE" }));
   t.mock.method(Property, "find", () => ({ lean: async () => ids.map(_id => ({ _id, status: "AVAILABLE", client: null })) }));
   t.mock.method(Property, "deleteMany", async filter => {
-    assert.deepEqual(filter, { _id: { $in: ids }, project: projectId, status: "AVAILABLE", client: null });
+    assert.deepEqual(filter, { _id: { $in: ids }, project: projectId, status: "AVAILABLE", client: null, hasReservationHistory:{$ne:true} });
     return { deletedCount: 1 }; // Another lot became reserved or linked after validation.
   });
   const res = response(); await deleteLots(req({ ids }), res, next);

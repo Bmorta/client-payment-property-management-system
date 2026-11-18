@@ -31,6 +31,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
   const [selectedLots, setSelectedLots] = useState([]);
   const [phases, setPhases] = useState([]);
   const [inventoryQuery,setInventoryQuery]=useState("");
+  const [holdFilter,setHoldFilter]=useState("");
   const [mode, setMode] = useState("");
   const [generator, setGenerator] = useState("");
   const [selectedPhase, setSelectedPhase] = useState("");
@@ -187,7 +188,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
       } finally { setBusy(false); }
     } });
   };
-  const filteredProperties = filterInventory(properties,{...filters,q:inventoryQuery});
+  const filteredProperties = filterInventory(properties,{...filters,q:inventoryQuery}).filter(lot=>!holdFilter||lot.reservationDetails?.status===holdFilter);
   const visibleProperties = filteredProperties.slice((page-1)*limit,page*limit);
   const eligibleVisible = visibleProperties.filter(deletableLot);
   const chosenLots = eligibleVisible.filter(p => selectedLots.includes(p._id));
@@ -337,7 +338,10 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
         </div>}
       </div>
       {changed.length > 0 && <p className="small text-secondary">Save or cancel lot edits before printing or exporting saved inventory.</p>}
-      <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([]);setPage(1)}} items={properties.map(p=>({record:p,key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status}`}))}/>
+      <label className="form-label">Paid reservation filter<select className="form-select" value={holdFilter} onChange={e=>{setHoldFilter(e.target.value);setSelectedLots([]);setPage(1)}}>
+        <option value="">All lots</option><option value="ACTIVE">Active holds</option><option value="EXPIRED">Expired holds</option>
+      </select></label>
+      <SearchInput label="Search property inventory" value={inventoryQuery} onChange={v=>{setInventoryQuery(v);setSelectedLots([]);setPage(1)}} items={properties.map(p=>({record:p,key:p._id,label:p.propertyId,detail:`Phase ${p.phaseNumber} Block ${p.blockNumber} Lot ${p.lotNumber} ${p.status} ${p.contractLabel||p.reservationDetails?.status||""}`}))}/>
       <div className="row g-2 mb-3">
         {["phase", "block", "lot", "status"].map(key => <div className="col-6 col-lg-3" key={key}>
           <FieldLabel htmlFor={`filter-${key}`} className="form-label small">{key === "status" ? "Availability" : key[0].toUpperCase() + key.slice(1)}
@@ -373,7 +377,7 @@ export default function PropertyInventory({ project, onClose, readOnly = false, 
           <td>{editMode ? <FieldLabel compact className="guided-control">{`Status for ${p.propertyId}`}<select aria-label={`Status for ${p.propertyId}`} className="form-select form-select-sm" disabled={busy || !!generator || !editableLot(p)}
             value={drafts[p._id]?.status ?? p.status} onChange={e => updateDraft(p._id, "status", e.target.value)}>
             {STATUSES.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
-          </select></FieldLabel> : <StatusBadge status={p.status} />}{p.assumptionStatus==='PENDING'&&<span className="badge text-bg-warning d-block mt-1">Assumption Pending</span>}{p.assumptionStatus==='ASSUMED'&&<span className="badge text-bg-info d-block mt-1">Assumed Contract</span>}</td>
+          </select></FieldLabel> : p.status==='UNAVAILABLE'?<span className="badge text-bg-secondary">Restricted / Inactive</span>:<StatusBadge status={p.status} />}{p.legacyReservation&&<small className="d-block">Legacy reservation · Review records</small>}{p.contractLabel&&<small className="d-block">{p.contractLabel}</small>}{p.reservationDetails&&<small className="d-block">{p.reservationDetails.status==='EXPIRED'?'Expired':p.reservationDetails.remainingDays===0?'Expires today':`${p.reservationDetails.remainingDays} day(s) remaining`} · ${p.reservationDetails.expiresOn}</small>}{p.assumptionStatus==='PENDING'&&<span className="badge text-bg-warning d-block mt-1">Assumption Pending</span>}{p.assumptionStatus==='ASSUMED'&&<span className="badge text-bg-info d-block mt-1">Assumed Contract</span>}</td>
           {editMode && <td>{!editableLot(p)&&<div className="small text-secondary mb-1" title="This lot is connected to a contract or protected workflow.">🔒 Editing restricted — use the contract or Reopen Lot workflow.</div>}<button type="button" className="btn btn-sm btn-outline-danger" disabled={busy || !!generator || changed.length > 0 || !deletableLot(p)}
             onClick={() => deleteLots([p])}>Delete lot</button>
             {!deletableLot(p) && <div className="small text-secondary">{p.client ? "Connected to a client" : "Not available for deletion"}</div>}</td>}

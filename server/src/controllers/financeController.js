@@ -1,3 +1,4 @@
+import {loadReservationCollections} from '../services/financialReportService.js';
 import {cashMutation,validateCashTimeline} from '../services/cashMovementService.js';
 import {agreementSchedule} from "../../../shared/agreementSchedule.js";
 import {pagedExpenses} from "./expenseListController.js";
@@ -38,8 +39,12 @@ const populate = query => query.populate("client", "clientId firstName middleNam
 const accountData = (account, user) => {
   const { auditEvents, notifications, correctionRequests, ...safe } = account;
   const { allocations } = allocatePayments(account);
+  const summary=summarizeAccount(account);
+  if(safe.property&&(!safe.lifecycle||safe.lifecycle==='ACTIVE')&&['AVAILABLE','RESERVED','SOLD'].includes(safe.property.status)){
+    safe.property={...safe.property,status:'SOLD',contractLabel:summary.settlement.verification?.current?'Fully Paid':summary.settlement.status==='SETTLED'?'Settlement Pending Verification':'Installment'};
+  }
   return { ...safe, payments: (account.payments||[]).map(p=>({...effectivePayment(p),allocations:allocations[p.paymentId]||[]})),
-    correctionRequests:(correctionRequests||[]).filter(r=>user?.role==="ADMIN"||String(r.requestedBy)===String(user?._id)),summary:summarizeAccount(account) };
+    correctionRequests:(correctionRequests||[]).filter(r=>user?.role==="ADMIN"||String(r.requestedBy)===String(user?._id)),summary };
 };
 export async function getAccount(req,res,next) {
  try {const account=await populate(PropertyAssignment.findById(id(req.params.id))).lean();if(!account)fail(404,"Account not found.");await attachBatchCounts([account]);const progress=await MigrationBatch.findOne({account:account._id}).select("status cutoffDate batchId").lean();if(progress)account.migrationProgress=progress;res.json({success:true,data:accountData(account,req.user)})}catch(e){next(e)}
@@ -78,7 +83,7 @@ export async function assignProperty(req, res, next) {
     if(schedule.some(s=>s.dueDate<contractDate))fail(400,"Due day cannot move an installment before the contract date.");
     if (await PropertyAssignment.exists({ property: propertyId,lifecycle:{$nin:["TRANSFERRED","CANCELLED","FORFEITED","SUPERSEDED"]} })) fail(409, "This lot already has an account. Use that account instead.");
     await PropertyAssignment.init();
-    claimed = await Property.findOneAndUpdate({ _id: propertyId, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, reopeningStatus:{$nin:["PENDING","REJECTED"]}, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
+    claimed = await Property.findOneAndUpdate({ _id: propertyId, reservation:null, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, reopeningStatus:{$nin:["PENDING","REJECTED"]}, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
     if (!claimed) fail(409, "This lot is no longer available or is already linked to a client.");
     created = await PropertyAssignment.create({ penaltyCalculationRule:'CURRENT_OVERDUE',assignmentId: await generateRecordId("contract"), client: clientId, project: property.project, property: propertyId,
       contract: { monitoringTerms, monthlyInstallmentCents:schedule.find(s=>s.installment>0)?.amountCents, totalCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", firstDueDate:schedule.find(s=>s.installment>0)?.dueDate||firstDueDate, contractDate, downPaymentCents, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, schedule }, createdBy: req.user._id, auditEvents: [{ eventId: req.auditEvent?._id, action: "AGREEMENT_CREATED", username: req.user.username, role: req.user.role, userId: req.user._id, timestamp: new Date() }] });
@@ -135,7 +140,7 @@ export async function acceptPayment(req, res, next) {
 }
 async function paymentRows() {
   const accounts = await populate(PropertyAssignment.find({ "payments.0": { $exists: true } })).lean();
-  await attachBatchCounts(accounts);return financialRows(accounts,[]).collections.sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  await attachBatchCounts(accounts);return [...financialRows(accounts,[]).collections,...await loadReservationCollections()].sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
 }
 export async function listPayments(req, res, next) {
   if(req.query.paged||req.query.format||req.query.origin!==undefined||req.query.receipt!==undefined)return transactionReport(req,res,next);

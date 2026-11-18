@@ -1,3 +1,6 @@
+import Reservation from '../models/Reservation.js';
+import {reservationDisplay} from '../services/reservationService.js';
+import {summarizeAccount} from '../utils/accounting.js';
 import mongoose from "mongoose";
 import { validPrice, lotPrice } from "../utils/lotPricing.js";
 import PropertyAssignment from "../models/PropertyAssignment.js";
@@ -17,11 +20,25 @@ export async function listProjectProperties(req, res, next) {
 
     const properties = await Property.find({ project: project._id })
       .sort({ phaseNumber: 1, blockNumber: 1, lotNumber: 1 });
-    const assignments = await PropertyAssignment.find({ project: project._id }).select("property lifecycle").lean();
+    const assignments = await PropertyAssignment.find({ project: project._id }).lean();
+    const holds = await Reservation.find({_id:{$in:properties.map(p=>p.reservation).filter(Boolean)},held:true}).lean();
+    const holdById=new Map(holds.map(hold=>[String(hold._id),hold]));
+    const accountByLot=new Map(assignments.filter(a=>!a.lifecycle||a.lifecycle==='ACTIVE').map(a=>[String(a.property),a]));
     const assigned = new Set(assignments.filter(a=>!["TRANSFERRED","ASSUMED","CANCELLED","FORFEITED","SUPERSEDED"].includes(a.lifecycle)).map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
     res.json({ success: true, data: properties.map(p => {
       const lot = p.toJSON(); const hasAccount = assigned.has(String(p._id));
-      return { ...lot, hasAccount, hasHistory:history.has(String(p._id)),canDelete: lot.canDelete && !history.has(String(p._id)) };
+      const account=accountByLot.get(String(p._id)),hold=holdById.get(String(p.reservation));
+      const isSold=!!account&&['AVAILABLE','RESERVED','SOLD'].includes(lot.status)&&!hold;
+      let contractLabel=null;
+      if(isSold){
+        contractLabel='Installment';
+        try {
+          const {settlement}=summarizeAccount(account);
+          if(settlement.verification?.current)contractLabel='Fully Paid';
+          else if(settlement.status==='SETTLED')contractLabel='Settlement Pending Verification';
+        } catch {contractLabel='Account Review Required'}
+      }
+      return { ...lot, status:isSold?'SOLD':lot.status, contractLabel, reservationDetails:hold?reservationDisplay(hold):null, legacyReservation:lot.status==='RESERVED'&&!hold&&!isSold, hasAccount, hasHistory:history.has(String(p._id)),canDelete: lot.canDelete && !history.has(String(p._id)) };
     }) });
   } catch (error) {
     next(error);

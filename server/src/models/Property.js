@@ -13,6 +13,8 @@ const propertySchema = new mongoose.Schema(
     areaSqm: { type: Number, default: null, min: 0 },
     pricePerSqm: { type: Number, default: null, validate: { validator: validPrice, message: "Price per sqm must be non-negative with at most two decimal places." } },
     reopeningStatus:{type:String,enum:['NONE','PENDING','REJECTED','APPROVED','REACTIVATED'],default:'NONE'},assumptionStatus:{type:String,enum:['NONE','PENDING','ASSUMED'],default:'NONE'},assumptionCase:{type:mongoose.Schema.Types.ObjectId,ref:'AssumptionCase',default:null},forfeitureAccount:{type:mongoose.Schema.Types.ObjectId,ref:'PropertyAssignment',default:null},history:{type:[mongoose.Schema.Types.Mixed],default:[]},
+    hasReservationHistory: { type: Boolean, default: false },
+    reservation: { type: mongoose.Schema.Types.ObjectId, ref: "Reservation", default: null },
     client: { type: mongoose.Schema.Types.ObjectId, ref: "Client", default: null },
     status: {
       type: String,
@@ -33,7 +35,7 @@ propertySchema.index(
 propertySchema.index({ project: 1, status: 1 });
 
 propertySchema.virtual("pricePerLot").get(function () { return lotPrice(this.areaSqm, this.pricePerSqm); });
-propertySchema.virtual("canDelete").get(function () { return this.status === "AVAILABLE" && !this.client; });
+propertySchema.virtual("canDelete").get(function () { return this.status === "AVAILABLE" && !this.client && !this.hasReservationHistory; });
 propertySchema.set("toJSON", { virtuals: true });
 
 export default mongoose.model("Property", propertySchema);

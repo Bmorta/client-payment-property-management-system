@@ -8,6 +8,7 @@ const roundedPenalty=(cents,bps)=>Number((BigInt(cents)*BigInt(bps)+5000n)/10000
 // Single chronological ledger: assessment cycles run at the start of their PHT
 // calendar date, then payments on that date. No interest-on-interest is applied.
 export function calculateLedger(account,payments,asOf=calendarDay()){
+ const reservation=account.reservationCredit;if(reservation&&!payments.some(p=>p.paymentId===reservation.paymentId))payments=[...payments,reservation];
  const corrections=account.financialCorrections||[];if(corrections.length&&!corrections.some(c=>c.effectiveDate<=asOf))return calculateLedger({...account,contract:corrections[0].currentContract,financialCorrections:[],financialCorrectionReview:null},payments,asOf);
  if(['FORFEITED','SUPERSEDED'].includes(account.lifecycle)&&!account.forfeiturePeriods?.length)throw Object.assign(new Error('Closed contract has no audited forfeiture snapshot. Administrator reconciliation is required; no live obligations were recalculated.'),{statusCode:409});
  const forfeiture=(account.forfeiturePeriods||[]).filter(p=>p.effectiveDate<=asOf&&(!p.reactivatedAt||asOf<p.reactivatedAt)).at(-1);

@@ -1,3 +1,5 @@
+import Reservation from '../models/Reservation.js';
+import {today} from '../utils/accounting.js';
 import {attentionItems} from '../../../shared/sidebarUnseen.js';
 import {notificationAttention} from '../../../shared/sidebarAttention.js';
 import {groupNotifications} from '../services/notificationGrouping.js';
@@ -18,7 +20,16 @@ async function visibleRows(user){
  let accounts=await query.lean();
  const requests=await SiteRequest.find(user.role==='ADMIN'?{}:{$or:[{createdBy:user._id},{personnel:user._id},{'notifications.recipient':String(user._id)}]}).select('requestId createdBy personnel status schedule reports followUp notifications __v preferredStart contact requestingAgent requestingAgentName history updatedAt').lean();
  const reminders=requests.filter(r=>r.status!=='DELETED').map(r=>{const flags=requestFlags(r),recipients=[...new Set(['ADMIN',String(r.createdBy),...(r.personnel||[]).map(String)])],dynamic=Object.entries(flags).filter(([kind,on])=>on&&kind!=='today').flatMap(([kind])=>recipients.map(recipient=>({id:'site-reminder-'+kind+'-'+r._id+'-'+(r.followUp?.dueAt||r.schedule?.start||'')+'-'+recipient,recipient,eventOnly:true,siteReminder:true,status:kind.toUpperCase(),message:r.requestId+': '+kind.replaceAll('followUp','follow-up required'),href:'/site-requests?request='+r._id,createdAt:r.schedule?.end||r.preferredStart||r.followUp?.dueAt||new Date(0),readBy:[]})));return {...r,flags,sourceModel:'SiteRequest',notifications:[...(r.notifications||[]),...dynamic]}});
- accounts=[...accounts.map(a=>({...a,sourceModel:'PropertyAssignment'})),...reminders];
+ const day=today(),expired=user.role==='ADMIN'||user.role==='STAFF'
+  ?await Reservation.find({held:true,expiresOn:{$lt:day},...(user.role==='STAFF'?{'payment.createdBy':user._id}:{})})
+    .select('client expiresOn history').populate('client','firstName lastName').lean():[];
+ const reservationAlerts=expired.map(row=>({...row,sourceModel:'Reservation',notifications:[{
+   id:'expired-reservation-'+row._id+'-'+row.expiresOn,recipient:String(user._id),eventOnly:true,
+   message:'Paid reservation expired and needs review. The lot is still on hold.',
+   href:'/payment?purpose=reservation&reservationStatus=expired',
+   createdAt:row.history.findLast(e=>e.action==='EXPIRED')?.timestamp||new Date(row.expiresOn+'T16:00:00Z')
+ }]}));
+ accounts=[...accounts.map(a=>({...a,sourceModel:'PropertyAssignment'})),...reminders,...reservationAlerts];
  const agentIds=[...new Set(accounts.flatMap(a=>(a.notifications||[]).filter(n=>n.commissionAlert&&visible(n,user)).map(n=>{try{return new URL(n.href,'http://rems.local').searchParams.get('agent')}catch{return null}})).filter(id=>mongoose.isValidObjectId(id)))];
  const agents=agentIds.length?await Agent.find({_id:{$in:agentIds}}).select('fullName').lean():[],agentNames=new Map(agents.map(a=>[String(a._id),a.fullName]));
  const reads=await NotificationRead.find({user:user._id,account:{$in:accounts.map(a=>a._id)}}).select('_id').lean(),keys=new Set(reads.map(r=>r._id));

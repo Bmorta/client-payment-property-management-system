@@ -1,3 +1,5 @@
+import ReservationSettings from '../models/ReservationSettings.js';
+import Reservation from '../models/Reservation.js';
 import SiteRequest from '../models/SiteRequest.js';
 import SiteRequestSettings from '../models/SiteRequestSettings.js';
 import OfficePayout from "../models/OfficePayout.js";
@@ -51,7 +53,14 @@ function target(req) {
     module = parts[0] === "cash-ledger" ? "Cash Ledger" : parts.includes("corrections") || parts.includes("requests") ? "Payment Corrections" : parts[0] === "notifications" ? "Notifications" : parts[0] === "expenses" ? "Expenses" : parts[0] === "accounts" ? "Payment Agreements" : "Payment Transactions";
     filter = one(["accounts","expenses","cash-ledger"].includes(parts[0]) ? parts[1] : req.body?.accountId);
   }
+  if(base.endsWith('/finance')&&parts[0]==='reservations'){
+    model=Reservation;module='Property Reservations';
+    filter=parts[1]?one(parts[1]):{requestId:typeof req.body?.requestId==='string'?req.body.requestId:null};
+  }
   if(base.endsWith('/finance')&&parts.includes('cancellations')){model=CancellationCase;module=parts.includes('refunds')?'Client Refunds':'Contract Cancellations';filter=parts[0]==='cancellations'?one(parts[1]):req.body?.requestId?{requestId:req.body.requestId}:{_id:null};}
+  if(base.endsWith('/finance')&&parts[0]==='reservations'&&parts[1]==='settings'){
+    model=ReservationSettings;module='Property Reservation Settings';filter={_id:'OFFICE'};
+  }
   const action = req.path.endsWith("/archive") ? "ARCHIVED" : req.method === "DELETE" || req.path.endsWith("/bulk-delete") ? "DELETED" : req.method === "POST" ? "CREATED" : "UPDATED";
   return { model, module, filter, action };
 }

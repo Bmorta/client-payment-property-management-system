@@ -1,3 +1,4 @@
+import Reservation from '../src/models/Reservation.js';
 import ReceiptClaim from "../src/models/ReceiptClaim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -116,6 +117,7 @@ test("reports use payment/expense dates, project filters, and past-date balances
  const a=account();a.client={_id:id,firstName:"Ana"};a.project={_id:id,projectName:"Project"};a.property={_id:propertyId};
  a.payments=[{paymentId:"PAY-1",amountCents:10000,paymentDate:"2026-02-01"},{paymentId:"PAY-2",amountCents:20000,paymentDate:"2026-03-01"}];
  t.mock.method(PropertyAssignment,"find",()=>chain([a]));
+ t.mock.method(Reservation,"find",()=>chain([]));
  t.mock.method(Expense,"find",()=>chain([{_id:"expense1",amountCents:2500,expenseDate:"2026-02-01",project:{_id:id}},{_id:"expense2",amountCents:500,expenseDate:"2026-02-01",project:null}]));
  const res=response();await report({query:{from:"2026-02-01",to:"2026-02-28",project:id}},res,next);
  assert.equal(res.body.data.collectedCents,10000);assert.equal(res.body.data.expenseCents,2500);assert.equal(res.body.data.netCents,7500);

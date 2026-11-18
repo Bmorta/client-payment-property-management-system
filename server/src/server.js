@@ -1,3 +1,4 @@
+import {startReservationMonitoring} from './services/reservationService.js';
 import {startBackupScheduler} from "./services/databaseMaintenance.js";
 import {inspectDatabaseReadiness} from "./services/databaseReadiness.js";
 import "dotenv/config";
@@ -27,6 +28,7 @@ const startServer = async () => {
       else console.warn('Closed-contract status reconciliation deferred until contract schema readiness is verified.');
     } catch {console.warn('Database readiness could not be verified. Open System Health & Database Readiness. No migration ran.');}
     startMonitoring();
+    startReservationMonitoring();
     startBackupScheduler();
 
     const server=app.listen(PORT, process.env.HOST||'0.0.0.0', () => {
