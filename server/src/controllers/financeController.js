@@ -1,3 +1,4 @@
+import {cashierContractStatus} from '../utils/cashierPaymentStatus.js';
 import {loadReservationCollections} from '../services/financialReportService.js';
 import {cashMutation,validateCashTimeline} from '../services/cashMovementService.js';
 import {agreementSchedule} from "../../../shared/agreementSchedule.js";
@@ -37,14 +38,15 @@ const text = (value, max = 500) => { if (value != null && typeof value !== "stri
 const requestKey = value => { if (typeof value !== "string" || !/^[A-Za-z0-9_-]{16,100}$/.test(value)) fail(400, "Invalid submission ID. Reload the form."); return value; };
 import {syncClientLifecycleFromContracts} from "../services/clientLifecycleSync.js";
 const populate = query => query.populate("client", "clientId firstName middleName lastName suffix status").populate("project", "projectId projectName projectCode").populate("property", "propertyId phaseNumber blockNumber lotNumber areaSqm pricePerSqm status reopeningStatus forfeitureAccount");
-const accountData = (account, user) => {
+const accountData = (account, user, cashier=false) => {
   const { auditEvents, notifications, correctionRequests, ...safe } = account;
   const { allocations } = allocatePayments(account);
-  const summary=summarizeAccount(account);
+  const asOf=today(),summary=summarizeAccount(account,asOf);
   if(safe.property&&(!safe.lifecycle||safe.lifecycle==='ACTIVE')&&['AVAILABLE','RESERVED','SOLD'].includes(safe.property.status)){
     safe.property={...safe.property,status:'SOLD',contractLabel:summary.settlement.verification?.current?'Fully Paid':summary.settlement.status==='SETTLED'?'Settlement Pending Verification':'Installment'};
   }
-  return { ...safe, payments: (account.payments||[]).map(p=>({...effectivePayment(p),allocations:allocations[p.paymentId]||[]})),
+  const paymentStatus=cashier&&account.client?.status==='ACTIVE'?cashierContractStatus(account,summary,asOf):null;
+  return { ...safe, ...(paymentStatus?{paymentStatus}:{}), payments: (account.payments||[]).map(p=>({...effectivePayment(p),allocations:allocations[p.paymentId]||[]})),
     correctionRequests:(correctionRequests||[]).filter(r=>user?.role==="ADMIN"||String(r.requestedBy)===String(user?._id)),summary };
 };
 export async function getAccount(req,res,next) {
@@ -56,7 +58,7 @@ export async function listAccounts(req, res, next) {
     const accounts = await populate(PropertyAssignment.find(filter)).sort({ createdAt: -1 }).lean();
     await attachBatchCounts(accounts);
     const migrations=await MigrationBatch.find({account:{$in:accounts.map(a=>a._id)}}).select("account status cutoffDate batchId").lean();
-    res.json({ success: true, data: accounts.map(a=>{const progress=migrations.find(b=>String(b.account)===String(a._id));return accountData({...a,...(progress?{migrationProgress:progress}:{})},req.user)}) });
+    res.json({ success: true, data: accounts.map(a=>{const progress=migrations.find(b=>String(b.account)===String(a._id));return accountData({...a,...(progress?{migrationProgress:progress}:{})},req.user,req.query.cashier==='1'&&['ADMIN','STAFF'].includes(req.user?.role))}) });
   } catch (e) { next(e); }
 }
 export async function assignProperty(req, res, next) {

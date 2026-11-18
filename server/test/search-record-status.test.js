@@ -35,3 +35,18 @@ test('fully paid contract search status follows the existing ledger and disappea
  const run=()=>searchClients({query:{}},{json:r=>{response=r}},e=>{throw e});await run();assert.ok(response.data[0].accounts[0].tags.includes('FULLY_PAID'));assert.equal(response.data[0].status,'ACTIVE');assert.equal(response.data[0].accounts[0].payments,undefined);
  account.payments[0].revisions=[{values:{voided:true}}];await run();assert.ok(!response.data[0].accounts[0].tags.includes('FULLY_PAID'));assert.ok(response.data[0].accounts[0].tags.includes('OUTSTANDING'));
 });
+
+test('cashier search gives live payment status to staff for active buyers only',async t=>{
+ const {default:Account}=await import('../src/models/PropertyAssignment.js');
+ const id='507f1f77bcf86cd799439012',prospectId='507f1f77bcf86cd799439013';
+ const contract={totalCents:600000,downPaymentCents:0,months:1,contractDate:'2025-01-01',firstDueDate:'2025-02-01',schedule:[{installment:1,dueDate:'2025-02-01',amountCents:600000}]};
+ t.mock.method(Client,'aggregate',async()=>[{rows:[{status:'ACTIVE',accounts:[{_id:id}]},{status:'PROSPECT',accounts:[{_id:prospectId}]}]}]);
+ t.mock.method(Account,'find',()=>({select(){return this},lean:async()=>[{_id:id,contract,payments:[]},{_id:prospectId,contract,payments:[]}]}));
+ const run=async(role,cashier)=>{let response;await searchClients({query:{cashier},user:{role}},{json:r=>{response=r}},e=>{throw e});return response.data;};
+ const [buyer,prospect]=await run('STAFF','1');
+ assert.equal(buyer.paymentStatus.status,'OVERDUE');assert.equal(buyer.paymentStatus.dueCents,600000);
+ assert.equal(prospect.paymentStatus,undefined);
+ assert.equal(buyer.accounts[0].payments,undefined);
+ assert.equal((await run('VIEWER','1'))[0].paymentStatus,undefined);
+ assert.equal((await run('ADMIN',undefined))[0].paymentStatus,undefined);
+});

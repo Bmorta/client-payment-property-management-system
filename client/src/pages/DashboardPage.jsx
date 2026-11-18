@@ -88,7 +88,7 @@ export default function DashboardPage(){
   const lotChart=Object.entries(statuses).map(([key,label])=>({key,label,value:data?.inventory[key]||0}));
   const matched=data&&scope.from===from&&scope.to===to&&scope.project===project&&scope.phase===phase&&scope.block===block;
   return <main className="rems-dashboard container-fluid p-3 p-lg-4">
-    <header className="rems-dashboard-header"><div><h1>Management Dashboard</h1><p>Office operations and financial overview · Philippine time</p></div><button className="btn btn-outline-primary" type="button" onClick={refresh} disabled={busy||!valid}>Refresh</button></header>
+    <header className="rems-dashboard-header"><div><h1><NavIcon name="grid"/> Management Dashboard</h1><p>Office operations and financial overview · Philippine time</p></div><button className="btn btn-outline-primary" type="button" onClick={refresh} disabled={busy||!valid}><NavIcon name="refresh"/> Refresh</button></header>
     <section className="card rems-dashboard-panel rems-dashboard-filters" aria-label="Dashboard filters">
       <div className="btn-group flex-wrap" role="group" aria-label="Reporting period">{periods.map(([key,label])=><button key={key} type="button" className={'btn '+(filter.period===key?'btn-primary':'btn-outline-secondary')} aria-pressed={filter.period===key} onClick={()=>change('period',key)}>{label}</button>)}</div>
       <div className="rems-dashboard-filter-fields">

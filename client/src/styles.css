@@ -575,3 +575,49 @@ button, input, select, textarea { font: inherit; }
 
 .feature-search-copy { display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere; }
 .feature-search-option > .small { flex-shrink:0; }
+
+/* Shared workspace refinements use the active Bootstrap appearance tokens. */
+@media screen {
+  .workspace-content {
+    --rems-control-radius: .5rem;
+    --rems-surface-radius: .75rem;
+  }
+  .workspace-content :is(.card,.table-responsive) { border-radius: var(--rems-surface-radius); }
+  .workspace-content :is(.form-control,.form-select,.btn) { border-radius: var(--rems-control-radius); }
+  .workspace-content :is(.form-control,.form-select) { min-width: 0; }
+  .workspace-content .form-label { font-weight: 550; line-height: 1.4; }
+  .workspace-content :is(.section-heading,.workspace-heading,.rems-dashboard-header) h1 {
+    font-weight: 700; letter-spacing: -.025em; overflow-wrap: anywhere;
+  }
+  .workspace-content .table-responsive {
+    overscroll-behavior-inline: contain;
+    scrollbar-color: var(--bs-border-color) transparent;
+  }
+  .workspace-content .table td:is(.text-end,.text-center),.rems-dashboard-metric strong { font-variant-numeric: tabular-nums; }
+  .workspace-content :is(.nav-tabs,.pagination) { flex-wrap: wrap; row-gap: .25rem; }
+  .workspace-content .empty-state {
+    padding: 1rem; color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg); border-radius: var(--rems-surface-radius);
+  }
+  .rems-status-badge { border-radius: 50rem; font-weight: 650; line-height: 1.25; padding: .25em .65em; }
+  .search-suggestions { max-height: min(24rem, 50dvh); }
+  .search-suggestions [role="option"] + [role="option"] { border-top: 1px solid var(--bs-border-color); }
+  .search-suggestions [role="option"].active { box-shadow: inset 3px 0 var(--bs-primary-text-emphasis); }
+  .search-suggestions [role="status"] { cursor: progress; color: var(--bs-secondary-color); }
+  .cashier-payment-status { display: flex; flex-wrap: wrap; gap: .25rem .5rem; align-items: baseline; margin-top: .25rem; }
+  .cashier-payment-status small,.cashier-property-summary > li { overflow-wrap: anywhere; }
+  .cashier-property-summary > li { padding: .45rem 0; border-top: 1px solid var(--bs-border-color); }
+  .rems-feedback,.rems-dialog-title { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .65rem; }
+  .rems-feedback > span { flex: 1 1 12rem; overflow-wrap: anywhere; }
+  .rems-feedback > .nav-icon,.rems-dialog-title > .nav-icon { flex: none; }
+  .rems-feedback > .btn { padding-block: 0; }
+  .sidebar-link.active { box-shadow: inset 3px 0 currentColor; }
+  .rems-dashboard-metric { min-height: 7.5rem; box-shadow: var(--bs-box-shadow-sm); }
+  .rems-dashboard-label .nav-icon {
+    box-sizing: content-box; padding: .35rem; border-radius: .5rem;
+    background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis);
+  }
+  :is(.workspace-content,[role="dialog"],[role="alertdialog"]) :is(.btn,.form-control,.form-select,summary,a):focus-visible {
+    outline: 2px solid var(--bs-primary-text-emphasis); outline-offset: 2px;
+  }
+}

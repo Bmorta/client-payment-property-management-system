@@ -1,9 +1,11 @@
+import {cashierBuyerStatus,cashierContractStatus} from '../utils/cashierPaymentStatus.js';
 import PropertyAssignment from '../models/PropertyAssignment.js';
 import {summarizeAccount,today} from '../utils/accounting.js';
 import {accountStatusTags} from '../../../shared/clientAccountStatuses.js';
 import Client from "../models/Client.js";
 export async function searchClients(req,res,next) {
  try {
+  const cashier=req.query.cashier==='1'&&['ADMIN','STAFF'].includes(req.user?.role);
   const q=String(req.query.q || "").trim().slice(0,100), page=Math.max(1,Math.min(100000,Number.parseInt(req.query.page,10)||1)), limit=20;
   const regex=q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
   const pipeline=[{$match:{deletedAt:null}},
@@ -18,7 +20,35 @@ export async function searchClients(req,res,next) {
   const [result]=await Client.aggregate(pipeline);
   const rows=result?.rows||[],accountIds=rows.flatMap(c=>(c.accounts||[]).map(a=>a._id)).filter(Boolean);
   // Enrich only this result page, in one batch; never return payment ledgers.
-  if(accountIds.length){const current=await PropertyAssignment.find({_id:{$in:accountIds}}).select('-notifications -auditEvents -commissionRecords -commissionPayouts').lean(),asOf=today(),tags=new Map();for(const a of current){try{tags.set(String(a._id),accountStatusTags(a,summarizeAccount(a,asOf)))}catch{tags.set(String(a._id),[a.lifecycle||a.migration?.historicalStatus,'STATUS_REVIEW_REQUIRED'].filter(Boolean))}}for(const c of rows)for(const a of c.accounts||[])if(tags.has(String(a._id)))a.tags=tags.get(String(a._id))}
+  if(accountIds.length){
+   const accounts=await PropertyAssignment.find({_id:{$in:accountIds}}).select('-notifications -auditEvents -commissionRecords -commissionPayouts').lean();
+   const asOf=today(),summaries=new Map();
+   for(const account of accounts){
+    let tags,paymentStatus;
+    try{
+     const summary=summarizeAccount(account,asOf);
+     tags=accountStatusTags(account,summary);
+     if(cashier)paymentStatus=cashierContractStatus(account,summary,asOf);
+    }catch{
+     tags=[account.lifecycle||account.migration?.historicalStatus,'STATUS_REVIEW_REQUIRED'].filter(Boolean);
+     if(cashier)paymentStatus=cashierContractStatus(account,null,asOf);
+    }
+    summaries.set(String(account._id),{tags,paymentStatus});
+   }
+   for(const client of rows){
+    const statuses=[];
+    for(const account of client.accounts||[]){
+     const projected=summaries.get(String(account._id));
+     if(!projected)continue;
+     account.tags=projected.tags;
+     if(cashier&&client.status==='ACTIVE'&&projected.paymentStatus){
+      account.paymentStatus=projected.paymentStatus;
+      statuses.push(projected.paymentStatus);
+     }
+    }
+    if(statuses.length)client.paymentStatus=cashierBuyerStatus(statuses);
+   }
+  }
   res.json({success:true,data:rows,page,total:result?.total?.[0]?.count||0,pageSize:limit});
  } catch(e){next(e)}
 }

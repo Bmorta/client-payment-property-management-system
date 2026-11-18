@@ -1,6 +1,7 @@
 import {createPortal} from "react-dom";
 import {useEffect,useRef,useId} from "react";
 let popupSequence=10000;
+import NavIcon from "./NavIcon.jsx";
 import CloseButton from "./CloseButton.jsx";
 export default function CenterPopup({ message, error, warning, confirm, onClose, onConfirm, confirmTitle = "Confirm deletion", confirmLabel = "Delete", cancelLabel = "Cancel" }) {
   const layer=useRef(0),wasOpen=useRef(false),id=useId();
@@ -16,7 +17,7 @@ export default function CenterPopup({ message, error, warning, confirm, onClose,
     <div className="card shadow-lg border-0 w-100 feedback-dialog" style={{ maxWidth: 440 }} role="alertdialog"
       data-confirmation={isConfirmation?"true":"false"} data-informational={!isConfirmation?"true":"false"} aria-labelledby={`${id}-title`} aria-describedby={`${id}-message`} aria-modal="true" aria-label={isConfirmation ? "Confirm action" : error ? "Error" : warning ? "Warning" : "Notification"}>
       <div className="card-body p-4">
-        <div className="section-heading"><h2 id={`${id}-title`} className="h5 fw-bold">{error ? "Action failed" : warning ? "Warning" : message ? "Success" : confirmTitle}</h2><CloseButton onClick={onClose}/></div>
+        <div className="section-heading"><h2 id={`${id}-title`} className="h5 fw-bold rems-dialog-title"><NavIcon name={error?"error":warning?"warning":message?"success":"approval"}/>{error ? "Action failed" : warning ? "Warning" : message ? "Success" : confirmTitle}</h2><CloseButton onClick={onClose}/></div>
         <p id={`${id}-message`} className="feedback-message">{text}</p>
         <div className="feedback-actions d-flex flex-wrap justify-content-end gap-2">
           {isConfirmation && <button type="button" className="btn btn-outline-secondary" onClick={onClose}>{cancelLabel}</button>}

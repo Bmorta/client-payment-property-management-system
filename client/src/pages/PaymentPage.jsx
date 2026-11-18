@@ -1,3 +1,4 @@
+import CashierPaymentStatus from '../components/CashierPaymentStatus.jsx';
 import {ReservationPayment} from '../components/Reservations.jsx';
 import NavIcon from '../components/NavIcon.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -58,7 +59,7 @@ export default function PaymentPage(){
    }));
   };
   const belongsToBuyer=record=>String(record.client?._id||record.client||'')===buyerId;
-  api.get('/finance/accounts',{params:{client:buyerId}}).then(r=>apply({accounts:r.data.data.filter(belongsToBuyer)})).catch(e=>{
+  api.get('/finance/accounts',{params:{client:buyerId,...(canPost?{cashier:1}:{})}}).then(r=>apply({accounts:r.data.data.filter(belongsToBuyer)})).catch(e=>{
    apply({accounts:[]});
    if(live&&generation.current===session)setError(e.response?.data?.message||'Unable to load accounts.');
   });
@@ -90,7 +91,7 @@ export default function PaymentPage(){
   <section className="card mb-3"><div className="card-body">
    <h2 className="h5"><NavIcon name="people"/> Payer</h2>
    <div className="payment-payer-fields">
-    <ClientLookup key={buyerSession} onSelect={choose} label="Search clients or prospects"/>
+    <ClientLookup cashier={canPost} key={buyerSession} onSelect={choose} label="Search clients or prospects"/>
     <label className="form-label">Payment Purpose<select className="form-select" value={purpose} onChange={e=>{setMessage('');setParams(p=>{const next=new URLSearchParams(p);next.set('purpose',e.target.value);return next;});}}>
      <option value="AUTO">Regular / Multi-property Payment</option><option value="DOWN_PAYMENT">Down Payment</option><option value="INSTALLMENT">Monthly Installment</option><option value="PENALTY">Penalty Payment</option>{canPost&&<option value="reservation">Reservation Fee</option>}
     </select></label>
@@ -106,11 +107,13 @@ export default function PaymentPage(){
    {client&&<div className="mt-3">
     <strong>{clientName(client)}</strong> · {client.clientId} {client.status&&<StatusBadge status={client.status}/>}
     <Link className="d-inline-block ms-2" to={`/clients/${client._id}/accounts`}>Open profile</Link>
-    {accounts.length>0&&<p className="mb-1 mt-2"><NavIcon name="building"/> {accounts.map(a=>`${a.project?.projectName||''} ${lotName(a.property)}`).join(' · ')}</p>}
+    {accounts.length>0&&<ul className="cashier-property-summary list-unstyled mt-2 mb-1">
+      {accounts.map(a=><li key={a._id}><span><NavIcon name="building"/> {a.project?.projectName} · {lotName(a.property)}</span><CashierPaymentStatus payment={a.paymentStatus}/></li>)}
+    </ul>}
     {holds.length>0&&<Link className="small" to={`/reservations?client=${client._id}`}>{holds.length} linked reservation(s)</Link>}
    </div>}
   </div></section>
-  {search&&<ClientSearchModal onClose={()=>setSearch(false)} onSelect={choose}/>}
+  {search&&<ClientSearchModal cashier={canPost} onClose={()=>setSearch(false)} onSelect={choose}/>}
   {loading&&<p role="status">Loading property accounts…</p>}
   {reservation&&canPost&&<ReservationPayment key={buyerSession} admin={user?.role==='ADMIN'} buyer={client} onSaved={saved}/>}
   {!reservation&&client&&payableAccounts.length>0&&canPost&&<PropertyPaymentCheckout key={buyerSession+purpose} purpose={purpose} client={client} accounts={payableAccounts} initialAccount={payableAccounts.some(a=>a._id===initial)?initial:''} onSaved={saved}/>}

@@ -1,3 +1,4 @@
+import StatusBadge from './StatusBadge.jsx';
 import {reservationExpiry} from '../../../shared/reservationDates.js';
 import AgentPicker from './AgentPicker.jsx';
 import {useCallback,useEffect,useRef,useState} from 'react';
@@ -201,7 +202,7 @@ export default function Reservations({admin,clientId='',propertyId='',onChanged}
         <tbody>{records.map(row=><tr key={row._id}>
           <td><small className="d-block text-secondary">{row._id}</small>{clientName(row.client)} · {row.project?.projectName} · {lotName(row.property)}</td>
           <td>{pesos(row.amountCents)}<br/><small>Credit {pesos(row.disposition==='OUTSTANDING'?row.amountCents:0)}</small></td><td>{row.startDate} → {row.expiresOn}<br/><small>{Math.round((Date.parse(row.expiresOn)-Date.parse(row.startDate))/86400000)} days{row.agent?.fullName&&' · '+row.agent.fullName}</small></td>
-          <td>{row.status}{row.status==='ACTIVE'?` · ${row.remainingDays===0?'Expires today':row.remainingDays===1?'Expires tomorrow':row.remainingDays+' days remaining'}`:row.status==='EXPIRED'?` · ${-row.remainingDays} day(s) overdue`:''}</td>
+          <td><StatusBadge status={row.status==='ACTIVE'&&row.remainingDays<=7?'EXPIRING_SOON':row.status}/>{row.status==='ACTIVE'?` · ${row.remainingDays===0?'Expires today':row.remainingDays===1?'Expires tomorrow':row.remainingDays+' days remaining'}`:row.status==='EXPIRED'?` · ${-row.remainingDays} day(s) overdue`:''}</td>
           <td><button className="btn btn-outline-primary btn-sm" onClick={()=>setReview(row)}>View</button></td>
         </tr>)}</tbody>
       </table></div>

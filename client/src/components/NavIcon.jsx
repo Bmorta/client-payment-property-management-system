@@ -1,4 +1,14 @@
 const shapes={
+ calendar:<><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-14 4h2m3 0h2m3 0h1m-11 4h2m3 0h2"/></>,
+ 'calendar-clock':<><path d="M11 21H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4M7 3v4m10-4v4M3 10h18"/><circle cx="17" cy="17" r="4"/><path d="M17 15v2l1 1"/></>,
+ 'user-search':<><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a7 7 0 0 1 9-6.7"/><circle cx="16" cy="16" r="4"/><path d="m19 19 3 3"/></>,
+ contract:<><path d="M13 21H5V3h10l4 4v4M14 3v5h5M8 11h5m-5 4h4m2 5 1-4 5-5 2 2-5 5z"/></>,
+ approval:<><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="m8 13 2 2 5-5m-7 8h7"/></>,
+ trash:<><path d="M3 6h18M9 6V3h6v3m4 0-1 15H6L5 6m5 4v7m4-7v7"/></>,
+ info:<><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></>,
+ success:<><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></>,
+ error:<><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></>,
+
  warning:<><path d="m12 3 10 18H2zM12 9v5m0 3v1"/></>,
  history:<><path d="M3 11a9 9 0 1 1 3 8M3 4v7h7m2-4v6l4 2"/></>,
  print:<><path d="M6 9V3h12v6M6 17H3V9h18v8h-3M6 14h12v7H6zM17 12h1"/></>,
