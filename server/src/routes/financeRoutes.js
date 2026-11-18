@@ -1,3 +1,4 @@
+import {managementDashboard} from "../controllers/managementDashboardController.js";
 import {previewCashReconciliationCorrection,applyCashReconciliationCorrection} from '../controllers/cashReconciliationCorrectionController.js';
 import {cashReconciliation} from '../controllers/cashReconciliationController.js';
 import {correctionOptions,previewFinancialCorrection,approveFinancialCorrection} from "../controllers/financialCorrectionController.js";
@@ -118,6 +119,7 @@ router.get("/reports/monitoring.xlsx",exportMonitoringReport);
 router.get("/reports/payment-register.xlsx",exportPaymentRegister);
 router.get("/reports/payment-register",exportPaymentRegister);
 router.get("/reports/dashboard",dashboardAnalytics);
+router.get("/reports/dashboard/overview",managementDashboard);
 router.get("/reports/expenses",expenseReport);
 router.get("/reports/collections",collectionReport);
 router.get("/reports", report);

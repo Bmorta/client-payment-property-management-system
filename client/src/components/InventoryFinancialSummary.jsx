@@ -2,7 +2,7 @@ import {usePageState} from '../hooks/usePageState.js';
 import FeedbackMessage from "./FeedbackMessage.jsx";
 import CloseButton from "./CloseButton.jsx";
 import {useEffect,useState} from 'react';
-import {Link} from 'react-router-dom';
+import {Link,useSearchParams} from 'react-router-dom';
 import {ResponsiveContainer,PieChart,Pie,Cell,BarChart,Bar,XAxis,YAxis,Tooltip,Legend,CartesianGrid,LineChart,Line} from 'recharts';
 import api from '../services/api.js';
 import FieldLabel from './FieldLabel.jsx';
@@ -13,8 +13,9 @@ import {propertySummaryDocument,printPropertySummary} from '../utils/printProper
 const statuses=[['AVAILABLE','Available'],['RESERVED','Reserved'],['SOLD','Sold'],['FOR_ASSUME','For Assume'],['INACTIVE_ARCHIVED','Inactive / Archived']],colors=['#16a34a','#eab308','#dc2626','#2563eb','#64748b'];
 const show=(k,v)=>k.endsWith('Cents')?pesos(v):k.endsWith('Micros')?(v/1000000).toLocaleString('en-PH',{maximumFractionDigits:6}):v;
 export default function InventoryFinancialSummary({projects,projectId,onProject,onFilters}){
+ const [url]=useSearchParams();
  const [outstandingOnly,setOutstandingOnly]=usePageState("InventoryFinancialSummary.jsx:outstandingOnly",false,'');
- const [filters,setFilters]=usePageState("InventoryFinancialSummary.jsx:filters",{phase:'',block:'',status:'',from:'',to:''},''),[agent,setAgent]=useState(null),[data,setData]=useState(null),[error,setError]=useState(''),[preview,setPreview]=useState(null),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[page,setPage]=usePageState("InventoryFinancialSummary.jsx:page",1,''),[search,setSearch]=usePageState("InventoryFinancialSummary.jsx:search",'',''),[sort,setSort]=usePageState("InventoryFinancialSummary.jsx:sort",'propertyLabel','');
+ const [filters,setFilters]=usePageState("InventoryFinancialSummary.jsx:filters",{phase:url.get('phase')||'',block:url.get('block')||'',status:url.get('status')||'',from:url.get('from')||'',to:url.get('to')||''},''),[agent,setAgent]=useState(null),[data,setData]=useState(null),[error,setError]=useState(''),[preview,setPreview]=useState(null),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0),[page,setPage]=usePageState("InventoryFinancialSummary.jsx:page",1,''),[search,setSearch]=usePageState("InventoryFinancialSummary.jsx:search",'',''),[sort,setSort]=usePageState("InventoryFinancialSummary.jsx:sort",'propertyLabel','');
  const params={...filters,project:projectId,agent:agent?._id||''},key=JSON.stringify(params);
  useEffect(()=>{onFilters?.({phase:filters.phase,block:filters.block,status:filters.status==='INACTIVE_ARCHIVED'?(projects.find(p=>p._id===projectId)?.status==='ARCHIVED'?'':'UNAVAILABLE'):filters.status})},[filters.phase,filters.block,filters.status,projectId]);
  useEffect(()=>{let active=true;setError('');setData(null);if((filters.from||filters.to)&&(!filters.from||!filters.to))return;const timer=setTimeout(()=>api.get('/finance/property-summary',{params}).then(r=>{if(active){setData(r.data.data);setPage(1)}}).catch(e=>{if(active){setData(null);setError(e.response?.data?.message||'Unable to load property summary.')}}),200);return()=>{active=false;clearTimeout(timer)}},[key,refresh]);

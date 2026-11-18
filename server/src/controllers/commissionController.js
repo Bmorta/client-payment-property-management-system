@@ -140,6 +140,7 @@ export function commissionPipeline(query){
  if(query.status){const statuses=String(query.status).split(',');const conditions=statuses.map(status=>{
  if(status==='EARNED')return {earnedCents:{$gt:0}};
  if(status==='ON_HOLD')return {$or:[{heldCents:{$gt:0}},{historicalVerificationCents:{$gt:0}},{recoveryDueCents:{$gt:0}}]};
+ if(status==='RELEASABLE')return {releasableCents:{$gt:0}};
  if(status==='UNRELEASED')return {unreleasedCents:{$gt:0}};
  if(["RELEASED","PARTIALLY_RELEASED","AWAITING_BUYER_PAYMENT","ADJUSTED_REVERSED"].includes(status))return {status};
  fail(400,"Invalid commission status.");});if(conditions.length===1)Object.assign(match,conditions[0]);else match.$or=conditions;}

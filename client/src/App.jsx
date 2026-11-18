@@ -37,7 +37,7 @@ const SiteRequestsPage=lazy(()=>import("./pages/SiteRequestsPage.jsx"));
 const AssumptionsPage=lazy(()=>import("./pages/AssumptionsPage.jsx"));
 
 const PaymentMonitoringPage=lazy(()=>import("./pages/PaymentMonitoringPage.jsx"));
-const DashboardPage=()=> <PaymentMonitoringPage dashboard/>;
+const DashboardPage=lazy(()=>import("./pages/DashboardPage.jsx"));
 
 const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
   const { user, loading } = useAuth();
