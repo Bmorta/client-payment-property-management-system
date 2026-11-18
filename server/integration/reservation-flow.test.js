@@ -26,8 +26,12 @@ test('reservation and conversion commit once, and expiry requires explicit lot r
     const day=today();
     const request={propertyId:String(lot._id),clientId:String(client._id),requestId:randomUUID(),paymentDate:day,
       amount:'5000',method:'CASH',receiptNumber:'TEST-RES-1',terms:'Apply fee toward the down payment',creditPolicy:'DOWN_PAYMENT',confirmed:true};
-    const hold=await postReservation(request,user);
-    assert.equal(String((await postReservation(request,user))._id),String(hold._id));
+    const timed={...request,startDate:addDays(day,-1),holdDays:15,reason:'Approved holding period',expiresOn:addDays(day,14)};
+    await assert.rejects(postReservation({...timed,expiresOn:addDays(day,13)},user),/does not match/);
+    const hold=await postReservation(timed,user);
+    assert.equal((await Reservation.findById(hold._id)).expiresOn,timed.expiresOn);
+    assert.equal(hold.startDate,timed.startDate);
+    assert.equal(String((await postReservation(timed,user))._id),String(hold._id));
     await assert.rejects(postReservation({...request,requestId:randomUUID(),receiptNumber:'TEST-RES-DUP'},user),/already has a hold/);
     assert.equal((await Property.findById(lot._id)).status,'RESERVED');
     assert.equal(await Account.countDocuments(),0);

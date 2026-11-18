@@ -1,3 +1,4 @@
+import {reservationExpiry} from '../../../shared/reservationDates.js';
 import AgentPicker from './AgentPicker.jsx';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Link,useSearchParams} from 'react-router-dom';
@@ -10,7 +11,7 @@ import {clientName,lotName,submissionId} from '../utils/finance.js';
 
 const pesos=n=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(n/100);
 const creditTerms={ANY_PRINCIPAL:'Any eligible principal payment',DOWN_PAYMENT:'Down payment only',FIRST_INSTALLMENT:'First installment only'};
-const creditField=(value,onChange)=><label className="form-label">Credit terms<select required className="form-select" value={value||''} onChange={e=>onChange(e.target.value)}>
+const creditField=(value,onChange)=><label className="form-label">Credit terms *<select required className="form-select" value={value||''} onChange={e=>onChange(e.target.value)}>
   <option value="">Choose the agreed terms</option>{Object.entries(creditTerms).map(([key,label])=><option key={key} value={key}>{label}</option>)}
 </select></label>;
 export function ReservationPayment({admin,buyer,onSaved}){
@@ -24,7 +25,12 @@ export function ReservationPayment({admin,buyer,onSaved}){
   };
   useEffect(()=>{if(buyer)load().catch(e=>setError(e.response?.data?.message||'Unable to load available lots.'))},[buyer?._id]);
   const run=async work=>{setBusy(true);setError('');try{await work()}catch(e){setError(e.response?.data?.message||'Unable to record reservation fee.')}finally{setBusy(false)}};
-  const prepare=e=>{e.preventDefault();setReview(true)};
+  const prepare=e=>{
+    e.preventDefault();
+    setError('');
+    if(!expiryDate||expiryDate<data.day){setError('Choose a valid holding period with an expiry on or after today.');return;}
+    setReview(true);
+  };
   const setField=(setter,key,value)=>{setter(previous=>({...previous,[key]:value}));setReview(false)};
   const field=(obj,setter,key,label,props={})=><label className="form-label">{label}
     <input className="form-control" value={obj[key]??''} onChange={e=>{setField(setter,key,e.target.value);setReview(false)}} {...props}/>
@@ -34,49 +40,89 @@ export function ReservationPayment({admin,buyer,onSaved}){
   </select></label><FundingAccountField method={obj.method} value={obj.fundingAccount} onChange={value=>{setField(setter,'fundingAccount',value);setReview(false)}}/></>;
   const submit=e=>{
     e.preventDefault();
-    if(lock.current)return;lock.current=true;
+    if(lock.current||!review||!data||!expiryDate||expiryDate<data.day)return;lock.current=true;
     run(async()=>{
       if(!buyer){setError('Choose a buyer or register the prospect.');return}
-      const {data:response}=await api.post('/finance/reservations',{...form,clientId:buyer._id,agentId:agent?._id,requestId,paymentDate:form.paymentDate||data.day});
-      setForm({method:'CASH'});setAgent(null);setRequestId(globalThis.crypto?.randomUUID?.()||`reservation-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const {data:response}=await api.post('/finance/reservations',{...form,clientId:buyer._id,agentId:agent?._id,requestId,paymentDate,startDate,holdDays,expiresOn:expiryDate});
+      setForm({method:'CASH'});setAgent(null);setRequestId(submissionId());
       setAck({reservationId:response.data._id});
       setReview(false);onSaved?.('Reservation fee posted and the lot is on hold.');
       await load();
     }).finally(()=>{lock.current=false});
   };
   if(!buyer)return null;
-  const paymentDate=form.paymentDate||data?.day;
-  const expiryDate=paymentDate&&data?(form.expiresOn||new Date(Date.parse(paymentDate)+(data.defaultDays*86400000)).toISOString().slice(0,10)):'';
-  const holdDays=expiryDate?Math.round((Date.parse(expiryDate)-Date.parse(paymentDate))/86400000):null;
+  const paymentDate=form.paymentDate??data?.day??'';
+  const startDate=form.startDate??paymentDate;
+  const period=form.period||'default';
+  const holdDays=period==='default'?data?.defaultDays:Number(period==='custom'?form.customDays:period);
+  const expiryDate=reservationExpiry(startDate,holdDays);
+  const lot=lots.find(item=>item._id===form.propertyId);
+  const override=holdDays!==data?.defaultDays;
+  const presets=[7,15,30].filter(days=>days!==data?.defaultDays);
   return <><FeedbackMessage kind="error" message={error}/>
-  {ack&&<button className="btn btn-outline-primary mb-2" onClick={()=>setPrint(true)}>Receipt Preview / Print</button>}
-  {print&&<PaymentBatchAcknowledgment payment={ack} onClose={()=>setPrint(false)}/>}
-    <form className="card p-3" onSubmit={review?submit:prepare}>
-      <h2 className="h5">Record reservation fee</h2><fieldset disabled={busy}>
-      {buyer?<p>Selected buyer · {clientName(buyer)}</p>:<p>Select the payer above.</p>}
-      <label className="form-label my-2">Available lot<select className="form-select" required value={form.propertyId||''} onChange={e=>setField(setForm,'propertyId',e.target.value)}>
-        <option value="">Choose a lot</option>{lots.map(lot=><option key={lot._id} value={lot._id}>{lot.project?.projectName} · {lotName(lot)}</option>)}
-      </select></label>
-      <div className="d-flex flex-wrap gap-3">
-        {field(form,setForm,'amount','Reservation fee',{type:'number',step:'.01',min:'.01',required:true})}
-        {field(form,setForm,'paymentDate','Payment date',{type:'date',max:data?.day,value:form.paymentDate??data?.day??''})}
-        {field(form,setForm,'receiptNumber','Receipt number',{required:true})}
-        {method(form,setForm)}
-        {form.method!=='CASH'&&field(form,setForm,'reference','Payment reference',{maxLength:120})}
-        {admin&&field(form,setForm,'expiresOn','Override expiry',{type:'date'})}
-        {admin&&form.expiresOn&&field(form,setForm,'reason','Override reason',{required:true})}
-      </div>
-      {admin&&<details className="mb-2"><summary>Assign an agent to the hold (optional)</summary><AgentPicker value={agent} onChange={value=>{setAgent(value);setReview(false)}} activeOnly/></details>}
-      <p>Holding period {holdDays??"—"} days · Expiry {expiryDate||"—"}</p>
-      {creditField(form.creditPolicy,value=>setField(setForm,'creditPolicy',value))}
-      <label className="form-label">Reservation terms<textarea className="form-control" required value={form.terms||''} onChange={e=>setField(setForm,'terms',e.target.value)}/></label>
-      {field(form,setForm,'notes','Notes')}
-      <label className="form-check mb-2"><input className="form-check-input" type="checkbox" required checked={!!form.confirmed} onChange={e=>setField(setForm,'confirmed',e.target.checked)}/> I reviewed the reservation terms and confirm receipt of payment.</label>
-      {review&&<section className="cashier-total border rounded p-3 my-3" aria-label="Reservation payment summary"><h3 className="h6">Review Reservation Fee</h3><p>{clientName(buyer)} · {lotName(lots.find(lot=>lot._id===form.propertyId))}</p><p>New money received {pesos(Math.round(Number(form.amount)*100))} · Prior credit applied ₱0.00 · {paymentMethodLabel(form.method)}</p></section>}
-      <div className="d-flex gap-2"><button className="btn btn-primary" disabled={busy||!data||!buyer}>{review?'Confirm & Record Payment':'Preview Payment'}</button><button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={()=>{setReview(false);setForm({method:'CASH'});setAgent(null);setRequestId(submissionId())}}>Clear</button></div></fieldset>
+    {ack&&<button className="btn btn-outline-primary mb-2" onClick={()=>setPrint(true)}>Receipt Preview / Print</button>}
+    {print&&<PaymentBatchAcknowledgment payment={ack} onClose={()=>setPrint(false)}/>}
+    <form className="card p-3 p-md-4 reservation-payment" onSubmit={review?submit:prepare}>
+      <h2 className="h5 mb-0">Record reservation fee</h2>
+      <fieldset disabled={busy||!data} className="reservation-payment-sections">
+        <section>
+          <h3 className="h6">Property</h3>
+          <div className="reservation-payment-grid">
+            <label className="form-label reservation-full">Available lot *<select className="form-select" required value={form.propertyId||''} onChange={e=>setField(setForm,'propertyId',e.target.value)}>
+              <option value="">Choose a lot</option>{lots.map(item=><option key={item._id} value={item._id}>{item.project?.projectName} · {lotName(item)}</option>)}
+            </select></label>
+          </div>
+        </section>
+        <section>
+          <h3 className="h6">Reservation details</h3>
+          <div className="reservation-payment-grid">
+            {field(form,setForm,'amount','Reservation fee (₱) *',{type:'number',step:'.01',min:'.01',required:true})}
+            {field(form,setForm,'startDate','Reservation start date *',{type:'date',required:true,max:data?.day,value:startDate})}
+            <label className="form-label">Holding period *<select className="form-select" value={period} onChange={e=>setField(setForm,'period',e.target.value)} required>
+              <option value="default">{data?.defaultDays??'—'} days (office default)</option>
+              {admin&&presets.map(days=><option key={days} value={days}>{days} days</option>)}
+              {admin&&<option value="custom">Custom period</option>}
+            </select></label>
+            <label className="form-label">Expiry date<input className="form-control" type="date" readOnly value={expiryDate} aria-describedby="reservation-expiry-policy"/></label>
+            <small className="text-secondary reservation-full" id="reservation-expiry-policy">The lot is held through the end of the expiry date, Philippine time. Administrators can override the office holding period.</small>
+            {period==='custom'&&field(form,setForm,'customDays','Custom holding days *',{type:'number',step:1,min:1,max:365,required:true})}
+            {admin&&override&&field(form,setForm,'reason','Override reason *',{required:true})}
+            {creditField(form.creditPolicy,value=>setField(setForm,'creditPolicy',value))}
+            <label className="form-label reservation-full">Reservation terms *<textarea className="form-control" required value={form.terms||''} onChange={e=>setField(setForm,'terms',e.target.value)}/></label>
+          </div>
+          {admin&&<details className="mt-3"><summary>Assign an agent (optional)</summary><AgentPicker value={agent} onChange={value=>{setAgent(value);setReview(false)}} activeOnly/></details>}
+        </section>
+        <section>
+          <h3 className="h6">Payment details</h3>
+          <div className="reservation-payment-grid">
+            {field(form,setForm,'paymentDate','Payment date *',{type:'date',required:true,max:data?.day,value:paymentDate})}
+            {method(form,setForm)}
+            {field(form,setForm,'receiptNumber','Receipt number *',{required:true})}
+            {form.method!=='CASH'&&field(form,setForm,'reference','Payment reference',{maxLength:120})}
+            <label className="form-label reservation-full">Remarks<textarea className="form-control" value={form.notes||''} onChange={e=>setField(setForm,'notes',e.target.value)}/></label>
+          </div>
+        </section>
+        <label className="form-check"><input className="form-check-input" type="checkbox" required checked={!!form.confirmed} onChange={e=>setField(setForm,'confirmed',e.target.checked)}/> I reviewed the reservation terms and confirm receipt of payment.</label>
+        {review&&<section className="cashier-total border rounded p-3" aria-label="Reservation payment summary">
+          <h3 className="h6">Review Reservation Fee</h3>
+          <dl className="cashier-facts mb-0">
+            <dt>Buyer</dt><dd>{clientName(buyer)}</dd>
+            <dt>Property</dt><dd>{lot?.project?.projectName} · {lotName(lot)}</dd>
+            <dt>Holding period</dt><dd>{holdDays} days</dd>
+            <dt>Expiry date</dt><dd>{expiryDate}</dd>
+            <dt>Payment method</dt><dd>{paymentMethodLabel(form.method)}</dd>
+            <dt>Total received</dt><dd>{pesos(Math.round(Number(form.amount)*100))}</dd>
+          </dl>
+        </section>}
+        <div className="d-flex flex-wrap gap-2">
+          <button className="btn btn-primary" disabled={busy||!expiryDate}>{busy?'Recording…':review?'Confirm & Record Payment':'Preview Payment'}</button>
+          <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={()=>{setReview(false);setForm({method:'CASH'});setAgent(null);setRequestId(submissionId());setError('')}}>Clear</button>
+        </div>
+      </fieldset>
     </form>
   </>;
 }
+
 export default function Reservations({admin,clientId='',propertyId='',onChanged}) {
   const [params]=useSearchParams(),clientFilter=clientId||params.get('client')||'',propertyFilter=propertyId||params.get('property')||'',statusFilter=params.get('reservationStatus')||'',projectFilter=params.get('project')||'';
   const [data,setData]=useState(null);

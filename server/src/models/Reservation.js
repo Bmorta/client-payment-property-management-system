@@ -10,6 +10,7 @@ const schema = new Schema({
   requestId: { type: String, required: true, unique: true },
   held: { type: Boolean, required: true, default: true },
   status: { type: String, enum: ['ACTIVE','EXPIRED','CONVERTED','CANCELLED','RELEASED'], default: 'ACTIVE' },
+  startDate: { type: String, immutable: true },
   expiresOn: { type: String, required: true },
   notes: String,
   creditPolicy: { type: String, enum: ['ANY_PRINCIPAL','DOWN_PAYMENT','FIRST_INSTALLMENT'], required: true },

@@ -1,3 +1,4 @@
+import { reservationExpiry } from '../../../shared/reservationDates.js';
 import { createHash, randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import ReservationSettings from '../models/ReservationSettings.js';
@@ -44,7 +45,7 @@ export function reservationStatus(row, day=today()) {
 }
 export function reservationDisplay(row, day=today()) {
   const remainingDays=Math.round((Date.parse(row.expiresOn)-Date.parse(day))/86400000);
-  return { status:reservationStatus(row,day), startDate:row.payment.paymentDate, expiresOn:row.expiresOn, remainingDays, amountCents:row.payment.amountCents };
+  return { status:reservationStatus(row,day), startDate:row.startDate||row.payment.paymentDate, expiresOn:row.expiresOn, remainingDays, amountCents:row.payment.amountCents };
 }
 export async function expireReservations(day=today()) {
   await Reservation.updateMany({status:'ACTIVE',held:true,expiresOn:{$lt:day}},
@@ -70,11 +71,16 @@ export async function postReservation(body,user) {
   const terms=text(body.terms),creditPolicy=body.creditPolicy;
   if(!creditPolicies.includes(creditPolicy))fail('Choose how the reservation agreement allows the fee to be applied.');
   if(!terms||body.confirmed!==true)fail('Review and confirm the reservation terms.');
-  const defaultExpiry=addDays(payment.paymentDate,await defaultReservationDays());
-  const expiresOn=body.expiresOn||defaultExpiry;
-  if(!validDate(expiresOn)||expiresOn<today()||expiresOn<=payment.paymentDate||expiresOn>addDays(payment.paymentDate,365))fail('Choose a hold expiry after the payment date, within 365 days.');
+  const startDate=body.startDate??payment.paymentDate;
+  if(!validDate(startDate)||startDate>today())fail('Choose a valid reservation start date through today.');
+  const defaultExpiry=reservationExpiry(startDate,await defaultReservationDays());
+  const calculated=body.holdDays===undefined?null:reservationExpiry(startDate,body.holdDays);
+  if(calculated==='')fail('Enter a holding period from 1 to 365 days.');
+  if(calculated&&body.expiresOn!==undefined&&body.expiresOn!==calculated)fail('The expiry date does not match the holding period.');
+  const expiresOn=calculated??body.expiresOn??defaultExpiry;
+  if(!validDate(expiresOn)||expiresOn<today()||expiresOn<=startDate||expiresOn>reservationExpiry(startDate,365))fail('Choose a hold expiry after the start date, within 365 days, that has not passed.');
   if(expiresOn!==defaultExpiry&&(user.role!=='ADMIN'||!text(body.reason)))fail('An administrator and an override reason are required for a custom expiry.',403);
-  const submissionHash=hash({propertyId,clientId,agentId,payment,terms,creditPolicy,expiresOn,notes:text(body.notes)});
+  const submissionHash=hash({propertyId,clientId,agentId,payment,terms,creditPolicy,expiresOn,notes:text(body.notes),...(startDate!==payment.paymentDate?{startDate}:{})});
   const indexes=await Reservation.collection.indexes().catch(e=>{if(e.code===26)return [];throw e});
   if(!indexes.some(i=>i.unique&&i.key.requestId===1)||!indexes.some(i=>i.unique&&i.key.property===1&&i.key.held===1&&i.partialFilterExpression?.held===true))
     fail('Reservation indexes require one-time approved setup in Database & Backups.',409);
@@ -85,7 +91,8 @@ export async function postReservation(body,user) {
       if(existing.payment.submissionHash!==submissionHash)fail('This submission was already used for another reservation.',409);
       return existing;
     }
-    if(!body.expiresOn&&addDays(payment.paymentDate,await defaultReservationDays(session))!==expiresOn)fail('The default hold period changed. Refresh and review the new expiry.',409);
+    const currentDefault=reservationExpiry(startDate,await defaultReservationDays(session));
+    if((expiresOn===defaultExpiry||user.role!=='ADMIN')&&currentDefault!==defaultExpiry)fail('The default hold period changed. Refresh and review the new expiry.',409);
     const client=await Client.findById(clientId).session(session);
     if(!client||client.deletedAt)fail('Choose an existing buyer or register a prospect.',409);
     if(agentId&&!(await Agent.exists({_id:agentId,status:'ACTIVE'}).session(session)))fail('Choose an active agent.',409);
@@ -94,7 +101,7 @@ export async function postReservation(body,user) {
     if(!lot||await PropertyAssignment.exists({property:propertyId,...openAccounts}).session(session))fail('This lot already has a hold, restriction, or active contract.',409);
     if(!(await Project.exists({_id:lot.project,status:{$ne:'ARCHIVED'}}).session(session)))fail('This project cannot accept reservations.',409);
     await checkReceipt(payment.receiptNumber,payment.receiptScope,reservationId,paymentId,requestId,true,false,session);
-    const [record]=await Reservation.create([{_id:reservationId,property:propertyId,project:lot.project,client:clientId,agent:agentId,requestId,expiresOn,terms,creditPolicy,notes:text(body.notes),
+    const [record]=await Reservation.create([{_id:reservationId,property:propertyId,project:lot.project,client:clientId,agent:agentId,requestId,startDate,expiresOn,terms,creditPolicy,notes:text(body.notes),
       payment:{...payment,paymentId,submissionHash,createdAt:new Date(),createdBy:user._id,actorUsername:user.username,actorRole:user.role},
       history:[event('RESERVED',user,{reason:text(body.reason),expiresOn})]}],{session});
     return record;

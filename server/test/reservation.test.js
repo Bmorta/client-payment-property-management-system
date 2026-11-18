@@ -36,3 +36,15 @@ test('a hold remains active through its expiry date and appears expired the next
   assert.equal(next.remainingDays,-1);
   assert.equal(reservationDisplay({...row,status:'CONVERTED',held:false},addDays(row.expiresOn,1)).status,'CONVERTED');
 });
+
+test('holding periods use Manila calendar-date labels and reject invalid dates or durations',async()=>{
+  const {reservationExpiry}=await import('../../shared/reservationDates.js');
+  assert.equal(reservationExpiry('2026-11-18',7),'2026-11-25');
+  assert.equal(reservationExpiry('2026-11-18',15),'2026-12-03');
+  assert.equal(reservationExpiry('2026-11-20',30),'2026-12-20');
+  assert.equal(reservationExpiry('2026-02-30',7),'');
+  for(const invalid of [0,-1,2.5,366,'7'])assert.equal(reservationExpiry(day,invalid),'');
+  const row={held:true,status:'ACTIVE',startDate:day,expiresOn:reservationExpiry(day,7),payment:{paymentDate:'2026-11-19',amountCents:500000}};
+  assert.equal(reservationDisplay(row,day).startDate,day);
+  assert.equal(reservationDisplay(row,day).remainingDays,7);
+});
