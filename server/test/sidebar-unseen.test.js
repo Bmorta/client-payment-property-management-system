@@ -10,3 +10,16 @@ test('payment and commission signals merge without duplicates; visiting reviews 
 test('correct success endpoint must match active module; clock uses Manila weekday across midnight',()=>{assert.equal(moduleLoadedBy('requests','/site-requests/options'),false);assert.equal(moduleLoadedBy('requests','/site-requests'),true);assert.equal(moduleLoadedBy('migration','/migration'),true);assert.equal(sidebarModule('/clients','?workspace=accounts'),null);assert.equal(sidebarModule('/clients','?workspace=cancellations'),'cancellation');assert.match(manilaHeaderTimestamp('2026-11-17T15:59:59Z'),/Tuesday, November 17, 2026 at 11:59:59 PM/);assert.match(manilaHeaderTimestamp('2026-11-17T16:00:00Z'),/Wednesday, November 18, 2026 at 12:00:00 AM/);});
 
 test('contract adjustment pages have separate seen markers and staff corrections stay role-filtered',()=>{const rows=['forfeiture','cancellation','transfers','assumptions'].map(category=>({id:category,category,pending:true,status:'PENDING'}));const items=moduleAttentionItems({},rows,'ADMIN'),seen=markModuleSeen({},'forfeiture',items);assert.equal(unseenCounts(items,seen).forfeiture,0);assert.equal(unseenCounts(items,seen).cancellation,1);assert.equal(unseenCounts(items,seen).transfers,1);assert.equal(unseenCounts(items,seen).assumptions,1);assert.deepEqual(moduleAttentionItems({payments:{own:'v'}},rows,'STAFF').reviews,{own:'v'});});
+
+test('reservation badge clears on visit and returns once the hold expires',()=>{
+  const hold={_id:'hold-1',sourceModel:'Reservation',expiresOn:'2026-11-18',notifications:[{id:'expiring-hold-1'}]};
+  const items=attentionItems([hold,hold],[],user);
+  assert.equal(sidebarModule('/reservations','?reservationStatus=week'),'reservations');
+  assert.equal(moduleLoadedBy('reservations','/finance/reservations'),true);
+  assert.equal(unseenCounts(items).reservations,1);
+  const seen=markModuleSeen({},'reservations',items);
+  assert.equal(unseenCounts(items,seen).reservations,0);
+  const expired=attentionItems([{...hold,notifications:[{id:'expired-hold-1'}]}],[],user);
+  assert.equal(unseenCounts(expired,seen).reservations,1);
+  assert.deepEqual(attentionItems([hold],[],{role:'VIEWER'}),{});
+});

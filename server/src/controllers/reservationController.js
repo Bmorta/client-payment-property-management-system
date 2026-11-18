@@ -22,7 +22,8 @@ export async function listReservations(req,res,next) {
   try {
     const filter=req.query.client&&/^[a-f\d]{24}$/i.test(req.query.client)?{client:req.query.client}:{};
     if(req.query.project&&/^[a-f\d]{24}$/i.test(req.query.project))filter.project=req.query.project;
-    const rows=await Reservation.find(filter).populate('client','firstName lastName clientId')
+    if(req.query.property&&/^[a-f\d]{24}$/i.test(req.query.property))filter.property=req.query.property;
+    const rows=await Reservation.find(filter).populate('client','firstName lastName clientId status')
       .populate('property','propertyId phaseNumber blockNumber lotNumber').populate('project','projectName')
       .populate('account','assignmentId').populate('agent','fullName agentId').sort({expiresOn:1}).lean();
     const day=today();

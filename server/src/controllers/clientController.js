@@ -26,7 +26,7 @@ const normalize = (value) => typeof value === "string" ? value.trim() : value;
 export const listClients = async (req, res, next) => {
   try {
     const q=String(req.query.q||'').trim().slice(0,100),filter={deletedAt:null};if(req.query.deleted==='1'){if(req.user.role!=='ADMIN')return res.status(403).json({success:false,message:'Administrator access required.'});filter.deletedAt={$ne:null};}
-    if(req.query.status){if(!["ACTIVE","INACTIVE"].includes(req.query.status))return res.status(400).json({success:false,message:"Choose a valid client status."});filter.status=req.query.status;}
+    if(req.query.status){if(!["ACTIVE","INACTIVE","PROSPECT"].includes(req.query.status))return res.status(400).json({success:false,message:"Choose a valid client status."});filter.status=req.query.status;}
     const statuses=req.query.accountStatuses?String(req.query.accountStatuses).split(','):[];
     if(statuses.some(v=>!CLIENT_ACCOUNT_STATUSES.some(([key])=>key===v)))return res.status(400).json({success:false,message:"Choose valid account statuses."});
     const paged=!req.listExport&&req.query.limit!==undefined,page=Math.max(1,parseInt(req.query.page)||1),limit=Math.max(1,Math.min(100,parseInt(req.query.limit)||25));
@@ -55,7 +55,7 @@ export const getClient = async (req, res, next) => {
 
 export const createClient = async (req, res, next) => {
   try {
-    const { firstName, middleName, lastName, suffix, contactNumber, email, address, notes, status } = req.body;
+    const { firstName, middleName, lastName, suffix, contactNumber, email, address, notes } = req.body;
     if (!firstName || !lastName) {
       return res.status(400).json({ success: false, message: "First name and last name are required." });
     }
@@ -64,7 +64,7 @@ export const createClient = async (req, res, next) => {
       clientId: await generateRecordId("client"), firstName: normalize(firstName), middleName: normalize(middleName || ""),
       lastName: normalize(lastName), suffix: normalize(suffix || ""), contactNumber: normalize(contactNumber || ""),
       email: normalize(email || "").toLowerCase(), address: normalize(address || ""), notes: normalize(notes || ""),
-      status: status || "ACTIVE", createdBy: req.user._id
+      status: "PROSPECT", createdBy: req.user._id
     });
     await logActivity({ action: "CLIENT_CREATED", req, userId: req.user._id, entityType: "Client", entityId: client._id, metadata: { clientId: client.clientId } });
     res.status(201).json({ success: true, message: "Client created successfully.", data: client });
@@ -79,6 +79,7 @@ export const updateClient = async (req, res, next) => {
   try {
     const client = await Client.findById(req.params.id);
     if (!client || client.deletedAt) return res.status(404).json({ success: false, message: "Client not found." });
+    if (req.body.status !== undefined && req.body.status !== client.status && (client.status === 'PROSPECT' || req.body.status === 'PROSPECT' || req.body.status === 'ACTIVE')) return res.status(409).json({success:false,message:'Client activation requires an active contract.'});
     if (req.body.status === 'INACTIVE' && await PropertyAssignment.exists({ client: client._id, $or: [{ lifecycle: 'ACTIVE' }, { lifecycle: { $exists: false } }] })) return res.status(409).json({ success: false, message: 'This client still has an active contract. Close or transfer the contract through its approved workflow before deactivating the client.' });
     if (req.body.clientId !== undefined && req.body.clientId !== client.clientId) return res.status(400).json({ success: false, message: "Client ID cannot be changed." });
     const fields = ["firstName","middleName","lastName","suffix","contactNumber","email","address","notes","status"];

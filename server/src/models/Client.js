@@ -11,7 +11,7 @@ const clientSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true, default: "" },
     address: { type: String, trim: true, default: "" },
     notes: { type: String, trim: true, default: "" },
-    status: { type: String, enum: ["ACTIVE", "INACTIVE"], default: "ACTIVE" },
+    status: { type: String, enum: ["ACTIVE", "INACTIVE", "PROSPECT"], default: "ACTIVE" },
     deletedAt: Date, deletedBy: {type:mongoose.Schema.Types.ObjectId,ref:"User"}, deletionReason:String, statusBeforeDeletion:String, deletionHistory:{type:[mongoose.Schema.Types.Mixed],default:[]},
     lifecycleStatusHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }

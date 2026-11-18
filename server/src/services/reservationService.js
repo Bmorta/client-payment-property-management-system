@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import ReservationSettings from '../models/ReservationSettings.js';
 import Reservation from '../models/Reservation.js';
 import Property from '../models/Property.js';
+import {syncClientLifecycleFromContracts} from './clientLifecycleSync.js';
 import PropertyAssignment from '../models/PropertyAssignment.js';
 import Client from '../models/Client.js';
 import Project from '../models/Project.js';
@@ -64,7 +65,9 @@ export async function postReservation(body,user) {
   const propertyId=id(body.propertyId),clientId=id(body.clientId),agentId=body.agentId?id(body.agentId):undefined;
   const requestId=body.requestId;
   if(typeof requestId!=='string'||!/^[\w-]{16,100}$/.test(requestId))fail('Reload the reservation form before submitting.');
-  const payment=paymentInput(body), terms=text(body.terms),creditPolicy=body.creditPolicy;
+  const payment=paymentInput(body);
+  if(text(body.reference))payment.reference=text(body.reference).slice(0,120);
+  const terms=text(body.terms),creditPolicy=body.creditPolicy;
   if(!creditPolicies.includes(creditPolicy))fail('Choose how the reservation agreement allows the fee to be applied.');
   if(!terms||body.confirmed!==true)fail('Review and confirm the reservation terms.');
   const defaultExpiry=addDays(payment.paymentDate,await defaultReservationDays());
@@ -84,7 +87,7 @@ export async function postReservation(body,user) {
     }
     if(!body.expiresOn&&addDays(payment.paymentDate,await defaultReservationDays(session))!==expiresOn)fail('The default hold period changed. Refresh and review the new expiry.',409);
     const client=await Client.findById(clientId).session(session);
-    if(!client||client.deletedAt||client.status!=='ACTIVE')fail('Choose an active client or register the prospect in Client List.',409);
+    if(!client||client.deletedAt)fail('Choose an existing buyer or register a prospect.',409);
     if(agentId&&!(await Agent.exists({_id:agentId,status:'ACTIVE'}).session(session)))fail('Choose an active agent.',409);
     const lot=await Property.findOneAndUpdate({_id:propertyId,status:'AVAILABLE',client:null,reservation:null,reopeningStatus:{$nin:restricted},assumptionStatus:{$ne:'PENDING'}},
       {$set:{status:'RESERVED',reservation:reservationId,hasReservationHistory:true},$inc:{__v:1}},{new:true,session});
@@ -108,7 +111,7 @@ async function conversionPlan(row,body,session=null) {
   const lot=await Property.findOne({_id:row.property,reservation:row._id,status:'RESERVED',client:null,reopeningStatus:{$nin:restricted},assumptionStatus:{$ne:'PENDING'}}).session(session);
   if(!lot||!(await Project.exists({_id:row.project,status:{$ne:'ARCHIVED'}}).session(session)))fail('The lot or project can no longer be converted.',409);
   if(await PropertyAssignment.exists({property:lot._id,...openAccounts}).session(session))fail('This lot already has an active or protected account.',409);
-  if(!(await Client.exists({_id:row.client,status:'ACTIVE',deletedAt:null}).session(session)))fail('The buyer must have an active client record.',409);
+  if(!(await Client.exists({_id:row.client,deletedAt:null}).session(session)))fail('The buyer profile is unavailable.',409);
   const totalCents=moneyCents(lotPrice(lot.areaSqm,lot.pricePerSqm)),months=Number(body.months),contractDate=today(),downPaymentCents=moneyCents(body.downPayment||0);
   const firstDueDate=body.firstDueDate;
   if(!totalCents||!validDate(firstDueDate)||firstDueDate<contractDate)fail('Set a lot price and a valid first installment date on or after today.');
@@ -158,6 +161,7 @@ export async function convertReservation(reservationId,body,user) {
     const ledger=allocatePayments(account);
     for(const payment of payments)payment.allocations=ledger.allocations[payment.paymentId];
     await PropertyAssignment.create([account],{session});
+    await syncClientLifecycleFromContracts(row.client,{userId:user._id,username:user.username,role:user.role},"Reservation converted to sale",session);
     row.status='CONVERTED';
     row.held=false;
     row.account=accountId;

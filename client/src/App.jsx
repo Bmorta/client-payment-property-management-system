@@ -37,6 +37,7 @@ const SiteRequestsPage=lazy(()=>import("./pages/SiteRequestsPage.jsx"));
 const AssumptionsPage=lazy(()=>import("./pages/AssumptionsPage.jsx"));
 
 const PaymentMonitoringPage=lazy(()=>import("./pages/PaymentMonitoringPage.jsx"));
+const ReservationsPage=lazy(()=>import("./pages/ReservationsPage.jsx"));
 const DashboardPage=lazy(()=>import("./pages/DashboardPage.jsx"));
 
 const RoleRoute = ({ children, roles = ["ADMIN"] }) => {
@@ -76,6 +77,7 @@ export default function App() {
               <Route path="/payment-transactions" element={<PaymentTransactionsPage />} />
               <Route path="/payment-monitoring" element={<PaymentMonitoringPage />} />
               <Route path="/approval-requests" element={<RoleRoute roles={["ADMIN","STAFF"]}><ApprovalRequestsPage /></RoleRoute>} />
+              <Route path="/reservations" element={<RoleRoute roles={["ADMIN","STAFF"]}><ReservationsPage/></RoleRoute>}/>
               <Route path="/payment" element={<PaymentPage />} />
               <Route path="/payouts" element={<RoleRoute roles={["ADMIN","STAFF"]}><PayoutsPage/></RoleRoute>}/>
               <Route path="/expenses" element={<ExpensesPage />} />

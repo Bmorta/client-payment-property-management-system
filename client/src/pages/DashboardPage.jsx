@@ -1,4 +1,3 @@
-import {ReservationMetrics} from '../components/Reservations.jsx';
 import {useEffect,useState} from 'react';
 import {Link,useNavigate} from 'react-router-dom';
 import {Bar,BarChart,CartesianGrid,Cell,Pie,PieChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
@@ -79,7 +78,7 @@ export default function DashboardPage(){
     r&&['Critical forfeiture contracts',r.critical,'urgent',monitor('FORFEITURE_RISK')],
     o&&['Reviews awaiting action',o.approvals,'due','/approval-requests'],
     data?.requests&&['Requests awaiting scheduling',data.requests.scheduling,'due',path('/site-requests',{project:scope.project,alert:'scheduling'})],
-    data?.reservations&&['Expired reservations',data.reservations.expired,'due',path('/payment',{purpose:'reservation',reservationStatus:'expired',project:scope.project})],
+    data?.reservations&&['Expired reservations',data.reservations.expired,'due',path('/reservations',{reservationStatus:'expired',project:scope.project})],
     data?.requests&&['Upcoming site visits',data.requests.visits,'due',path('/site-requests',{project:scope.project,alert:'upcoming'})],
     c&&['Commission records ready for release',c.releases,'due',commissions('RELEASABLE')],
     o&&['Refund cases with amounts due',o.refundDue,'due','/approval-requests?category=cancellation&refund=due'],
@@ -90,7 +89,6 @@ export default function DashboardPage(){
   const matched=data&&scope.from===from&&scope.to===to&&scope.project===project&&scope.phase===phase&&scope.block===block;
   return <main className="rems-dashboard container-fluid p-3 p-lg-4">
     <header className="rems-dashboard-header"><div><h1>Management Dashboard</h1><p>Office operations and financial overview · Philippine time</p></div><button className="btn btn-outline-primary" type="button" onClick={refresh} disabled={busy||!valid}>Refresh</button></header>
-    {data?.reservations&&<section className="card rems-dashboard-panel"><h2>Reservations</h2><ReservationMetrics metrics={data.reservations} project={scope.project}/></section>}
     <section className="card rems-dashboard-panel rems-dashboard-filters" aria-label="Dashboard filters">
       <div className="btn-group flex-wrap" role="group" aria-label="Reporting period">{periods.map(([key,label])=><button key={key} type="button" className={'btn '+(filter.period===key?'btn-primary':'btn-outline-secondary')} aria-pressed={filter.period===key} onClick={()=>change('period',key)}>{label}</button>)}</div>
       <div className="rems-dashboard-filter-fields">
