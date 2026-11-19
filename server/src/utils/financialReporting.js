@@ -33,9 +33,32 @@ export function sorted(rows,key='date',direction='desc',section='collections'){
 export function pageRows(rows,page=1){const n=Number(page);if(!Number.isSafeInteger(n)||n<1||n>100000)fail('Invalid page.');return {rows:rows.slice((n-1)*20,n*20),count:rows.length,page:n,pageSize:20}}
 const cashKinds={INFLOW:1,BANK_WITHDRAWAL:1,OUTFLOW:-1,OWNER_TURNOVER:-1,BANK_DEPOSIT:-1};
 export const formatCash=cents=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(cents/100);
+export function officeOpeningBaseline(entries,to){
+ return entries.filter(e=>(!e.ledger||e.ledger==='OFFICE')&&e.kind==='OPENING'&&e.status==='POSTED'&&e.effectiveDate<=to)
+  .sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate))[0];
+}
 export function inspectCashTimeline(events,anchor){if(!anchor)return [];const dates=new Map([[anchor.effectiveDate,[]]]);for(const e of events){if(!dates.has(e.date))dates.set(e.date,[]);dates.get(e.date).push(e)}let balance=anchor.amountCents;return [...dates].sort(([a],[b])=>a.localeCompare(b)).map(([date,rows])=>{const openingCents=balance,inflowsCents=total(rows.filter(r=>r.amountCents>0)),outflowsCents=-total(rows.filter(r=>r.amountCents<0));balance+=inflowsCents-outflowsCents;if(!Number.isSafeInteger(balance))fail('Daily cash balance exceeds integer-centavo precision.',409);return {date,openingCents,inflowsCents,outflowsCents,closingCents:balance,entries:rows.slice().sort((a,b)=>String(a.reference).localeCompare(String(b.reference)))}});}
+// An opening entry is the physical count at the beginning of its effective date.
+// A report range is independent of that date and cannot establish a new baseline.
 export function cashPosition(data,entries,from,to,{includeDaily=true}={}){
- const active=entries.filter(e=>(!e.ledger||e.ledger==='OFFICE')&&e.status==='POSTED'&&e.effectiveDate<=to),anchor=active.find(e=>e.kind==='OPENING'&&e.effectiveDate<=from),reasons=[];
+ const anchor=officeOpeningBaseline(entries,to);
+ if(!anchor){
+  const result=cashPositionWindow(data,entries,from,to,{includeDaily});
+  const laterBaseline=officeOpeningBaseline(entries,'9999-12-31');
+  return laterBaseline?{...result,anchorDate:laterBaseline.effectiveDate,
+   reasons:[`The selected dates precede the recorded opening baseline (${laterBaseline.effectiveDate}). No earlier cash balance is inferred.`,...result.reasons]}:result;
+ }
+ if(anchor.effectiveDate<=from)return cashPositionWindow(data,entries,from,to,{includeDaily});
+ const previous=new Date(anchor.effectiveDate+'T00:00:00Z');
+ previous.setUTCDate(previous.getUTCDate()-1);
+ const prior=cashPositionWindow(data,entries,from,previous.toISOString().slice(0,10),{includeDaily});
+ const live=cashPositionWindow(data,entries,anchor.effectiveDate,to,{includeDaily});
+ return {...live,available:false,openingCents:null,computedOpeningCents:null,
+  daily:[...prior.daily,...live.daily],preBaselineEvents:prior.events,
+  reasons:['The selected range starts before the recorded opening baseline. Earlier movements are shown for reference and are not replayed into the opening count or live cash totals.',...live.reasons]};
+}
+function cashPositionWindow(data,entries,from,to,{includeDaily=true}={}){
+ const active=entries.filter(e=>(!e.ledger||e.ledger==='OFFICE')&&e.status==='POSTED'&&e.effectiveDate<=to),anchor=officeOpeningBaseline(active,from),reasons=[];
  if(active.filter(e=>e.kind==='OPENING').length>1)reasons.push('Multiple posted opening balances require administrator reconciliation.');
  if(anchor&&active.some(e=>e.kind!=='OPENING'&&e.effectiveDate<anchor.effectiveDate))reasons.push('A posted cash movement precedes the opening baseline; review its source date.');
  if(anchor&&(!Number.isSafeInteger(anchor.amountCents)||anchor.amountCents<0))reasons.push('The opening baseline must be a verified nonnegative integer-centavo amount.');
@@ -43,6 +66,7 @@ export function cashPosition(data,entries,from,to,{includeDaily=true}={}){
  const cutoffs=[...data.collections,...data.payouts].filter(r=>r.origin==='HISTORICAL').map(r=>r.migrationCutoff).filter(Boolean);
  if(cutoffs.some(c=>!anchor||anchor.effectiveDate<=c))reasons.push('Historical migration requires a verified opening cash balance after the migration cutoff; old collections and payouts are excluded from the live physical cash ledger.');
  const start=anchor?.effectiveDate||from,inWindow=date=>date>=start&&date<=to,allPayments=data.collections.filter(p=>p.posted&&p.origin!=="HISTORICAL"&&inWindow(p.paymentDate)),allExpenses=data.expenses.filter(e=>inWindow(e.expenseDate)),allPayouts=data.payouts.filter(p=>p.origin!=="HISTORICAL"&&inWindow(p.date)),allRecoveries=data.recoveries.filter(r=>inWindow(r.date)),allRefunds=(data.refunds||[]).filter(r=>r.status==='POSTED'&&inWindow(r.date));
+ const structuralIssues=reasons.length;
  const unknown=[...allPayments.filter(p=>!physicalFunding(p.method,p.fundingAccount)),...allExpenses.filter(e=>!physicalFunding(e.method,e.fundingAccount)),...allPayouts.filter(p=>!physicalFunding(p.method,p.fundingAccount)),...allRecoveries.filter(r=>!physicalFunding(r.method,r.fundingAccount)),...allRefunds.filter(r=>!physicalFunding(r.method,r.fundingAccount))];
  if(unknown.length)reasons.push(`${unknown.length} record(s) since the opening/start date have unclassified payment methods or Other funding accounts (${unknown.slice(0,5).map(r=>r.paymentId||r.expenseId||r.payoutId||r.releaseId||r.requestId).join(", ")}). Classify/correct them before calculating physical cash.`);
  for(const e of active)if(e.kind!=='OPENING'&&!Object.hasOwn(cashKinds,e.kind))reasons.push(`Cash entry ${e.entryId} has an unsupported movement type.`);
@@ -51,6 +75,24 @@ export function cashPosition(data,entries,from,to,{includeDaily=true}={}){
  const events=[...allPayments.filter(isCashFunded).map(p=>({date:p.paymentDate,amountCents:p.amountCents,kind:'COLLECTION',reference:p.paymentId})),...allExpenses.filter(isCashFunded).map(e=>({date:e.expenseDate,amountCents:-e.amountCents,kind:'EXPENSE',reference:e.expenseId})),...allPayouts.filter(p=>isCashFunded(p)&&!linked.has(p.payoutId)).map(p=>({date:p.date,amountCents:-p.amountCents,kind:'COMMISSION_PAYOUT',reference:p.payoutId})),...allRecoveries.filter(isCashFunded).map(r=>({date:r.date,amountCents:r.amountCents,kind:'COMMISSION_RECOVERY',reference:r.requestId})),...allRefunds.filter(isCashFunded).map(r=>({date:r.date,amountCents:-r.amountCents,kind:'CLIENT_REFUND',reference:r.releaseId,recipient:r.recipient,remarks:r.remarks||''})),...active.filter(e=>e.kind!=='OPENING'&&Object.hasOwn(cashKinds,e.kind)&&inWindow(e.effectiveDate)).map(e=>({date:e.effectiveDate,amountCents:e.amountCents*cashKinds[e.kind],kind:e.kind,reference:e.reference||e.entryId,entryId:e.entryId,recipient:e.recipient||'',remarks:e.reason||''}))];
  // Source-level linkage collisions are blocked, never silently deduplicated by amount/date.
  const businessLinks=new Map();for(const r of [...allExpenses,...active.filter(e=>e.kind!=='OPENING'&&inWindow(e.effectiveDate))])if(r.businessPayoutId&&r.payoutReleaseId&&isCashFunded({...r,method:r.method||'CASH'})){const k=r.businessPayoutId+':'+r.payoutReleaseId,previous=businessLinks.get(k);if(previous)reasons.push(`Payout release ${r.payoutReleaseId} has multiple cash sources (${previous}, ${r.expenseId||r.entryId}). Correct the linked source from Payout Management.`);else businessLinks.set(k,r.expenseId||r.entryId);}
+ const seenSources=new Set();
+ for(const event of events){
+  const source=event.entryId||event.reference;
+  if(!source)continue;
+  const key=event.kind+':'+source;
+  if(seenSources.has(key))reasons.push(`Duplicate cash source ${source} (${event.kind}). Review the original records before posting cash movements.`);
+  seenSources.add(key);
+ }
+ // A manual cash entry referencing an existing receipt/release may duplicate
+ // the physical movement. Require source review; never guess from amount alone.
+ const originalByReference=new Map(events.filter(e=>!e.entryId&&e.reference).map(e=>[e.reference,e]));
+ for(const event of events.filter(e=>e.entryId&&['INFLOW','OUTFLOW'].includes(e.kind))){
+  const original=originalByReference.get(event.reference);
+  if(original&&original.date===event.date&&original.amountCents===event.amountCents)
+   reasons.push(`Cash entry ${event.entryId} may duplicate source ${event.reference}. Review the original cash record.`);
+ }
+ const ledgerIssues=structuralIssues>0||reasons.length>structuralIssues+(unknown.length?1:0);
+ const firstUnknown=unknown.map(row=>row.paymentDate||row.expenseDate||row.date).filter(Boolean).sort()[0];
  const timeline=inspectCashTimeline(events,anchor),firstNegative=timeline.find(d=>d.closingCents<0);
  if(firstNegative)reasons.push(`The recorded cash ledger has a negative daily balance on ${firstNegative.date}: ${formatCash(firstNegative.closingCents)}. Review the dated source entries.`);
  const period=events.filter(e=>e.date>=from),before=events.filter(e=>e.date<from),openingCents=anchor?anchor.amountCents+total(before):null;
@@ -60,7 +102,20 @@ export function cashPosition(data,entries,from,to,{includeDaily=true}={}){
  if(computedClosingCents!=null&&!Number.isSafeInteger(computedClosingCents))fail('Cash balance exceeds supported centavo precision.',409);
  if(computedClosingCents<0&&computedClosingCents!==null)reasons.push('The recorded cash ledger has a negative balance. Reconcile missing or incorrect entries.');
  const daily=[],byDay=new Map();if(includeDaily){for(const e of period){if(!byDay.has(e.date))byDay.set(e.date,[]);byDay.get(e.date).push(e)}}let running=openingCents;
- if(includeDaily)for(let day=from;day<=to;){if(daily.length>=36600)fail('Choose a cash reporting period of 100 years or less.');const rows=byDay.get(day)||[],opening=running;const sumDay=k=>total(rows.filter(e=>k.includes(e.kind)));if(running!==null)running+=total(rows);daily.push({date:day,openingCents:opening,collectionsCents:sumDay(['COLLECTION']),turnoversCents:-sumDay(['OWNER_TURNOVER']),otherMovementsCents:sumDay(['INFLOW','BANK_WITHDRAWAL','COMMISSION_RECOVERY','EXPENSE','BANK_DEPOSIT','OUTFLOW','COMMISSION_PAYOUT','CLIENT_REFUND']),closingCents:running});const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1);day=d.toISOString().slice(0,10);}
+ if(includeDaily)for(let day=from;day<=to;){
+  if(daily.length>=36600)fail('Choose a cash reporting period of 100 years or less.');
+  const rows=byDay.get(day)||[],opening=running;
+  const sumDay=k=>total(rows.filter(e=>k.includes(e.kind)));
+  if(running!==null)running+=total(rows);
+  const openingVerified=!!anchor&&!ledgerIssues&&(!firstUnknown||day<=firstUnknown)&&(!firstNegative||day<=firstNegative.date);
+  const closingVerified=!!anchor&&!ledgerIssues&&(!firstUnknown||day<firstUnknown)&&(!firstNegative||day<firstNegative.date);
+  daily.push({date:day,openingCents:openingVerified?opening:null,
+   collectionsCents:sumDay(['COLLECTION']),turnoversCents:-sumDay(['OWNER_TURNOVER']),
+   otherMovementsCents:sumDay(['INFLOW','BANK_WITHDRAWAL','COMMISSION_RECOVERY','EXPENSE','BANK_DEPOSIT','OUTFLOW','COMMISSION_PAYOUT','CLIENT_REFUND']),
+   closingCents:closingVerified?running:null,computedOpeningCents:opening,computedClosingCents:running,
+   balanceStatus:!anchor?'NO_BASELINE':closingVerified?'VERIFIED':'UNRECONCILED'});
+  const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1);day=d.toISOString().slice(0,10);
+ }
 
  return {timeline,firstNegative,negativeDays:timeline.filter(d=>d.closingCents<0),computedOpeningCents:openingCents,daily,refundsCents:Math.abs(sum(['CLIENT_REFUND'])),cashAddedCents:sum(['INFLOW','BANK_WITHDRAWAL']),commissionRecoveryCents:sum(['COMMISSION_RECOVERY']),turnoversCents,available:reasons.length===0,reasons,openingCents:reasons.length?null:openingCents,closingCents:reasons.length?null:computedClosingCents,computedClosingCents,collectionsCents,expensesCents,otherInflowsCents,bankDepositsCents,otherOutflowsCents,anchorDate:anchor?.effectiveDate||null,events:period.sort((a,b)=>a.date.localeCompare(b.date)||String(a.reference||'').localeCompare(String(b.reference||''))),scope:'Complete office cash ledger; independent of method/project/detail filters'};
 }
@@ -72,7 +127,7 @@ export function buildCollectionReport(data,entries,query){
  const trend=new Map();for(const [rows,field,dateField] of [[collections,'collectionsCents','paymentDate'],[expenses,'expensesCents','expenseDate']])for(const r of rows){const date=r[dateField],bucket=trend.get(date)||{date,collectionsCents:0,expensesCents:0};bucket[field]+=r.amountCents;trend.set(date,bucket)}
  const totalCollectionsCents=total(collections),totalExpensesCents=total(expenses);
  const refundRows=(data.refunds||[]).filter(r=>r.status==='POSTED'&&r.date>=from&&r.date<=to&&(!methods.length||methods.includes(r.method))).flatMap(r=>r.reservationId?[r]:(r.sourceAllocations||[]).map(a=>{const source=r.case?.snapshot?.sources?.find(s=>s.accountId===a.accountId);return {...r,amountCents:a.amountCents,sourceAccount:a.accountId,project:source?.project,property:source?.property}})).filter(r=>!query.project||String(r.project?._id||r.project)===query.project);
- const cash=cashPosition(data,entries,from,to),baseline=entries.find(e=>e.kind==='OPENING'&&e.status==='POSTED'&&e.effectiveDate<=today());
+ const cash=cashPosition(data,entries,from,to),baseline=officeOpeningBaseline(entries,today());
  const currentCash=baseline?cashPosition(data,entries,baseline.effectiveDate,today(),{includeDaily:false}):cashPosition(data,entries,today(),today(),{includeDaily:false});
  cash.currentAvailable=currentCash.available;cash.currentCashCents=currentCash.available?currentCash.closingCents:null;cash.currentReasons=currentCash.reasons;
  return {refunds:refundRows,refundReleasedCents:total(refundRows),from,to,methods,project:query.project||'',scope:methods.length?'Selected payment methods':'All payment methods (including unclassified legacy expenses)',totalCollectionsCents,totalExpensesCents,netCollectionCents:totalCollectionsCents-totalExpensesCents,collectionCount:collections.length,expenseCount:expenses.length,breakdown,trend:[...trend.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(r=>({...r,netCents:r.collectionsCents-r.expensesCents})),cash,collections,expenses,unclassifiedPeriodExpenses:data.expenses.filter(e=>e.expenseDate>=from&&e.expenseDate<=to&&!physicalFunding(e.method,e.fundingAccount)).length};

@@ -28,3 +28,19 @@ test('Other explicitly classified as cash or noncash stays in Other breakdown wi
 });
 
 test('funding validation rejects unknown Other and contradictory known methods',()=>{assert.throws(()=>validateFunding('OTHER',null));assert.throws(()=>validateFunding('CASH','NONCASH'));assert.throws(()=>validateFunding('BANK_DEPOSIT','CASH'));assert.equal(physicalFunding('GCASH',null),'NONCASH');assert.equal(validateFunding('OTHER','CASH'),'CASH');assert.equal(physicalFunding('OTHER',null),null)});
+
+test('Excel distinguishes dates before the opening count from verified dates after it',async()=>{
+ const data=financialRows([{_id:'a',payments:[payment('pre-baseline','CASH',694500,'2026-11-09')]}],[]);
+ const entries=[entry('OPENING',2291200,'2026-11-10')];
+ const report={...buildCollectionReport(data,entries,{from:'2026-11-09',to:'2026-11-11'}),title:'Collection & Cash Summary',companyName:'Test Office',generatedOn:'2026-11-11'};
+ let bytes;
+ await writeFinancialExport(report,'xlsx',{type(){},attachment(){},send(buffer){bytes=buffer}});
+ const book=new ExcelJS.Workbook();
+ await book.xlsx.load(bytes);
+ const sheet=book.getWorksheet('Daily Office Cash');
+ assert.equal(sheet.getCell('B8').value,'Unavailable');
+ assert.equal(sheet.getCell('C8').value,6945);
+ assert.equal(sheet.getCell('F8').value,'Unavailable');
+ assert.equal(sheet.getCell('B9').value,22912);
+ assert.equal(sheet.getCell('F10').value,22912);
+});

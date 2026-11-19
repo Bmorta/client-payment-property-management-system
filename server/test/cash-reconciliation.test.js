@@ -10,7 +10,7 @@ import Guard from '../src/models/AdministrationGuard.js';
 import {cashPosition,financialRows,buildCollectionReport} from '../src/utils/financialReporting.js';
 import {cashOfficeView} from '../src/services/cashOfficeView.js';
 import {reconcileCash,cashCorrectionPlan} from '../src/services/cashReconciliation.js';
-import {cashTimelineError} from '../src/services/cashMovementService.js';
+import {cashTimelineError,validateCashTimeline} from '../src/services/cashMovementService.js';
 import {previewCashReconciliationCorrection,applyCashReconciliationCorrection} from '../src/controllers/cashReconciliationCorrectionController.js';
 const date='2026-11-17',base={_id:'000000000000000000000001',__v:0,entryId:'BASE',kind:'OPENING',status:'POSTED',effectiveDate:'2026-11-01',amountCents:2291200,history:[]};
 const empty=entries=>({collections:[],expenses:[],payouts:[],recoveries:[],refunds:[],entries});
@@ -33,3 +33,79 @@ test('reviewed correction applies atomically once, retains originals, and reject
 test('invalid correction never partially changes amounts or history',async t=>{const env=mockLedger(t);env.setRows([{...structuredClone(base),amountCents:0},movement('OUT','OUTFLOW',100,'2026-11-02')]);const request=req();request.body.amount='0';const p=await invoke(previewCashReconciliationCorrection,request);request.body.previewToken=p.data.token;request.body.expectedVersion=p.data.expectedVersion;assert.equal(p.data.allowed,false);await assert.rejects(invoke(applyCashReconciliationCorrection,request),/does not reconcile/);assert.equal(env.rows[0].amountCents,0);assert.equal(env.rows[0].history.length,0);});
 test('transaction failure after attempted correction rolls amount and history back',async t=>{const env=mockLedger(t),request=req(),p=await invoke(previewCashReconciliationCorrection,request);request.body.previewToken=p.data.token;request.body.expectedVersion=p.data.expectedVersion;t.mock.method(CashLedgerEntry.collection,'updateOne',async()=>{env.rows[0].amountCents=2500000;env.rows[0].history.push({action:'PARTIAL'});throw new Error('Simulated write failure')});await assert.rejects(invoke(applyCashReconciliationCorrection,request),/Simulated write failure/);assert.equal(env.rows[0].amountCents,2291200);assert.deepEqual(env.rows[0].history,[]);});
 test('office cash account is isolated from other ledger entries',()=>{const data=empty([{...base,ledger:'OFFICE'},{...movement('OTHER-DEBIT','OUTFLOW',999999999,date),ledger:'OTHER'}]);assert.equal(cashPosition(data,data.entries,base.effectiveDate,date).closingCents,2291200);});
+
+// Synthetic reproduction of the reported daily totals. These are test records,
+// not the original office transaction amounts or proof of an opening count.
+function reportedTotals(openingDate, openingAmount){
+ const data=empty([{...base,effectiveDate:openingDate,amountCents:openingAmount}]);
+ data.collections=[
+  {paymentId:'TEST-PAY-4',amountCents:694500,method:'CASH',paymentDate:'2026-11-09',posted:true},
+  {paymentId:'TEST-LATER',amountCents:2516700,method:'CASH',paymentDate:'2026-11-19',posted:true}
+ ];
+ data.payouts=[
+  {payoutId:'TEST-CPY-2',amountCents:460000,method:'CASH',date:'2026-11-09'},
+  {payoutId:'TEST-CPY-3',amountCents:460000,method:'CASH',date:'2026-11-09'}
+ ];
+ return data;
+}
+test('a range crossing the opening count displays earlier movements without replaying them into verified cash',()=>{
+ const data=reportedTotals('2026-11-10',2291200);
+ data.collections.pop();
+ const report=buildCollectionReport(data,data.entries,{from:'2026-11-09',to:'2026-11-19'});
+ assert.equal(report.cash.available,false);
+ assert.equal(report.cash.daily[0].openingCents,null);
+ assert.equal(report.cash.daily[0].closingCents,null);
+ assert.equal(report.cash.daily[0].collectionsCents,694500);
+ assert.equal(report.cash.daily[0].otherMovementsCents,-920000);
+ assert.equal(report.cash.daily[1].openingCents,2291200);
+ assert.equal(report.cash.daily.at(-1).closingCents,2291200);
+ assert.equal(report.cash.closingCents,2291200);
+ assert.equal(report.cash.firstNegative,undefined);
+ assert.equal(report.cash.collectionsCents,0);
+ const reconciliation=reconcileCash(data,'2026-11-19','2026-11-19',2100000);
+ assert.deepEqual(reconciliation.preBaselineRows.map(row=>row.reference).sort(),['TEST-CPY-2','TEST-CPY-3','TEST-PAY-4']);
+ assert.equal(reconciliation.verified,true);
+ assert.equal(reconciliation.payoutPreview.remainingOnDateCents,191200);
+ assert.equal(reconciliation.payoutPreview.allowed,true);
+});
+test('the same current balance cannot authorize a payout with a genuine earlier negative day',()=>{
+ const data=reportedTotals('2026-11-09',0);
+ const ledger=cashPosition(data,data.entries,'2026-11-08','2026-11-19');
+ assert.equal(ledger.firstNegative.date,'2026-11-09');
+ assert.equal(ledger.firstNegative.closingCents,-225500);
+ assert.equal(ledger.daily[1].openingCents,0);
+ assert.equal(ledger.daily[1].closingCents,null);
+ assert.equal(ledger.daily.at(-1).closingCents,null);
+ assert.equal(ledger.computedClosingCents,2291200);
+ const r=reconcileCash(data,'2026-11-19','2026-11-19',2100000);
+ assert.equal(r.payoutPreview.remainingOnDateCents,191200);
+ assert.equal(r.availableOnDateCents,null);
+ assert.equal(r.payoutPreview.allowed,false);
+});
+test('duplicate posted source references and backdated pre-baseline payouts remain blocked',()=>{
+ const data=reportedTotals('2026-11-10',2291200);
+ data.collections.push({...data.collections.at(-1)});
+ assert.match(cashPosition(data,data.entries,'2026-11-10','2026-11-19').reasons.join(),/Duplicate cash source TEST-LATER/);
+ data.collections.pop();
+ assert.equal(reconcileCash(data,'2026-11-09','2026-11-19',100).payoutPreview.allowed,false);
+});
+test('quiet and verified dates before a later ledger defect retain their daily closing balances',()=>{
+ const data=empty([base,movement('OUT','OUTFLOW',2300000,'2026-11-09')]);
+ const ledger=cashPosition(data,data.entries,'2026-11-08','2026-11-10');
+ assert.equal(ledger.daily[0].closingCents,2291200);
+ assert.equal(ledger.daily[1].openingCents,2291200);
+ assert.equal(ledger.daily[1].closingCents,null);
+ assert.equal(ledger.daily[2].openingCents,null);
+});
+test('a manual entry with the same physical source reference is flagged for review',()=>{
+ const data=reportedTotals('2026-11-09',1000000);
+ data.entries.push({...movement('DUPLICATE','OUTFLOW',460000,'2026-11-09'),reference:'TEST-CPY-2'});
+ const result=cashPosition(data,data.entries,'2026-11-09','2026-11-19');
+ assert.equal(result.available,false);
+ assert.match(result.reasons.join(),/DUPLICATE may duplicate source TEST-CPY-2/);
+});
+test('actual release validation rejects an effective date earlier than the opening count',async t=>{
+ const env=mockLedger(t);
+ env.setRows([{...base,effectiveDate:'2026-11-10'}]);
+ await assert.rejects(validateCashTimeline(null,{releaseDate:'2026-11-09',amountCents:100}),/cannot precede/);
+});

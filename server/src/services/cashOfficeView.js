@@ -1,15 +1,21 @@
 import {createHash} from 'node:crypto';
 import {cashPosition} from '../utils/financialReporting.js';
 // Projection only: the authoritative cashPosition calculation is unchanged.
-export function cashOfficeView(data,from,to,{q='',kind='',methods=[]}={}){
- const cash=cashPosition(data,data.entries,from,to),payments=new Map(data.collections.map(p=>[p.paymentId,p])),expenses=new Map(data.expenses.map(e=>[e.expenseId,e]));
- let balance=cash.openingCents;
+export function cashOfficeView(data,from,to,{q='',kind='',methods=[],includeDaily=true}={}){
+ const cash=cashPosition(data,data.entries,from,to,{includeDaily}),payments=new Map(data.collections.map(p=>[p.paymentId,p])),expenses=new Map(data.expenses.map(e=>[e.expenseId,e]));
+ const daily=new Map(cash.daily.map(day=>[day.date,day]));
+ let balance=null,lastDate=null;
  const events=cash.events.map((e,i)=>{
+  if(e.date!==lastDate){
+   lastDate=e.date;
+   const day=daily.get(e.date);
+   balance=day?.balanceStatus==='VERIFIED'?day.openingCents:null;
+  }
   if(balance!==null)balance+=e.amountCents;
   const payment=payments.get(e.reference),expense=expenses.get(e.reference),entry=data.entries.find(r=>r.entryId===e.entryId),payout=data.payouts.find(p=>p.payoutId===e.reference);
   const refund=(data.refunds||[]).find(r=>r.releaseId===e.reference),recovery=data.recoveries.find(r=>r.requestId===e.reference);
   const source=payment||expense||entry||payout||refund||recovery;
-  return {...e,sequence:i+1,method:source?.method||'CASH',sourceId:payment?.paymentId||expense?.expenseId||entry?.entryId||e.reference,party:e.recipient||[payment?.client?.firstName,payment?.client?.lastName].filter(Boolean).join(' ')||expense?.payee||'',source:payment?'Client Collection':expense?'Expense':payout?'Commission Payout':e.kind.replaceAll('_',' '),sourceUrl:expense?.businessPayoutId?`/payouts?q=${encodeURIComponent(expense.businessPayoutId)}`:payment?`/payment-transactions?${payment.receiptNumber?'receipt':'q'}=${encodeURIComponent(payment.receiptNumber||payment.paymentId)}`:expense?`/expenses?selected=${expense._id}`:payout||recovery?`/commissions?account=${(payout||recovery).accountId}`:refund?`/clients/${refund.client?._id||refund.client}/accounts?tab=properties`:entry?.businessPayoutId?`/payouts?q=${encodeURIComponent(entry.businessPayoutId)}`:`/reports?view=cash&focus=movements&cashTab=adjustments&cashEntry=${encodeURIComponent(e.entryId||e.reference)}`,cashInCents:Math.max(0,e.amountCents),cashOutCents:Math.max(0,-e.amountCents),runningCents:cash.available?balance:null};
+  return {...e,sequence:i+1,method:source?.method||'CASH',sourceId:payment?.paymentId||expense?.expenseId||entry?.entryId||e.reference,party:e.recipient||[payment?.client?.firstName,payment?.client?.lastName].filter(Boolean).join(' ')||expense?.payee||'',source:payment?'Client Collection':expense?'Expense':payout?'Commission Payout':e.kind.replaceAll('_',' '),sourceUrl:expense?.businessPayoutId?`/payouts?q=${encodeURIComponent(expense.businessPayoutId)}`:payment?`/payment-transactions?${payment.receiptNumber?'receipt':'q'}=${encodeURIComponent(payment.receiptNumber||payment.paymentId)}`:expense?`/expenses?selected=${expense._id}`:payout||recovery?`/commissions?account=${(payout||recovery).accountId}`:refund?`/clients/${refund.client?._id||refund.client}/accounts?tab=properties`:entry?.businessPayoutId?`/payouts?q=${encodeURIComponent(entry.businessPayoutId)}`:`/reports?view=cash&focus=movements&cashTab=adjustments&cashEntry=${encodeURIComponent(e.entryId||e.reference)}`,cashInCents:Math.max(0,e.amountCents),cashOutCents:Math.max(0,-e.amountCents),runningCents:balance};
  });
  const rows=events.filter(e=>(!kind||e.kind===kind)&&(!methods.length||methods.includes(e.method))&&[e.reference,e.sourceId,e.party,e.source,e.remarks].join(' ').toLowerCase().includes(q.toLowerCase()));
  const sum=k=>events.filter(e=>k.includes(e.kind)).reduce((n,e)=>n+e.amountCents,0);
