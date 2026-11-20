@@ -1,0 +1,24 @@
+# Prospect conversion and pre-contract collections
+
+The common contract form is AssignmentFields, with ContractTerms, TermSelector and PaymentEstimate. Direct assignment and reservation conversion both call prepareNewContract, which uses the existing shared schedule and monitoring validation. The reservation conversion form locks the reserved lot, displays its original buyer/agent/price, and previews the entire contract and schedule before administrator confirmation.
+
+## Test workflow (disposable database only)
+
+1. Create a prospect and available lot of 100 sqm at PHP 5,000/sqm.
+2. Record Payment → Reservation Fee. Choose the prospect and lot, enter PHP 5,000 as actual cash, actual payment date, unique receipt, holding terms and down-payment credit policy.
+3. Record Payment → Pre-contract Down Payment (existing reservation). Choose the same buyer/held lot; record the actual PHP 45,000 receipt, date and method. The buyer remains Prospect. Alternatively, choose Initial Down Payment (new property hold) for a buyer whose first receipt is a down payment instead of a reservation fee. This is not a reservation-fee collection.
+4. Open Clients & Contracts → Reservations → View → Convert to sale. Enter a PHP 50,000 (10%) agreed down payment, 60-month term, contract date and first installment due date. Optionally enable monitoring and configure due day, grace, rate, reminder, warning and forfeiture thresholds and payment basis. Review the calculated PHP 7,500 monthly principal, final due date and complete schedule.
+5. The existing PHP 5,000 reservation credit and PHP 45,000 down payment satisfy the down payment. Keep additional money received today at zero. Preview shows zero remaining down payment and PHP 450,000 outstanding principal. If necessary, save a draft with reason; it remains a held reservation, not a contract or collection.
+6. Confirm conversion as administrator. Reload the converted record and open the account. The property is Sold, buyer Active, original receipts and dates remain, and the schedule is generated. The original deposit allocation becomes effective at activation, without moving its cash receipt date. Verify collection history and cash: PHP 50,000 total, not PHP 100,000.
+7. Record a PHP 7,500 monthly payment using the normal cashier checkout; verify installment allocation, next due date, remaining principal, and correct advance-payment behavior.
+8. Configure property commission from the converted reservation. The original reservation agent is suggested, but no commission percentage or agreement is automatically approved, and existing commission earning rules remain unchanged. Review actual eligible paid principal and approve the usual agreement.
+9. Test a partial deposit, unpaid down payment, duplicate receipt, duplicate submission, changed lot price, stale preview, expired reservation, and existing client with another active contract. An outstanding scheduled amount requires explicit administrator acknowledgment that the contract permits it; otherwise save a draft.
+10. For an unapplied deposit requiring a refund, record the actual refund as administrator with reference, reason, date and funding method. The original receipt remains intact. A lot with outstanding unapplied deposits cannot be released until they are resolved; refunds use the existing cash timeline validation. No automatic refund occurs.
+
+## Data compatibility and safeguards
+
+- Optional paymentPurpose, contractDraft, precontractPayments, precontractRefunds, and appliedPrecontractPaymentIds extend Reservation; optional source and contractual allocation date extend account payments. Legacy reservation fee semantics remain the default. No existing records are rewritten and no new index is required.
+- Every actual down-payment receipt is claimed through the existing office receipt identifier service. Its original record remains in the reservation history; approved conversion atomically moves its receipt claim and creates one account allocation with the same payment ID. Cash, collections, inventory and sales reporting include the pending receipt prior to conversion and its account record thereafter, never both.
+- Approval uses the current reservation and lot versions, full-preview hash, unique active contract index and transaction support. Drafts are nonfinancial, do not post payments or activate clients, and do not save unposted receipt information.
+- A prior receipt already recorded elsewhere is not re-encoded or automatically imported. Reconcile legacy receipts against verified original records before applying any correction. Direct assignments without a hold retain their existing permissions and schedule preview.
+- Replica-set test: run node --test server/integration/reservation-conversion.test.js from the repository root with CPM_CONVERSION_TEST_URI set to a disposable MongoDB replica-set test instance. The test uses a uniquely named database and cleans it up. Never use production data.

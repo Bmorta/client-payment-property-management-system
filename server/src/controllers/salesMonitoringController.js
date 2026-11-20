@@ -13,7 +13,7 @@ import {loadSalesAttributions} from '../utils/salesPlanningData.js';
 import {dateRange,today} from '../utils/accounting.js';
 import {salesMonitoring} from '../utils/salesMonitoring.js';
 import {financialRows} from '../utils/financialReporting.js';
-import {reservationCollection} from '../services/financialReportService.js';
+import {mergeReservationCollections} from '../services/financialReportService.js';
 import {reportIdentity,brandExcel,brandPdf} from '../services/companyBranding.js';
 import {SALES_PAPERS,SALES_REPORT_TYPES,agentSalesColumns,agentFinanceColumns,agentCommissionColumns,agentCell,salesRegisterColumns,salesRegisterRow} from '../../../shared/salesReportViews.js';
 import {focusedSalesWorkbook,focusedSalesPdf,pdfPage} from '../utils/salesReportExport.js';
@@ -49,7 +49,7 @@ export async function salesMonitoringReport(req,res,next){try{
  if(properties.length>10000||accounts.length>25000||reservations.length>25000)fail('Select a project to narrow this large sales report.');
  if(agent&&!agents.some(a=>String(a._id)===agent))fail('Selected agent no longer exists.');
  const [attributed,planningTargets]=await Promise.all([loadSalesAttributions(accounts),SalesPlanningRecord.find({kind:'TARGET','value.period':{$regex:'^'+planningYear}}).select('value version').lean()]);
- const collections=[...financialRows(accounts,[]).collections,...reservations.map(reservationCollection)];
+ const collections=mergeReservationCollections(financialRows(accounts,[]).collections,reservations);
  const report=salesMonitoring({accounts:attributed,properties,projects,agents,reservations,clients,collections,planningTargets,planningYear,from,to,today:day,project,agent,type,status});
  report.filters.planningYear=planningYear;
  const brand=await reportIdentity(project||projects.map(p=>p._id)),data={...report,...brand,title:'Sales Monitoring & Register',projectOptions:projects.map(p=>({id:String(p._id),label:p.projectName})),agentOptions:agents.map(a=>({id:String(a._id),label:a.fullName,agentCode:a.agentId,status:a.status,projects:(a.assignedProjects||[]).map(id=>projects.find(p=>String(p._id)===String(id))?.projectName).filter(Boolean)}))};

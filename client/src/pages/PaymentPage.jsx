@@ -1,5 +1,5 @@
 import CashierPaymentStatus from '../components/CashierPaymentStatus.jsx';
-import {ReservationPayment} from '../components/Reservations.jsx';
+import {ReservationPayment,PrecontractPayment} from '../components/Reservations.jsx';
 import NavIcon from '../components/NavIcon.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import {localDate} from '../utils/finance.js';
@@ -25,7 +25,7 @@ export default function PaymentPage(){
  const [version,setVersion]=useState(0),[monitoring,setMonitoring]=useState(false),[buyerSession,setBuyerSession]=useState(0);
  const [adding,setAdding]=useState(false),[registering,setRegistering]=useState(false);
  const generation=useRef(0),registrationLock=useRef(false);
- const canPost=['ADMIN','STAFF'].includes(user?.role),purpose=params.get('purpose')||'AUTO',reservation=purpose==='reservation';
+ const canPost=['ADMIN','STAFF'].includes(user?.role),purpose=params.get('purpose')||'AUTO',reservation=purpose==='reservation',precontract=purpose==='precontract',initialDown=purpose==='initial-down';
  const buyerId=String(client?._id||'');
  const scopedRecords=records?.buyerId===buyerId&&records?.session===buyerSession?records:null;
  const accounts=scopedRecords?.accounts||[],holds=scopedRecords?.holds||[];
@@ -93,7 +93,7 @@ export default function PaymentPage(){
    <div className="payment-payer-fields">
     <ClientLookup cashier={canPost} key={buyerSession} onSelect={choose} label="Search clients or prospects"/>
     <label className="form-label">Payment Purpose<select className="form-select" value={purpose} onChange={e=>{setMessage('');setParams(p=>{const next=new URLSearchParams(p);next.set('purpose',e.target.value);return next;});}}>
-     <option value="AUTO">Regular / Multi-property Payment</option><option value="DOWN_PAYMENT">Down Payment</option><option value="INSTALLMENT">Monthly Installment</option><option value="PENALTY">Penalty Payment</option>{canPost&&<option value="reservation">Reservation Fee</option>}
+     <option value="AUTO">Regular / Multi-property Payment</option><option value="DOWN_PAYMENT">Down Payment</option><option value="INSTALLMENT">Monthly Installment</option><option value="PENALTY">Penalty Payment</option>{canPost&&<><option value="reservation">Reservation Fee</option><option value="precontract">Pre-contract Down Payment (existing reservation)</option><option value="initial-down">Initial Down Payment (new property hold)</option></>}
     </select></label>
    </div>
    <div className="d-flex flex-wrap gap-2">
@@ -115,8 +115,10 @@ export default function PaymentPage(){
   </div></section>
   {search&&<ClientSearchModal cashier={canPost} onClose={()=>setSearch(false)} onSelect={choose}/>}
   {loading&&<p role="status">Loading property accounts…</p>}
+  {initialDown&&canPost&&<ReservationPayment key={buyerSession+purpose} initialPurpose="DOWN_PAYMENT" admin={user?.role==='ADMIN'} buyer={client} onSaved={saved}/>}
+  {precontract&&canPost&&<PrecontractPayment key={buyerSession} buyer={client} holds={holds} onSaved={saved}/>}
   {reservation&&canPost&&<ReservationPayment key={buyerSession} admin={user?.role==='ADMIN'} buyer={client} onSaved={saved}/>}
-  {!reservation&&client&&payableAccounts.length>0&&canPost&&<PropertyPaymentCheckout key={buyerSession+purpose} purpose={purpose} client={client} accounts={payableAccounts} initialAccount={payableAccounts.some(a=>a._id===initial)?initial:''} onSaved={saved}/>}
+  {!reservation&&!precontract&&!initialDown&&client&&payableAccounts.length>0&&canPost&&<PropertyPaymentCheckout key={buyerSession+purpose} purpose={purpose} client={client} accounts={payableAccounts} initialAccount={payableAccounts.some(a=>a._id===initial)?initial:''} onSaved={saved}/>}
   {!reservation&&client&&!loading&&!payableAccounts.length&&<p className="alert alert-info">This payer has no active contract available for contract payments.</p>}
   {!reservation&&accounts.map(a=><details className="card p-3 my-3" key={a._id} open={initial===a._id}><summary><NavIcon name="building"/> {a.project?.projectName} · {lotName(a.property)} · {a.lifecycle||'ACTIVE'} · Account Details & History</summary><PaymentPenaltyBasis key={`${a._id}-${a.__v}`} account={a} onSaved={saved}/><PropertyPaymentDetails account={a}/><AccountMonitoringDetails account={a} onSaved={saved}/><PropertyPaymentHistory account={a} onSaved={saved}/></details>)}
   {!reservation&&<><button className="btn btn-outline-secondary my-3" onClick={()=>setMonitoring(v=>!v)}>{monitoring?'Hide Penalty Monitoring':'Open Penalty Monitoring'}</button>{monitoring&&<PenaltyMonitoring key={buyerSession} clientId={buyerId} refreshKey={version}/>}</>}

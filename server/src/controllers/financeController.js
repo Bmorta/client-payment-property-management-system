@@ -1,5 +1,5 @@
 import {cashierContractStatus} from '../utils/cashierPaymentStatus.js';
-import {loadReservationCollections} from '../services/financialReportService.js';
+import {loadCollectionsWithReservations} from '../services/financialReportService.js';
 import {cashMutation,validateCashTimeline} from '../services/cashMovementService.js';
 import {agreementSchedule} from "../../../shared/agreementSchedule.js";
 import {pagedExpenses} from "./expenseListController.js";
@@ -9,7 +9,7 @@ import {reportIdentity,brandExcel} from "../services/companyBranding.js";
 import {createHash} from "node:crypto";
 import Agent from "../models/Agent.js";
 import MigrationBatch from "../models/MigrationBatch.js";
-import {validateMonthlyArrangement} from "../../../shared/contractTerms.js";
+import {prepareNewContract} from '../utils/newContract.js';
 import {validateFunding,physicalFunding} from "../utils/fundingAccount.js";
 import {financialRows,isPosted} from "../utils/financialReporting.js";
 import {expenseClassification} from "./cashLedgerController.js";
@@ -18,7 +18,7 @@ import {validateReceipt,checkReceipt,receiptScope} from "../services/receiptServ
 import {dashboardCharts} from "../utils/dashboardCharts.js";
 import {paymentRegisterWorkbook,registerData} from "../utils/paymentRegister.js";
 import {monitoringReports,reportColumns,reportRow} from "../utils/monitoringReports.js";
-import {validateTerms,configureSchedule} from "../utils/contractMonitoring.js";
+import {validateTerms} from "../utils/contractMonitoring.js";
 import {attachMonitoringUpdate,reconcileAccount} from "../services/monitoringService.js";
 import {allocationPreview} from "../utils/allocationPreview.js";
 import { allocatePayments, effectivePayment } from "../utils/paymentLedger.js";
@@ -28,8 +28,7 @@ import Property from "../models/Property.js";
 import Client from "../models/Client.js";
 import Project from "../models/Project.js";
 import Expense from "../models/Expense.js";
-import { lotPrice } from "../utils/lotPricing.js";
-import { moneyCents, buildSchedule, summarizeAccount, validDate, dateRange, today, METHODS, TERMS } from "../utils/accounting.js";
+import { moneyCents, summarizeAccount, validDate, dateRange, today, METHODS, TERMS } from "../utils/accounting.js";
 import { generateRecordId } from "../utils/generateRecordId.js";
 import { logActivity } from "../utils/activityLogger.js";
 const fail = (code, message) => { throw Object.assign(new Error(message), { statusCode: code }); };
@@ -73,23 +72,13 @@ export async function assignProperty(req, res, next) {
     const project = await Project.findById(property.project);
     if (!project || project.status === "ARCHIVED") fail(409, "This project cannot accept assignments.");
     if ((req.body.expectedAreaSqm !== undefined && req.body.expectedAreaSqm !== property.areaSqm) || (req.body.expectedPricePerSqm !== undefined && req.body.expectedPricePerSqm !== property.pricePerSqm)) fail(409, "This lot's area or price changed. Refresh and review the new price before assigning.");
-    const total = lotPrice(property.areaSqm, property.pricePerSqm);
-    if (total == null || total <= 0) fail(400, "Set this lot's area and price per sqm before assigning it.");
-    const totalCents = moneyCents(total), months = Number(req.body.months);
-    const firstDueDate = req.body.firstDueDate, contractDate = req.body.contractDate;
-    const downPaymentCents = moneyCents(req.body.downPayment || 0);
-    if (contractDate > today()) fail(400, "Contract date cannot be in the future.");
-    const monitoringTerms=validateTerms(req.body.monitoringTerms?{...req.body.monitoringTerms,effectiveDate:contractDate}:null,contractDate);
-    if(monitoringTerms&&req.body.monthlyInstallment===undefined)fail(400,"Configure the monthly installment amount.");
-    if(monitoringTerms)validateMonthlyArrangement(totalCents,downPaymentCents,months,req.body.monthlyInstallment,req.body.monthlyOverrideAcknowledged);
-    const schedule=configureSchedule(buildSchedule(totalCents,months,firstDueDate,downPaymentCents,contractDate),monitoringTerms,req.body.monthlyInstallment);
-    if(schedule.some(s=>s.dueDate<contractDate))fail(400,"Due day cannot move an installment before the contract date.");
+    const contract=prepareNewContract(property,req.body,today()),monitoringTerms=contract.monitoringTerms;
     if (await PropertyAssignment.exists({ property: propertyId,lifecycle:{$nin:["TRANSFERRED","CANCELLED","FORFEITED","SUPERSEDED"]} })) fail(409, "This lot already has an account. Use that account instead.");
     await PropertyAssignment.init();
     claimed = await Property.findOneAndUpdate({ _id: propertyId, reservation:null, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, reopeningStatus:{$nin:["PENDING","REJECTED"]}, $or: [{ client: null, status: "AVAILABLE" }, { client: clientId, status: "RESERVED" }] }, { $set: { client: clientId, status: "RESERVED" } }, { new: true });
     if (!claimed) fail(409, "This lot is no longer available or is already linked to a client.");
     created = await PropertyAssignment.create({ penaltyCalculationRule:'CURRENT_OVERDUE',assignmentId: await generateRecordId("contract"), client: clientId, project: property.project, property: propertyId,
-      contract: { monitoringTerms, monthlyInstallmentCents:schedule.find(s=>s.installment>0)?.amountCents, totalCents, months, termType: req.body.termType === "CUSTOM" || !TERMS.includes(months) ? "CUSTOM" : "PREDEFINED", firstDueDate:schedule.find(s=>s.installment>0)?.dueDate||firstDueDate, contractDate, downPaymentCents, areaSqm: property.areaSqm, pricePerSqm: property.pricePerSqm, schedule }, createdBy: req.user._id, auditEvents: [{ eventId: req.auditEvent?._id, action: "AGREEMENT_CREATED", username: req.user.username, role: req.user.role, userId: req.user._id, timestamp: new Date() }] });
+      contract, createdBy: req.user._id, auditEvents: [{ eventId: req.auditEvent?._id, action: "AGREEMENT_CREATED", username: req.user.username, role: req.user.role, userId: req.user._id, timestamp: new Date() }] });
     if(client.status !== "ACTIVE")await syncClientLifecycleFromContracts(clientId,{userId:req.user._id,username:req.user.username,role:req.user.role},"Sales contract activated");
     if(monitoringTerms)await reconcileAccount(created._id,{userId:req.user._id,username:req.user.username,role:req.user.role},"Contract created");
     await logActivity({ action: "PROPERTY_ASSIGNED", req, userId: req.user._id, entityType: "PropertyAssignment", entityId: created._id, metadata: { client: clientId, property: propertyId } });
@@ -144,7 +133,7 @@ export async function acceptPayment(req, res, next) {
 }
 async function paymentRows() {
   const accounts = await populate(PropertyAssignment.find({ "payments.0": { $exists: true } })).lean();
-  await attachBatchCounts(accounts);return [...financialRows(accounts,[]).collections,...await loadReservationCollections()].sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+  await attachBatchCounts(accounts);return (await loadCollectionsWithReservations(financialRows(accounts,[]).collections)).sort((a,b)=>b.paymentDate.localeCompare(a.paymentDate)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
 }
 export async function listPayments(req, res, next) {
   if(req.query.paged||req.query.format||req.query.origin!==undefined||req.query.receipt!==undefined)return transactionReport(req,res,next);

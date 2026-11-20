@@ -6,6 +6,7 @@ const { Schema } = mongoose;
 const paymentSchema = new Schema({
   origin:{type:String,enum:["LIVE","HISTORICAL"],default:"LIVE",immutable:true}, migrationBatchId:String, migrationRowId:String,
   fundingAccount:{type:String,enum:["CASH","NONCASH",null],default:null}, receiptScope: String, configuration: Schema.Types.Mixed,
+  sourceReservationId: String, contractAllocationDate: String,
   type: {type:String,enum:["AUTO","DOWN_PAYMENT","INSTALLMENT","PENALTY","OTHER"],default:"AUTO"},
   batchAccountCount:Number,postedAt:Date,paymentIntent:Schema.Types.Mixed,submissionHash:String,batchReference:String,groupRequestId:String,batchAcknowledgment:Schema.Types.Mixed,notesMode:String,monthsToPay:Number,
   allocationPlan: {type:[Schema.Types.Mixed],default:undefined},

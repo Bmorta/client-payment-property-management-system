@@ -16,8 +16,13 @@ const schema = new Schema({
   creditPolicy: { type: String, enum: ['ANY_PRINCIPAL','DOWN_PAYMENT','FIRST_INSTALLMENT'], required: true },
   terms: { type: String, required: true },
   payment: { type: Schema.Types.Mixed, required: true, immutable: true },
+  paymentPurpose: {type:String,enum:['RESERVATION_FEE','DOWN_PAYMENT'],default:'RESERVATION_FEE',immutable:true},
   disposition: { type: String, enum: ['OUTSTANDING','APPLIED','RETAINED','REFUNDED'], default: 'OUTSTANDING' },
   refund: Schema.Types.Mixed,
+  contractDraft: Schema.Types.Mixed,
+  precontractPayments: {type:[Schema.Types.Mixed],default:[]},
+  precontractRefunds: {type:[Schema.Types.Mixed],default:[]},
+  appliedPrecontractPaymentIds:{type:[String],default:[]},
   history: { type: [Schema.Types.Mixed], default: [] }
 }, { timestamps: true });
 schema.index({ property: 1, held: 1 }, { unique: true, partialFilterExpression: { held: true } });

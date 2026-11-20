@@ -6,18 +6,36 @@ import Expense from '../models/Expense.js';
 import CashLedgerEntry from '../models/CashLedgerEntry.js';
 import {financialRows} from '../utils/financialReporting.js';
 async function loadReservations(to,session,compact){
- const reservations=Reservation.find({'payment.paymentDate':{$lte:to}});
+ const reservations=Reservation.find({$or:[{'payment.paymentDate':{$lte:to}},{'precontractPayments.paymentDate':{$lte:to}}]});
  if(!compact)reservations.populate('client','clientId firstName lastName').populate('property','propertyId phaseNumber blockNumber lotNumber').populate('project','projectId projectName');
  if(session)reservations.session(session);
  return reservations.lean();
 }
 export function reservationCollection(hold){
  const {submissionHash,...payment}=hold.payment;
- return {...payment,accountId:null,reservationId:String(hold._id),type:'RESERVATION_FEE',posted:true,status:'VALID',
+ return {...payment,accountId:null,reservationId:String(hold._id),type:hold.paymentPurpose||'RESERVATION_FEE',posted:true,status:'VALID',
    client:hold.client,project:hold.project,property:hold.property};
 }
+export function reservationCollections(hold,{includeApplied=false}={}){
+ const applied=new Set(includeApplied?[]:hold.appliedPrecontractPaymentIds||[]);
+ return [...(applied.has(hold.payment.paymentId)?[]:[reservationCollection(hold)]),...(hold.precontractPayments||[]).filter(p=>!applied.has(p.paymentId)).map(({submissionHash,...payment})=>({...payment,accountId:null,reservationId:String(hold._id),type:'DOWN_PAYMENT',posted:true,status:'VALID',client:hold.client,project:hold.project,property:hold.property}))];
+}
+// Prefer the current account payment (including approved corrections/voids).
+// During a concurrent conversion a read may see the old hold or old account
+// snapshot. Receipt identities prevent duplicate or missing cash in either case.
+export function mergeReservationCollections(existing,holds,to='9999-12-31'){
+ const seen=new Set(existing.map(p=>p.paymentId)),combined=[...existing];
+ for(const hold of holds)for(const payment of reservationCollections(hold,{includeApplied:true})){
+  if(payment.paymentDate>to||seen.has(payment.paymentId))continue;
+  combined.push(payment);seen.add(payment.paymentId);
+ }
+ return combined;
+}
 export async function loadReservationCollections(to='9999-12-31'){
- return (await loadReservations(to,null,false)).map(reservationCollection);
+ return (await loadReservations(to,null,false)).flatMap(hold=>reservationCollections(hold)).filter(p=>p.paymentDate<=to);
+}
+export async function loadCollectionsWithReservations(existing,to='9999-12-31'){
+ return mergeReservationCollections(existing,await loadReservations(to,null,false),to);
 }
 export async function loadFinancialData(to='9999-12-31',session=null,{compact=false}={}){
  const accountQuery=PropertyAssignment.find().select('assignmentId client project property migration payments commissionPayouts commissionRecoveries');
@@ -37,11 +55,12 @@ export async function loadFinancialData(to='9999-12-31',session=null,{compact=fa
  ]);
  if(!compact)await attachBatchCounts(accounts);
  const rows=financialRows(accounts,expenses);
+ rows.collections=mergeReservationCollections(rows.collections,holds,to);
  for(const hold of holds){
   const payment=reservationCollection(hold);
-  rows.collections.push(payment);
   if(hold.refund&&hold.refund.date<=to)refunds.push({...hold.refund,status:'POSTED',releaseId:'RES-'+payment.paymentId,client:hold.client,
     reservationId:String(hold._id),project:hold.project,property:hold.property});
+  for(const refund of hold.precontractRefunds||[])if(refund.date<=to)refunds.push({...refund,status:'POSTED',releaseId:'RES-DP-'+refund.paymentId,client:hold.client,reservationId:String(hold._id),project:hold.project,property:hold.property});
  }
  return {...rows,entries,refunds};
 }

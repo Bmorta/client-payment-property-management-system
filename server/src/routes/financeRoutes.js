@@ -45,6 +45,7 @@ router.get('/reservations/:id/acknowledgement',authorize('ADMIN','STAFF'),reserv
 router.get('/reservation-lots',authorize('ADMIN','STAFF'),reservationLots);
 router.patch('/reservations/settings',authorize('ADMIN'),updateReservationSettings);
 router.post('/reservations',authorize('ADMIN','STAFF'),reservationHandler('post'));
+router.post('/reservations/:id/precontract-payment',authorize('ADMIN','STAFF'),reservationHandler('precontract'));
 router.post('/reservations/:id/convert/preview',authorize('ADMIN'),reservationHandler('preview'));
 router.post('/reservations/:id/convert',authorize('ADMIN'),reservationHandler('convert'));
 router.post('/reservations/:id/manage',authorize('ADMIN'),reservationHandler('manage'));

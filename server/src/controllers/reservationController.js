@@ -4,7 +4,7 @@ import Reservation from '../models/Reservation.js';
 import Property from '../models/Property.js';
 import Project from '../models/Project.js';
 import { today } from '../utils/accounting.js';
-import { addDays, defaultReservationDays, reservationDisplay, postReservation, previewConversion, convertReservation, manageReservation } from '../services/reservationService.js';
+import { addDays, defaultReservationDays, reservationDisplay, postReservation, postPrecontractPayment, eligiblePrecontractPayments, previewConversion, convertReservation, manageReservation } from '../services/reservationService.js';
 
 export function reservationMetrics(records,day) {
   const active=records.filter(row=>row.status==='ACTIVE');
@@ -14,8 +14,8 @@ export function reservationMetrics(records,day) {
       week:active.filter(row=>row.expiresOn>day&&row.expiresOn<=addDays(day,7)).length,
       expired:records.filter(row=>row.status==='EXPIRED').length,
       converted:records.filter(row=>row.status==='CONVERTED').length,
-      feesCents:records.reduce((n,row)=>n+row.amountCents,0),
-      creditCents:records.filter(row=>row.disposition==='OUTSTANDING').reduce((n,row)=>n+row.amountCents,0)
+      feesCents:records.filter(row=>row.paymentPurpose!=='DOWN_PAYMENT').reduce((n,row)=>n+row.amountCents,0),
+      creditCents:records.reduce((n,row)=>n+(row.disposition==='OUTSTANDING'&&row.paymentPurpose!=='DOWN_PAYMENT'?row.amountCents:0)+eligiblePrecontractPayments(row).reduce((a,p)=>a+p.amountCents,0),0)
     };
 }
 export async function listReservations(req,res,next) {
@@ -23,11 +23,11 @@ export async function listReservations(req,res,next) {
     const filter=req.query.client&&/^[a-f\d]{24}$/i.test(req.query.client)?{client:req.query.client}:{};
     if(req.query.project&&/^[a-f\d]{24}$/i.test(req.query.project))filter.project=req.query.project;
     if(req.query.property&&/^[a-f\d]{24}$/i.test(req.query.property))filter.property=req.query.property;
-    const rows=await Reservation.find(filter).populate('client','firstName lastName clientId status')
-      .populate('property','propertyId phaseNumber blockNumber lotNumber').populate('project','projectName')
+    const rows=await Reservation.find(filter).populate('client','firstName middleName lastName suffix clientId status contactNumber email')
+      .populate('property','propertyId phaseNumber blockNumber lotNumber areaSqm pricePerSqm').populate('project','projectName')
       .populate('account','assignmentId').populate('agent','fullName agentId').sort({expiresOn:1}).lean();
     const day=today();
-    const records=rows.map(row=>({...row,...reservationDisplay(row,day),payment:{...row.payment,submissionHash:undefined}}));
+    const records=rows.map(row=>({...row,...reservationDisplay(row,day),payment:{...row.payment,submissionHash:undefined},precontractPayments:(row.precontractPayments||[]).map(({submissionHash,...p})=>p)}));
     const metrics=reservationMetrics(records,day);
     res.json({success:true,data:{records,metrics,day,defaultDays:await defaultReservationDays()}});
   } catch(e){next(e)}
@@ -43,6 +43,7 @@ export async function reservationLots(_req,res,next) {
 }
 export const reservationHandlers={
   post:req=>postReservation(req.body,req.user),
+  precontract:req=>postPrecontractPayment(req.params.id,req.body,req.user),
   preview:req=>previewConversion(req.params.id,req.body),
   convert:req=>convertReservation(req.params.id,req.body,req.user),
   manage:req=>manageReservation(req.params.id,req.body,req.user)
@@ -58,10 +59,12 @@ export async function reservationAcknowledgement(req,res,next) {
     const row=await Reservation.findById(req.params.id).populate('client','clientId firstName middleName lastName suffix')
       .populate('project','projectId projectName').populate('property','propertyId phaseNumber blockNumber lotNumber').lean();
     if(!row)return res.status(404).json({success:false,message:'Reservation not found.'});
-    const {submissionHash,...payment}=row.payment;
+    const original=req.query.paymentId?(row.precontractPayments||[]).find(p=>p.paymentId===req.query.paymentId)||((row.payment.paymentId===req.query.paymentId)?row.payment:null):row.payment;
+    if(!original)return res.status(404).json({success:false,message:'Receipt not found.'});
+    const {submissionHash,...payment}=original;
     res.json({success:true,data:{brand:await reportIdentity(row.project?._id),clientSnapshot:row.client,
       paymentDate:payment.paymentDate,method:payment.method,batchReference:payment.paymentId,totalCents:payment.amountCents,receivedBy:payment.actorUsername||'',
-      members:[{...payment,project:row.project,property:row.property,purpose:'Reservation fee'}]}});
+      members:[{...payment,project:row.project,property:row.property,purpose:original===row.payment&&row.paymentPurpose!=='DOWN_PAYMENT'?'Reservation fee':'Pre-contract down payment'}]}});
   } catch(e){next(e)}
 }
 
