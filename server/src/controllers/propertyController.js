@@ -1,3 +1,4 @@
+import {saleInventoryStatus,validSaleAccount} from '../utils/salesClassification.js';
 import Reservation from '../models/Reservation.js';
 import {reservationDisplay} from '../services/reservationService.js';
 import {summarizeAccount} from '../utils/accounting.js';
@@ -23,12 +24,12 @@ export async function listProjectProperties(req, res, next) {
     const assignments = await PropertyAssignment.find({ project: project._id }).lean();
     const holds = await Reservation.find({_id:{$in:properties.map(p=>p.reservation).filter(Boolean)},held:true}).lean();
     const holdById=new Map(holds.map(hold=>[String(hold._id),hold]));
-    const accountByLot=new Map(assignments.filter(a=>!a.lifecycle||a.lifecycle==='ACTIVE').map(a=>[String(a.property),a]));
+    const accountsByLot=new Map();for(const a of assignments){const key=String(a.property);accountsByLot.set(key,[...(accountsByLot.get(key)||[]),a])}
     const assigned = new Set(assignments.filter(a=>!["TRANSFERRED","ASSUMED","CANCELLED","FORFEITED","SUPERSEDED"].includes(a.lifecycle)).map(a => String(a.property))),history=new Set(assignments.map(a=>String(a.property)));
     res.json({ success: true, data: properties.map(p => {
       const lot = p.toJSON(); const hasAccount = assigned.has(String(p._id));
-      const account=accountByLot.get(String(p._id)),hold=holdById.get(String(p.reservation));
-      const isSold=!!account&&['AVAILABLE','RESERVED','SOLD'].includes(lot.status)&&!hold;
+      const candidates=(accountsByLot.get(String(p._id))||[]).filter(validSaleAccount),account=candidates.length===1?candidates[0]:null,hold=holdById.get(String(p.reservation));
+      const businessStatus=saleInventoryStatus(lot,candidates,project.status),isSold=!!account&&businessStatus==='SOLD'&&!hold;
       let contractLabel=null;
       if(isSold){
         contractLabel='Installment';
@@ -38,7 +39,7 @@ export async function listProjectProperties(req, res, next) {
           else if(settlement.status==='SETTLED')contractLabel='Settlement Pending Verification';
         } catch {contractLabel='Account Review Required'}
       }
-      return { ...lot, status:isSold?'SOLD':lot.status, contractLabel, reservationDetails:hold?reservationDisplay(hold):null, legacyReservation:lot.status==='RESERVED'&&!hold&&!isSold, hasAccount, hasHistory:history.has(String(p._id)),canDelete: lot.canDelete && !history.has(String(p._id)) };
+      return { ...lot, status:businessStatus, savedStatus:lot.status, contractLabel, reservationDetails:hold?reservationDisplay(hold):null, legacyReservation:lot.status==='RESERVED'&&!hold&&!isSold, hasAccount, hasHistory:history.has(String(p._id)),canDelete: lot.canDelete && !history.has(String(p._id)) };
     }) });
   } catch (error) {
     next(error);

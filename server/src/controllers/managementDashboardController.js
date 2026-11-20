@@ -15,6 +15,7 @@ import { dateRange, today } from '../utils/accounting.js';
 import { managementMetrics } from '../utils/managementDashboard.js';
 import { releasedCents } from './officePayoutController.js';
 import { requestFlags, TERMINAL_REQUEST_STATUSES } from '../../../shared/siteRequests.js';
+import {saleInventoryStatus} from '../utils/salesClassification.js';
 
 export async function managementDashboard(req,res,next){
   try{
@@ -30,23 +31,22 @@ export async function managementDashboard(req,res,next){
       Project.find().select('projectName status').sort({projectName:1}).lean(),
       Property.find(query).select('project status client reservation phaseNumber blockNumber').lean(),
       Account.find(scope).select(operations?
-        '-notifications -auditEvents -commissionAgreementHistory -commissionHoldHistory -forfeitureEvents -propertyReleaseEvents':
+        '-notifications -auditEvents -commissionHoldHistory -forfeitureEvents -propertyReleaseEvents':
         'property project lifecycle cancellationOut.effectiveDate contract.contractDate transferIn.sourceId assumptionIn.sourceId reactivationIn.sourceId').lean(),
       financial?loadFinancialData(now,null,{compact:true}):null,
       operations?Client.find({status:'ACTIVE',deletedAt:null}).select('_id').lean():[],
       operations?SiteRequest.find({...scope,status:{$nin:TERMINAL_REQUEST_STATUSES}}).select('status schedule.start preferredStart').lean():[]
     ]);
     const projectStates=new Map(projects.map(p=>[String(p._id),p.status]));
-    const activeLots=new Set(accounts.filter(a=>!a.lifecycle||a.lifecycle==='ACTIVE').map(a=>String(a.property)));
+    const accountsByLot=new Map();for(const a of accounts){const key=String(a.property);accountsByLot.set(key,[...(accountsByLot.get(key)||[]),a])}
     for(const property of properties){
-      if(projectStates.get(String(property.project))==='ARCHIVED')property.status='UNAVAILABLE';
-      else if(!property.reservation&&activeLots.has(String(property._id))&&['AVAILABLE','RESERVED'].includes(property.status))property.status='SOLD';
+      property.status=saleInventoryStatus(property,accountsByLot.get(String(property._id)),projectStates.get(String(property.project)));
     }
     const ids=new Set(activeClients.map(c=>String(c._id)));
     for(const a of accounts)a.clientStatus=ids.has(String(a.client))?'ACTIVE':null;
-    const data=managementMetrics({accounts,properties,financial:ledger,from,to,today:now,permissions:{operations,financial},inventoryScoped:!!(project||phase||block)});
+    const holdRows=operations&&properties.length?await Reservation.find({property:{$in:properties.map(p=>p._id)}}).select('held expiresOn status payment disposition agent account').lean():[];
+    const data=managementMetrics({accounts,properties,financial:ledger,from,to,today:now,permissions:{operations,financial},inventoryScoped:!!(project||phase||block),reservations:holdRows});
     if(operations){
-      const holdRows=properties.length?await Reservation.find({property:{$in:properties.map(p=>p._id)}}).select('held expiresOn status payment disposition').lean():[];
       data.reservations=reservationMetrics(holdRows.map(row=>({...row,...reservationDisplay(row,now)})),now);
     }
     data.activeClientMasterCount=operations&&!project&&!phase&&!block?ids.size:undefined;

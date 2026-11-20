@@ -30,6 +30,7 @@ const PaymentPage=lazy(()=>import("./pages/PaymentPage.jsx"));
 const ApprovalRequestsPage=lazy(()=>import("./pages/ApprovalRequestsPage.jsx"));
 const ExpensesPage=lazy(()=>import("./pages/ExpensesPage.jsx"));
 const ReportsPage=lazy(()=>import("./pages/ReportsPage.jsx"));
+const SalesMonitoringPage=lazy(()=>import("./pages/SalesMonitoringPage.jsx"));
 const AgentsPage=lazy(()=>import("./pages/AgentsPage.jsx"));
 const CommissionsPage=lazy(()=>import("./pages/CommissionsPage.jsx"));
 const ClientsPage=lazy(()=>import("./pages/ClientsPage.jsx"));
@@ -82,6 +83,7 @@ export default function App() {
               <Route path="/payouts" element={<RoleRoute roles={["ADMIN","STAFF"]}><PayoutsPage/></RoleRoute>}/>
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/sales-monitoring" element={<RoleRoute><SalesMonitoringPage /></RoleRoute>} />
               <Route path="/forfeited-accounts" element={<ForfeitedAccountsPage/>}/><Route path="/reopen-properties" element={<ForfeitedAccountsPage/>}/><Route path="/property-history" element={<PropertyHistoryPage/>}/>
               <Route path="/database-maintenance" element={<RoleRoute><DatabaseMaintenancePage/></RoleRoute>}/>
               <Route path="/users" element={<RoleRoute><UsersPage /></RoleRoute>} />

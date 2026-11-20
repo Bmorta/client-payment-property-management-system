@@ -2,16 +2,18 @@ import { summarizeAccount } from './accounting.js';
 import { calculateCommissions } from './commissionLedger.js';
 import { physicalFunding } from './fundingAccount.js';
 import { cashPosition } from './financialReporting.js';
+import {validSaleAccount,recordedSaleAccount,originalSale,originalContract,attributedSaleAgents,recordId,initialCommissionAgreement} from './salesClassification.js';
 
 const closed = ['TRANSFERRED','ASSUMED','CANCELLED','FORFEITED','SUPERSEDED'];
-export const isOriginalSale = account => !account.transferIn && !account.assumptionIn && !account.reactivationIn;
+export const isOriginalSale = originalSale;
 export const agingLabels = ['1–30 days','31–60 days','61–90 days','Over 90 days'];
 export function agingGroup(row, date) {
   const days = (Date.parse(date) - Date.parse(row.graceEnd || row.dueDate)) / 86400000;
   return days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3;
 }
 export const shiftDate = (date, days) => new Date(Date.parse(date) + days * 86400000).toISOString().slice(0,10);
-export function managementMetrics({accounts, properties, financial, from, to, today, permissions, inventoryScoped=false}) {
+export function managementMetrics({accounts, properties, financial, from, to, today, permissions, inventoryScoped=false,reservations=[]}) {
+  const reservationByAccount=new Map(reservations.filter(r=>r.account).map(r=>[recordId(r.account),r]));
   const lots = new Map(properties.map(p => [String(p._id),p]));
   const scoped = accounts.filter(a => !inventoryScoped||lots.has(String(a.property)));
   const inventory = new Map();
@@ -36,15 +38,15 @@ export function managementMetrics({accounts, properties, financial, from, to, to
     if(p.status==='RESERVED')row.reserved++;
   }
   for(const a of scoped){
-    const date=a.contract?.contractDate;
-    if(!date || date>today)continue;
+    const date=originalContract(a)?.contractDate;
+    if(!date || date>today || !recordedSaleAccount(a))continue;
     if(a.lifecycle==='CANCELLED'){
       result.cancelled++;
       const cancelledOn=a.cancellationOut?.effectiveDate;
       if(cancelledOn>=from&&cancelledOn<=to)result.cancelledInPeriod++;
     }
     if(a.lifecycle==='FORFEITED')result.forfeited++;
-    const active=!closed.includes(a.lifecycle);
+    const active=validSaleAccount(a);
     if(active)result.activeContracts++;
     if(active && a.client && a.clientStatus==='ACTIVE')clients.add(String(a.client));
     // Replacement contracts are operational changes, not fresh sales.
@@ -52,18 +54,17 @@ export function managementMetrics({accounts, properties, financial, from, to, to
     if(originalSaleInPeriod){
       result.newContracts++;
       monthly.get(date.slice(0,7)).sales++;
-      const project=result.projects[String(lots.get(String(a.property)).project)];
+      const project=result.projects[String(lots.get(String(a.property))?.project||a.project)];
       if(project)project.newContracts++;
-      const price=a.contract.totalCents;
+      const price=originalContract(a)?.totalCents;
       if(permissions.financial&&Number.isSafeInteger(price)&&price>=0){
         result.contractSalesCents+=price;
         monthly.get(date.slice(0,7)).saleValue+=price;
         if(project)project.saleValue+=price;
       }
       if(permissions.financial){
-        for(const allocation of a.commissionAgreement?.agents||[]){
-          const key=String(allocation.agent);
-          const agent=agents.get(key)||{id:key,label:allocation.agentId||'Agent',earned:0,released:0,sales:0};
+        for(const key of attributedSaleAgents(a,reservationByAccount.get(recordId(a)))){
+          const agent=agents.get(key)||{id:key,label:initialCommissionAgreement(a)?.agents?.find(r=>recordId(r.agent)===key)?.agentId||'Agent',earned:0,released:0,sales:0};
           agent.sales++;
           agents.set(key,agent);
         }
