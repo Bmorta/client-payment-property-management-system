@@ -1,3 +1,4 @@
+import DateRangeFilter from './DateRangeFilter.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import {reservationExpiry} from '../../../shared/reservationDates.js';
 import AgentPicker from './AgentPicker.jsx';
@@ -128,7 +129,7 @@ export default function Reservations({admin,clientId='',propertyId='',onChanged}
   const [params]=useSearchParams(),clientFilter=clientId||params.get('client')||'',propertyFilter=propertyId||params.get('property')||'',statusFilter=params.get('reservationStatus')||'',projectFilter=params.get('project')||'';
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(true),[receipt,setReceipt]=useState(null);
-  const [query,setQuery]=useState(''),[startDate,setStartDate]=useState(''),[expiryDate,setExpiryDate]=useState('');
+  const [query,setQuery]=useState(''),[dateBasis,setDateBasis]=useState('startDate'),[range,setRange]=useState({from:'',to:''});
   const [defaultDays,setDefaultDays]=useState('');
   const [details,setDetails]=useState(null),[action,setAction]=useState('');
   const [changes,setChanges]=useState({}),[preview,setPreview]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
@@ -173,7 +174,7 @@ export default function Reservations({admin,clientId='',propertyId='',onChanged}
   };
   const records=(data?.records||[]).filter(row=>{
     const searchable=[row._id,row.client?.clientId,clientName(row.client),row.project?.projectName,lotName(row.property)].join(' ').toLowerCase();
-    if(!searchable.includes(query.trim().toLowerCase())||startDate&&row.startDate!==startDate||expiryDate&&row.expiresOn!==expiryDate)return false;
+    if(!searchable.includes(query.trim().toLowerCase())||range.from&&row[dateBasis]<range.from||range.to&&row[dateBasis]>range.to)return false;
     if(statusFilter==='closed')return ['CANCELLED','RELEASED'].includes(row.status);
     if(statusFilter==='today')return row.status==='ACTIVE'&&row.remainingDays===0;
     if(statusFilter==='week')return row.status==='ACTIVE'&&row.remainingDays>=0&&row.remainingDays<=7;
@@ -196,8 +197,7 @@ export default function Reservations({admin,clientId='',propertyId='',onChanged}
       <div className="d-flex justify-content-between"><h2 className="h5">Reservation records</h2></div>
       <div className="d-flex flex-wrap gap-2 mb-2">
         <label className="form-label">Find reservation<input className="form-control" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buyer, project, phase, block or lot"/></label>
-        <label className="form-label">Reservation date<input className="form-control" type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}/></label>
-        <label className="form-label">Expiry date<input className="form-control" type="date" value={expiryDate} onChange={e=>setExpiryDate(e.target.value)}/></label>
+        <label className="form-label">Date Basis<select className="form-select" value={dateBasis} onChange={e=>setDateBasis(e.target.value)}><option value="startDate">Reservation date</option><option value="expiresOn">Expiry date</option></select></label><DateRangeFilter value={range} allRange={{from:"",to:""}} onChange={setRange}/>
       </div><div className="table-responsive"><table className="table align-middle"><thead><tr><th>Buyer / Lot</th><th>Fee / Credit</th><th>Hold period</th><th>Status</th><th/></tr></thead>
         <tbody>{records.map(row=><tr key={row._id}>
           <td><small className="d-block text-secondary">{row._id}</small>{clientName(row.client)} · {row.project?.projectName} · {lotName(row.property)}</td>

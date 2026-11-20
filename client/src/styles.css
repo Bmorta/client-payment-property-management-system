@@ -213,6 +213,9 @@ button, input, select, textarea { font: inherit; }
 .summary-tile > strong { display:block; font-size:1.12rem; color:var(--office-ink); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .filter-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; align-items:end; }
 .filter-grid > label { margin-bottom:0; min-width:0; }
+.rems-date-range { min-width:0; grid-column:1 / -1; }
+.rems-date-range label { min-width:0; max-width:100%; }
+.rems-dashboard-filters > .rems-date-range { flex:1 1 100%; }
 .client-tabs { display:flex; flex-wrap:wrap; gap:6px; padding:10px; border:1px solid var(--office-border); background:white; border-radius:12px; margin:20px 0; }
 .client-tabs button { display:inline-flex; align-items:center; gap:7px; border:0; border-radius:7px; background:transparent; color:var(--office-muted); padding:11px 13px; font-weight:600; font-size:.82rem; }
 .client-tabs button.active { background:#e9f0ff; color:#174db5; }

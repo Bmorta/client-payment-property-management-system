@@ -1,3 +1,4 @@
+import DateRangeFilter from '../components/DateRangeFilter.jsx';
 import {useEffect,useState} from 'react';
 import {Link,useNavigate} from 'react-router-dom';
 import {Bar,BarChart,CartesianGrid,Cell,Pie,PieChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
@@ -26,7 +27,6 @@ function Chart({title,rows,category='month',series,money=true,empty='No matching
   const hasData=rows.some(r=>series.some(([key])=>r[key]));
   return <section className="card rems-dashboard-panel"><h3>{title}</h3>{hasData?<><div className="rems-dashboard-legend">{series.map(([key,label],i)=><span key={key}><i style={{background:chartColors[i]}}/>{label}</span>)}</div><div className="rems-dashboard-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={rows} onClick={onSelect?e=>{if(e?.activeLabel)onSelect(e.activeLabel)}:undefined} margin={{top:4,left:8,right:10,bottom:4}}><CartesianGrid vertical={false} stroke="var(--bs-border-color)"/><XAxis dataKey={category} tick={{fill:'var(--bs-secondary-color)',fontSize:11}}/><YAxis allowDecimals={false} tick={{fill:'var(--bs-secondary-color)',fontSize:11}} tickFormatter={v=>money?'₱'+Intl.NumberFormat('en-PH',{notation:'compact'}).format(v/100):number(v)}/><Tooltip formatter={(v,k)=>[format(v,money),series.find(([key])=>key===k)?.[1]||k]} contentStyle={{background:'var(--bs-body-bg)',borderColor:'var(--bs-border-color)',color:'var(--bs-body-color)'}} itemStyle={{color:'var(--bs-body-color)'}}/>{series.map(([key],i)=><Bar key={key} dataKey={key} fill={chartColors[i]} maxBarSize={36} radius={[3,3,0,0]} isAnimationActive={false}/>)}</BarChart></ResponsiveContainer></div></>:<p className="text-secondary mb-0">{empty}</p>}</section>;
 }
-const periods=[['today','Today'],['weekly','This Week'],['monthly','This Month'],['yearly','This Year'],['custom','Custom']];
 function InventoryChart({rows,onSelect}){
   const colors=['#118375','#ac7614','#3276c7','#9764c5','#677687'];
   return <section className="card rems-dashboard-panel"><h3>Property Availability Distribution</h3>{rows.some(row=>row.value>0)?<>
@@ -90,9 +90,9 @@ export default function DashboardPage(){
   return <main className="rems-dashboard container-fluid p-3 p-lg-4">
     <header className="rems-dashboard-header"><div><h1><NavIcon name="grid"/> Management Dashboard</h1><p>Office operations and financial overview · Philippine time</p></div><button className="btn btn-outline-primary" type="button" onClick={refresh} disabled={busy||!valid}><NavIcon name="refresh"/> Refresh</button></header>
     <section className="card rems-dashboard-panel rems-dashboard-filters" aria-label="Dashboard filters">
-      <div className="btn-group flex-wrap" role="group" aria-label="Reporting period">{periods.map(([key,label])=><button key={key} type="button" className={'btn '+(filter.period===key?'btn-primary':'btn-outline-secondary')} aria-pressed={filter.period===key} onClick={()=>change('period',key)}>{label}</button>)}</div>
+      <DateRangeFilter value={range} today={date} onChange={(r,period)=>setFilter(old=>({...old,...r,period}))}/>
       <div className="rems-dashboard-filter-fields">
-        {filter.period==='custom'&&[['from','From'],['to','Through']].map(([key,label])=><label key={key}>{label}<input className="form-control" type="date" value={filter[key]} onChange={e=>change(key,e.target.value)}/></label>)}
+        
         <label>Project<select className="form-select" value={project} onChange={e=>change('project',e.target.value)}><option value="">All projects</option>{data?.projectOptions.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         {['phase','block'].map(key=><label key={key}>{key==='phase'?'Phase':'Block'}<input className="form-control" type="number" min="1" max="999999" placeholder="All" value={filter[key]} onChange={e=>change(key,e.target.value)}/></label>)}
       </div>
