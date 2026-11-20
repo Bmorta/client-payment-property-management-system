@@ -16,6 +16,7 @@ import { managementMetrics } from '../utils/managementDashboard.js';
 import { releasedCents } from './officePayoutController.js';
 import { requestFlags, TERMINAL_REQUEST_STATUSES } from '../../../shared/siteRequests.js';
 import {saleInventoryStatus} from '../utils/salesClassification.js';
+import {loadSalesAttributions} from '../utils/salesPlanningData.js';
 
 export async function managementDashboard(req,res,next){
   try{
@@ -45,7 +46,8 @@ export async function managementDashboard(req,res,next){
     const ids=new Set(activeClients.map(c=>String(c._id)));
     for(const a of accounts)a.clientStatus=ids.has(String(a.client))?'ACTIVE':null;
     const holdRows=operations&&properties.length?await Reservation.find({property:{$in:properties.map(p=>p._id)}}).select('held expiresOn status payment disposition agent account').lean():[];
-    const data=managementMetrics({accounts,properties,financial:ledger,from,to,today:now,permissions:{operations,financial},inventoryScoped:!!(project||phase||block),reservations:holdRows});
+    const reportingAccounts=financial?await loadSalesAttributions(accounts):accounts;
+    const data=managementMetrics({accounts:reportingAccounts,properties,financial:ledger,from,to,today:now,permissions:{operations,financial},inventoryScoped:!!(project||phase||block),reservations:holdRows});
     if(operations){
       data.reservations=reservationMetrics(holdRows.map(row=>({...row,...reservationDisplay(row,now)})),now);
     }

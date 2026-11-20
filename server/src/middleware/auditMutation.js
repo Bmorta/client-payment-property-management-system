@@ -1,4 +1,5 @@
 import ReservationSettings from '../models/ReservationSettings.js';
+import SalesPlanningRecord from '../models/SalesPlanningRecord.js';
 import Reservation from '../models/Reservation.js';
 import SiteRequest from '../models/SiteRequest.js';
 import SiteRequestSettings from '../models/SiteRequestSettings.js';
@@ -60,6 +61,10 @@ function target(req) {
   if(base.endsWith('/finance')&&parts.includes('cancellations')){model=CancellationCase;module=parts.includes('refunds')?'Client Refunds':'Contract Cancellations';filter=parts[0]==='cancellations'?one(parts[1]):req.body?.requestId?{requestId:req.body.requestId}:{_id:null};}
   if(base.endsWith('/finance')&&parts[0]==='reservations'&&parts[1]==='settings'){
     model=ReservationSettings;module='Property Reservation Settings';filter={_id:'OFFICE'};
+  }
+  if(base.endsWith('/finance')&&parts[0]==='sales-planning'){
+    model=SalesPlanningRecord;module='Sales Planning';
+    filter={_id:parts[1]==='attribution'?'attribution:'+String(parts[2]||'').toLowerCase():String(parts[2]||'').replace(/%3A/gi,':')};
   }
   const action = req.path.endsWith("/archive") ? "ARCHIVED" : req.method === "DELETE" || req.path.endsWith("/bulk-delete") ? "DELETED" : req.method === "POST" ? "CREATED" : "UPDATED";
   return { model, module, filter, action };

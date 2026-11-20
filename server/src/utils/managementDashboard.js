@@ -64,7 +64,7 @@ export function managementMetrics({accounts, properties, financial, from, to, to
       }
       if(permissions.financial){
         for(const key of attributedSaleAgents(a,reservationByAccount.get(recordId(a)))){
-          const agent=agents.get(key)||{id:key,label:initialCommissionAgreement(a)?.agents?.find(r=>recordId(r.agent)===key)?.agentId||'Agent',earned:0,released:0,sales:0};
+          const agent=agents.get(key)||{id:key,label:initialCommissionAgreement(a)?.agents?.find(r=>recordId(r.agent)===key)?.agentId||key,earned:0,released:0,sales:0};
           agent.sales++;
           agents.set(key,agent);
         }

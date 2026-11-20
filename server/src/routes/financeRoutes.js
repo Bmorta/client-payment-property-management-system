@@ -1,6 +1,7 @@
 import {listReservations,reservationLots,reservationHandler,reservationAcknowledgement,updateReservationSettings} from '../controllers/reservationController.js';
 import {managementDashboard} from "../controllers/managementDashboardController.js";
 import {salesMonitoringReport} from "../controllers/salesMonitoringController.js";
+import {saveSalesTarget,saveSalesAttribution} from "../controllers/salesPlanningController.js";
 import {previewCashReconciliationCorrection,applyCashReconciliationCorrection} from '../controllers/cashReconciliationCorrectionController.js';
 import {cashReconciliation} from '../controllers/cashReconciliationController.js';
 import {correctionOptions,previewFinancialCorrection,approveFinancialCorrection} from "../controllers/financialCorrectionController.js";
@@ -131,6 +132,8 @@ router.get("/reports/payment-register",exportPaymentRegister);
 router.get("/reports/dashboard",dashboardAnalytics);
 router.get("/reports/dashboard/overview",managementDashboard);
 router.get("/reports/sales",authorize("ADMIN"),salesMonitoringReport);
+router.put("/sales-planning/targets/:key",authorize("ADMIN"),saveSalesTarget);
+router.put("/sales-planning/attribution/:id",authorize("ADMIN"),saveSalesAttribution);
 router.get("/reports/expenses",expenseReport);
 router.get("/reports/collections",collectionReport);
 router.get("/reports", report);

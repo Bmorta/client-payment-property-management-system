@@ -5,7 +5,7 @@ export const validSaleAccount=a=>recordedSaleAccount(a)&&!closedSaleLifecycles.h
 export const originalSale=a=>!a.transferIn&&!a.assumptionIn&&!a.reactivationIn;
 export const originalContract=a=>a.financialCorrections?.[0]?.currentContract||a.agreementHistory?.[0]?.contract||a.contract;
 export const initialCommissionAgreement=a=>a.commissionAgreementHistory?.[0]?.previousValues?.agents?.length?a.commissionAgreementHistory[0].previousValues:a.commissionAgreementHistory?.find(h=>h.updatedValues?.agents?.length)?.updatedValues||a.commissionAgreement;
-export const attributedSaleAgents=(a,reservation)=>[...new Set(reservation?.agent?[recordId(reservation.agent)]:(initialCommissionAgreement(a)?.agents||[]).map(x=>recordId(x.agent)).filter(Boolean))];
+export const attributedSaleAgents=(a,reservation)=>[...new Set(a.salesAttribution?.shares?.length?a.salesAttribution.shares.map(x=>recordId(x.agentId)):reservation?.agent?[recordId(reservation.agent)]:(initialCommissionAgreement(a)?.agents||[]).map(x=>recordId(x.agent)).filter(Boolean))];
 export function saleInventoryStatus(property,accounts,projectStatus){
  if(projectStatus==='ARCHIVED')return 'UNAVAILABLE';
  const valid=(accounts||[]).filter(validSaleAccount);

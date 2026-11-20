@@ -25,4 +25,14 @@ Use a disposable database, preferably the fictional sample dataset from the sale
 
 Select each preset, then a historical custom period. Use the report register to inspect the underlying contracts and movements. Export Excel/PDF or open print preview. Export verifies the report snapshot and requires refresh if records changed.
 
-Formal verified primary/supporting agent attribution, approved sales contribution shares, and sales targets are future enhancements; historical attribution is not fabricated.
+## Advanced Sales Planning (Phase 3)
+
+The Sales Monitoring page now includes **Advanced Sales Planning & Performance**. Choose a planning year (including future calendar years) and create monthly or annual company, project or agent targets. Targets can contain a gross-booked peso amount, a contract-count goal, or both. Monthly and annual targets are independent. Target achievement uses all original bookings in that calendar period up to today; report type/status filters do not change the target denominator. An agent target measures approved weighted shares, not the full amount of every contract associated with that agent. Inactive targets remain in history.
+
+For an original contract, use **Sales Register → Approve shares / Review shares**. An administrator selects exactly one primary agent, any supporting agents, and positive shares summing to 100%. A reason, explicit confirmation and the latest record revision are required. Sales contribution is separate from commission allocation. An approved correction changes the management attribution used by reports (including historical comparisons); previous revisions and approval details remain in the audit trail. Existing unverified associations are not silently converted to 100% sales shares. Replacement contracts cannot be booked a second time.
+
+Sales planning writes use an independent MongoDB collection with atomic revision checks and embedded approval history. They do not modify contract prices, payments, commissions, financial ledgers or the active-contract index. User Activity Logs also records Sales Planning changes. No historical backfill or financial migration is required.
+
+The approved leaderboard uses exact integer-centavo allocations and weighted contract units (70% = 0.7 sale units). Unverified bookings remain in company/project sales, but are excluded from weighted agent totals and flagged. Year-over-year compares the same calendar date range in the previous year; zero prior-period totals produce N/A, not invented growth. Month-end and year-end projections are simple daily run rates from the first day of the report-ending month/year through the selected end date, not guaranteed revenue. Current sell-through uses verified sold lots divided by verified sold + available + genuine held reservations; restricted, archived and conflicting/unknown lots are excluded. The rate is only shown for company/project scope without agent/type/status filters.
+
+Excel, PDF and print previews include the advanced performance results and approved shares. Sales Planning records are included in the existing whole-database backup process.
