@@ -33,6 +33,11 @@ test('reservation receipts count on receipt date exactly once before and after c
  assert.equal(before.summary.collectionsCents,1000000);assert.equal(before.summary.soldContracts,0);assert.equal(before.summary.reservationCollectedCents,1000000);
  const report=salesMonitoring({...options,accounts:[a],properties:[p],reservations:[reservation],collections:receipts});
  assert.equal(report.summary.collectionsCents,5000000);assert.equal(report.summary.currentValueCents,50000000);assert.equal(report.summary.receivableCents,45000000);assert.equal(report.summary.conversionRate,1);assert.equal(report.summary.earnedCents,200000);
+ a.salesAttribution={shares:[{agentId:'B',role:'PRIMARY',shareBps:10000}]};
+ const approved=salesMonitoring({...options,accounts:[a],properties:[p],reservations:[reservation],collections:receipts,agent:'B'});
+ assert.equal(approved.summary.collectionsCents,5000000);
+ assert.equal(approved.agents[0].periodCollectionsCents,5000000);
+ assert.equal(approved.register[0].periodCollectionsCents,5000000);
 });
 test('closed contracts retain posted receipts but not current principal and gross period includes original booking',()=>{
  const a=account('1'),b=account('2',{price:300000,dp:30000,date:'2026-10-01'}),c=account('3',{price:350000,dp:70000,date:'2026-11-02'});
@@ -77,6 +82,26 @@ test('reassigned agent receives commission performance without stealing original
  const result=salesMonitoring({...options,accounts:[a],properties:[lot('1')],agent:'B'});
  assert.equal(result.summary.grossSalesCents,0);assert.equal(result.summary.newContracts,0);assert.equal(result.summary.earnedCents,250000);assert.equal(result.agents[0].id,'B');
 });
+test('agent report separates shared associations, approved weighted bookings and actual receipts',async()=>{
+ const a=account('1',{price:1000000,dp:100000});
+ a.commissionAgreement.agents=[{agent:'A',agentId:'A',percentageBps:300},{agent:'B',agentId:'B',percentageBps:200}];
+ a.salesAttribution={shares:[{agentId:'A',role:'PRIMARY',shareBps:6000},{agentId:'B',role:'CO_AGENT',shareBps:4000}]};
+ const input={...options,accounts:[a],properties:[lot('1')]},d=salesMonitoring(input);
+ assert.equal(d.summary.uniquePropertiesSold,1);
+ assert.equal(d.summary.collectionsCents,10000000);
+ assert.equal(d.agents.reduce((n,r)=>n+r.creditedSalesCents,0),100000000);
+ assert.equal(d.agents.find(r=>r.id==='A').creditedSalesCents,60000000);
+ assert.equal(d.agents.find(r=>r.id==='B').creditedSalesCents,40000000);
+ assert.equal(d.agents.find(r=>r.id==='B').periodCollectionsCents,10000000);
+ const individual=salesMonitoring({...input,agent:'B'});
+ assert.equal(individual.agents[0].creditedSalesCents,40000000);
+ assert.equal(individual.register[0].periodCollectionsCents,10000000);
+ const {salesReportView}=await import('../../shared/salesReportViews.js');
+ const v=salesReportView(individual,'INDIVIDUAL');
+ assert.equal(v.sections.find(s=>s.title==='Contract register').rows[0][10],100000);
+ assert.equal(v.sections.find(s=>s.title.startsWith('Sales performance')).rows[0][6],400000);
+ assert.throws(()=>salesReportView(d,'INDIVIDUAL'),/Select an agent/);
+});
 test('sell-through excludes orphan reservations, conflicting holds and restricted inventory',()=>{
  const a=account('1'),properties=[lot('1','SOLD'),{...lot('2','AVAILABLE'),client:null},{...lot('3','RESERVED'),client:null,reservation:'R3'},{...lot('4','RESERVED'),client:null,reservation:'ORPHAN'},lot('5','UNAVAILABLE'),{...lot('6','AVAILABLE'),client:null}];
  const d=salesMonitoring({...options,accounts:[a],properties,reservations:[{_id:'R3',property:'3',project:'P',held:true,status:'ACTIVE',expiresOn:'2026-11-30',startDate:'2026-11-15'},{_id:'R6',property:'6',project:'P',held:true,status:'ACTIVE',expiresOn:'2026-11-30',startDate:'2026-11-15'}]});
@@ -105,12 +130,23 @@ test('sales endpoint exports filtered register and totals using the same snapsho
  assert.ok(book.getWorksheet('Calendar Targets'));assert.equal(book.getWorksheet('YoY Comparison').getRow(2).getCell(4).value,500000);
  assert.equal(book.getWorksheet('Calendar Targets').getRow(2).getCell(4).value,1000000);
  assert.equal(book.getWorksheet('Calendar Targets').getRow(2).getCell(5).value,500000);
+ const snapshot=res.body.data.snapshot;
+ await salesMonitoringReport({query:{...query,format:'xlsx',reportType:'DETAIL',paper:'LONG',orientation:'portrait',expectedSnapshot:snapshot}},res,e=>{throw e});
+ const focused=new ExcelJS.Workbook();await focused.xlsx.load(res.bytes);
+ assert.equal(focused.getWorksheet('Contract register').getRow(2).getCell(9).value,500000);
+ assert.equal(focused.getWorksheet('Contract register').getRow(2).getCell(11).value,50000);
+ await assert.rejects(()=>salesMonitoringReport({query:{...query,format:'xlsx',reportType:'INDIVIDUAL'}},res,e=>{throw e}),/valid report format and agent/);
  const {Writable}=await import('node:stream'),chunks=[];
  const pdf=new Writable({write(chunk,_encoding,callback){chunks.push(Buffer.from(chunk));callback()}});
  pdf.type=pdf.attachment=pdf.set=()=>pdf;
  const finished=new Promise((resolve,reject)=>{pdf.on('finish',resolve);pdf.on('error',reject)});
  await salesMonitoringReport({query:{...query,format:'pdf',expectedSnapshot:res.body.data.snapshot}},pdf,e=>{throw e});
  await finished;assert.equal(Buffer.concat(chunks).subarray(0,4).toString(),'%PDF');
+ const focusedChunks=[],focusedPdf=new Writable({write(chunk,_encoding,callback){focusedChunks.push(Buffer.from(chunk));callback()}});
+ focusedPdf.type=focusedPdf.attachment=focusedPdf.set=()=>focusedPdf;
+ const focusedFinished=new Promise((resolve,reject)=>{focusedPdf.on('finish',resolve);focusedPdf.on('error',reject)});
+ await salesMonitoringReport({query:{...query,format:'pdf',reportType:'AGENTS',paper:'LONG',orientation:'landscape',expectedSnapshot:snapshot}},focusedPdf,e=>{throw e});
+ await focusedFinished;const bytes=Buffer.concat(focusedChunks);assert.equal(bytes.subarray(0,4).toString(),'%PDF');assert.match(bytes.toString('latin1'),/\/MediaBox \[0 0 936 612\]/);
  target.value.valueCents=120000000;
  await assert.rejects(()=>salesMonitoringReport({query:{...query,format:'xlsx',expectedSnapshot:res.body.data.snapshot}},res,e=>{throw e}),/changed/);
  await assert.rejects(()=>salesMonitoringReport({query:{...query,format:'xlsx',expectedSnapshot:'stale'}},res,e=>{throw e}),/changed/);
