@@ -1,0 +1,24 @@
+# Safe System Data Reset / Fresh Office Setup
+
+This feature is separate from future environment separation or deployment-mode work. It is available only to an authenticated active administrator through Administration → System Health & Database Readiness → Reset System Data.
+
+## What is cleared and what is retained
+
+The reset service explicitly lists 31 operational models, in dependency order, and compares that list with the installed Mongoose models and actual database namespaces. Unclassified collections or unsupported collection types block execution. It deletes approved documents, never drops the database or collections. Embedded contract schedules, receipts, penalties, commission records, approval history and notifications are part of the contract document and will also be removed. Original reservation and pre-contract receipts, dependent receipt/payment claims, maps, site-request documents, cash movements, migration batches and sales planning records are included.
+
+All user accounts and password hashes, roles, company branding, reservation/site-request configuration, ID counters, administration guards, existing audit logs, backup files, schema/installation records, collection indexes and replica-set configuration are retained. Current company project associations are cleared. The existing office migration configuration is returned to an unused state, with its audit history retained. Old operational details can still appear in the preserved Activity Logs and backups; this is an operational reset, not a privacy-erasure operation. No sample data or balancing cash entry is inserted.
+
+## Workflow
+
+1. Stop all other backend processes, direct database writers and import jobs. Keep only the authoritative REMS backend. Review actual database name, collection counts, embedded counts and preserved records. A replica set with usable transactions and all three MongoDB Database Tools (mongodump, bsondump, mongorestore) are required.
+2. Create a fresh reset-specific full backup from the reset section. Wait for FILE_VERIFIED. Verify recovery using the same section. Wait for RECOVERY_VERIFIED; this restores into a separate randomly named recovery database and compares full data hashes and index signatures.
+3. Select Review verified backup and final scope. Confirm the exact database name, re-enter your current administrator password, type RESET REMS DATA and confirm the centered dialog. Do not approve this step on the actual office database until the backup has been reviewed and operational deletion has explicitly been authorized.
+4. The server reauthenticates the administrator, reserves the existing database-maintenance job lock, pauses and drains the authoritative backend's operations, checks the exact backup binding, hash manifest, namespace, destructive-scope data and index signatures, and verifies the same data again in the transaction snapshot. A changed backup, stale review, unknown collection, wrong password or unsupported transaction environment blocks deletion.
+5. One transaction removes all approved records, updates only the two allowed configuration fields/groups, confirms empty operational collections and preserved account/configuration counts, and marks the durable Activity Logs reset journal as successful. If any required step fails, the transaction aborts. An uncertain commit is not replayed automatically. Inspect the journal and backup before retrying. Completed or unresolved reset attempts cannot reuse that backup.
+6. Refresh office browser tabs. With the cash ledger empty, configure a real opening cash baseline before cash operations. The retained ID counters continue their sequence. No database initialization or new user signup is required.
+
+The lock is deliberately limited to the existing backend; it is not a cluster-wide barrier against arbitrary direct MongoDB commands. The explicit single-writer requirement is mandatory. Do not perform reset while any other process can write to the target database.
+
+## Testing
+
+Automated tests cover scope coverage, collection/database allowlists, password rejection, reset-specific backup metrics, concurrent maintenance exclusion, precise delete counts, and failed transaction callbacks. The full integration test in server/integration/system-reset.test.js is opt-in using REMS_RESET_TEST_URI pointing to a disposable local MongoDB replica set with Database Tools available. It generates its own uniquely named test database, creates and recovery-verifies actual backups, checks role/password and stale-data rejection, executes only in that disposable namespace, and verifies login, dashboard, preserved users and fresh project/client/contract creation. Never supply the office database as an integration target. Run the integration test before enabling the reset for actual office use.

@@ -1,7 +1,7 @@
 let paused=false,active=0;
 export const maintenanceActive=()=>paused;
 export async function trackedBackgroundWrite(work){if(paused)return null;active++;try{return await work()}finally{active--}}
-export function maintenanceWriteGate(req,res,next){if(req.method==='OPTIONS'||req.path.startsWith('/api/maintenance/')||req.method==='GET'&&req.path==='/api/finance/notifications/stream')return next();if(paused)return res.status(503).json({success:false,message:'Administrator database maintenance is in progress. Saving is temporarily paused; nothing from this request was started. Keep your inputs and retry when maintenance finishes.'});active++;let finished=false;const completed=()=>{if(!finished){finished=true;active--}};
+export function maintenanceWriteGate(req,res,next){if(req.method==='OPTIONS'||req.method==='GET'&&(req.path.startsWith('/api/maintenance/')||req.path==='/api/finance/notifications/stream'))return next();if(paused)return res.status(503).json({success:false,message:'Administrator database maintenance is in progress. Saving is temporarily paused; nothing from this request was started. Keep your inputs and retry when maintenance finishes.'});if(req.path.startsWith('/api/maintenance/'))return next();active++;let finished=false;const completed=()=>{if(!finished){finished=true;active--}};
  // end() is reached after the controller/audit work settles even if the client
  // disconnected earlier. Socket close alone never proves a write has completed.
  const end=res.end;res.end=function(...args){try{return end.apply(this,args)}finally{completed()}};res.once('finish',completed);next()}
