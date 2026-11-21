@@ -1,4 +1,5 @@
 import DateRangeFilter from './DateRangeFilter.jsx';
+import InitialCashSetup from './InitialCashSetup.jsx';
 import CashHistoryActions from "./CashHistoryActions.jsx";
 import AddOfficeCash from "./AddOfficeCash.jsx";
 import Pagination from "./Pagination.jsx";
@@ -11,7 +12,8 @@ import CenterPopup from './CenterPopup.jsx';
 import {localDate,pesos,submissionId} from '../utils/finance.js';
 import {PAYMENT_METHODS,paymentMethodLabel} from '../../../shared/paymentMethods.js';
 const blank=()=>({kind:'OPENING',amount:'',effectiveDate:localDate(),reason:'',reference:'',recipient:'',coverageConfirmed:false,requestId:submissionId()});
-export default function CashLedgerTools({onSaved,refreshKey,initiallyOpen=false,hasOpening=false,initialSearch=""}){
+export default function CashLedgerTools(props){return <>{!props.hasOpening&&<InitialCashSetup onSaved={props.onSaved}/>}<CashLedgerForm {...props}/></>}
+function CashLedgerForm({onSaved,refreshKey,initiallyOpen=false,hasOpening=false,initialSearch=""}){
  const [page,setPage]=useState(1),[limit,setLimit]=useState(25),[count,setCount]=useState(0),[q,setQ]=useState(initialSearch),[statusFilter,setStatusFilter]=useState("ALL"),[kindFilter,setKindFilter]=useState(""),[editing,setEditing]=useState(null),[correctionReason,setCorrectionReason]=useState(""),[cashRange,setCashRange]=useState({from:"",to:localDate()});
  useEffect(()=>{setPage(1)},[q,statusFilter,kindFilter,limit,cashRange.from,cashRange.to]);
  const [entries,setEntries]=useState([]),[form,setForm]=useState(blank),[confirm,setConfirm]=useState(null),[voidEntry,setVoidEntry]=useState(null),[voidReason,setVoidReason]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);

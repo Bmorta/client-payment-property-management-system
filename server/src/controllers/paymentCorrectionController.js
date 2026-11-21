@@ -4,6 +4,10 @@ import {validateReceipt,checkReceipt,receiptScope} from "../services/receiptServ
 import {generateRecordId} from "../utils/generateRecordId.js";
 import {attachMonitoringUpdate} from "../services/monitoringService.js";
 import {allocationPreview} from "../utils/allocationPreview.js";
+import {cashMutation,validateCashTimeline} from '../services/cashMovementService.js';
+import {loadFinancialData} from '../services/financialReportService.js';
+import {officeOpeningBaseline} from '../utils/financialReporting.js';
+import {affectsVerifiedCash,projectCashPaymentCorrection} from '../utils/cashPaymentReview.js';
 import mongoose from "mongoose";
 import PropertyAssignment from "../models/PropertyAssignment.js";
 import { effectivePayment, allocatePayments } from "../utils/paymentLedger.js";
@@ -24,8 +28,15 @@ async function save(account,req,action,before) {
  const ledgerPush=target?.revisions?.length>oldRevision?{"payments.$[ledgerPayment].revisions":{$each:target.revisions.slice(oldRevision)}}:{};
  const update=attachMonitoringUpdate(account,{$set:{correctionRequests:account.correctionRequests||[],notifications:account.notifications||[]},$push:{...ledgerPush,auditEvents:event},$inc:{__v:1}},actor(req),String(req.body.reason||action));
  const options={new:true,runValidators:true,...(Object.keys(ledgerPush).length?{arrayFilters:[{"ledgerPayment.paymentId":paymentId}]}:{})};
- const updated=await PropertyAssignment.findOneAndUpdate({_id:account._id,__v:account.__v??0},update,options).lean();
- if(!updated)fail(409,"The account changed. Refresh and review before retrying.");
+ const original=target&&effectivePayment({...target,revisions:(target.revisions||[]).slice(0,oldRevision)}),effective=target&&effectivePayment(target);
+ const changesCash=Object.keys(ledgerPush).length&&target.origin!=='HISTORICAL'&&[original,effective].some(p=>p&&physicalFunding(p.method,p.fundingAccount)==='CASH')&&(original.amountCents!==effective.amountCents||original.paymentDate!==effective.paymentDate||physicalFunding(original.method,original.fundingAccount)!==physicalFunding(effective.method,effective.fundingAccount)||effective.voided);
+ const write=async session=>{
+  if(Object.keys(ledgerPush).length&&effective.receiptNumber&&effective.receiptNumber!==original.receiptNumber)await checkReceipt(effective.receiptNumber,target.receiptScope||receiptScope(),account._id,paymentId,target.revisions.at(-1).requestId,true,false,session);
+  const updated=await PropertyAssignment.findOneAndUpdate({_id:account._id,__v:account.__v??0},update,{...options,...(session?{session}:{})}).lean();
+  if(!updated)fail(409,"The account changed. Refresh and review before retrying.");
+  if(session){const data=await loadFinancialData(today(),session,{compact:true}),anchor=officeOpeningBaseline(data.entries,today());if(affectsVerifiedCash(original,effective,anchor))await validateCashTimeline(session)}
+ };
+ if(changesCash)await cashMutation(write);else await write(null);
  req.auditDetails={action,...actor(req)};
 }
 function revision(account,payment,values,reason,req,requestId){
@@ -63,11 +74,13 @@ export async function correctPayment(req,res,next){
   const before=summarizeAccount(account),copy=structuredClone(account),copyPayment=copy.payments.find(p=>p.paymentId===payment.paymentId);
   revision(copy,copyPayment,values,reason,req,requestId);
   const preview=allocationPreview(account,copy,payment.paymentId);
-  if(req.path?.endsWith("/preview"))return res.json({success:true,data:preview});
+  if(req.path?.endsWith("/preview")){
+   if(payment.origin!=='HISTORICAL'&&[current,values].some(p=>physicalFunding(p.method,p.fundingAccount)==='CASH'))preview.cashReview=projectCashPaymentCorrection(await loadFinancialData(today(),null,{compact:true}),current,effectivePayment(copyPayment),today());
+   return res.json({success:true,data:preview});
+  }
   if(account.contract.monitoringTerms&&req.body.previewToken!==preview.token)fail(409,"Refresh and confirm the correction allocation preview.");
   if(req.user.role==="ADMIN"){
    if(req.body.confirm!==true)fail(400,"Confirm the payment correction before saving.");
-   if(values.receiptNumber&&values.receiptNumber!==current.receiptNumber)await checkReceipt(values.receiptNumber,payment.receiptScope||receiptScope(),account._id,payment.paymentId,requestId,true);
    revision(account,payment,values,reason,req,requestId);
    for(const pending of account.correctionRequests.filter(r=>r.paymentId===payment.paymentId&&r.status==="PENDING")){
     pending.status="STALE";pending.decisionReason="An administrator changed the original payment.";pending.decidedBy=req.user._id;pending.reviewer=reviewActor(req.user);pending.decidedAt=new Date();account.notifications.push(notification(pending,"STALE",String(pending.requestedBy)));
@@ -106,7 +119,7 @@ export async function decideCorrection(req,res,next){
     const copy=structuredClone(account),candidate=copy.payments.find(p=>p.paymentId===payment.paymentId),reviewReq={...req,correctionSignature:request.signature};
     revision(copy,candidate,request.values,request.reason,reviewReq,request.requestId);
     if(JSON.stringify(candidate.revisions.at(-1).correctedAllocations)!==JSON.stringify(request.proposedAllocations)){status="STALE";decisionReason="The schedule or allocation priority changed. Submit a new allocation preview."}
-    else {if(request.values.receiptNumber&&request.values.receiptNumber!==current.receiptNumber)await checkReceipt(request.values.receiptNumber,payment.receiptScope||receiptScope(),account._id,payment.paymentId,request.requestId,true);revision(account,payment,request.values,request.reason,reviewReq,request.requestId)}
+    else {if(request.values.receiptNumber&&request.values.receiptNumber!==current.receiptNumber)await checkReceipt(request.values.receiptNumber,payment.receiptScope||receiptScope(),account._id,payment.paymentId,request.requestId);revision(account,payment,request.values,request.reason,reviewReq,request.requestId)}
    }catch(e){if(e.statusCode!==409)throw e;status="STALE";decisionReason=e.message}}
   }
   Object.assign(request,{status,decisionReason,decidedAt:new Date(),reviewer:reviewActor(req.user),decidedBy:req.user._id,decidedUsername:req.user.username});

@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {cashPaymentWarning,projectCashPaymentCorrection,affectsVerifiedCash} from '../src/utils/cashPaymentReview.js';
+import {cashPosition} from '../src/utils/financialReporting.js';
+const date='2026-11-20',through='2026-11-21';
+const opening={kind:'OPENING',status:'POSTED',ledger:'OFFICE',effectiveDate:date,amountCents:0,entryId:'OPEN'};
+const payment={paymentId:'PAY-1',paymentDate:date,amountCents:1000000,method:'CASH',posted:true};
+const data={entries:[opening,{kind:'OWNER_TURNOVER',status:'POSTED',effectiveDate:date,amountCents:800000,entryId:'TURN'}],collections:[payment],expenses:[],payouts:[],recoveries:[],refunds:[]};
+test('missing and explicit zero opening differ; noncash does not need a warning',()=>{assert.match(cashPaymentWarning([],date,'CASH',null,through),/not confirmed/);assert.equal(cashPaymentWarning([opening],date,'CASH',null,through),null);assert.equal(cashPaymentWarning([],date,'GCASH',null,through),null);assert.match(cashPaymentWarning([opening],'2026-11-19','CASH',null,through),/will not increase/);assert.equal(cashPosition({...data,entries:[]},[],date,through).closingCents,null)});
+test('cash correction preview uses verified opening and rejects negative daily cash',()=>{const snapshot=JSON.stringify(data);const review=projectCashPaymentCorrection(data,payment,{...payment,amountCents:700000},through);assert.equal(review.beforeCents,200000);assert.equal(review.allowed,false);assert.match(review.reasons.join(' '),/negative daily balance/);assert.equal(JSON.stringify(data),snapshot)});
+test('cash correction to a valid amount, void, noncash, and backdating',()=>{assert.equal(projectCashPaymentCorrection(data,payment,{...payment,amountCents:900000},through).afterCents,100000);for(const change of [{voided:true,amountCents:0},{method:'BANK_TRANSFER'},{paymentDate:'2026-11-19'}])assert.equal(projectCashPaymentCorrection(data,payment,{...payment,...change},through).allowed,false);assert.equal(affectsVerifiedCash(payment,{...payment,notes:'new'},opening),false);assert.equal(affectsVerifiedCash({...payment,origin:'HISTORICAL'},{...payment,origin:'HISTORICAL',amountCents:1},opening),false)});

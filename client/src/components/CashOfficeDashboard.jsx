@@ -1,5 +1,6 @@
 import DateRangeFilter from './DateRangeFilter.jsx';
-import CashBalanceOverview from './CashBalanceOverview.jsx';
+import CashBalanceDetails from './CashBalanceOverview.jsx';
+import {CashSetupNotice} from './InitialCashSetup.jsx';
 import AddOfficeCash from './AddOfficeCash.jsx';
 import {useCashRefresh} from '../hooks/useCashRefresh.js';
 import CashLedgerReconciliation from './CashLedgerReconciliation.jsx';
@@ -15,6 +16,7 @@ import PaymentMethodFilter from './PaymentMethodFilter.jsx';
 import {localDate,pesos,submissionId} from '../utils/finance.js';
 import {printAccountDocument} from '../utils/printAccountReports.js';
 import {reportCompanyHeader} from '../utils/reportBrand.js';
+function CashBalanceOverview({data}){return <><CashSetupNotice data={data}/><CashBalanceDetails data={data}/></>}
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function cashFlowDocument(data){return `<!doctype html><html><head><title>Office Cash Flow</title><style>@page{size:A4 landscape;margin:12mm}body{font:11px Arial;color:#111;background:white}table{width:100%;border-collapse:collapse}td,th{border:1px solid #aaa;padding:6px;overflow-wrap:anywhere}thead{display:table-header-group}tr{break-inside:avoid}</style></head><body>${reportCompanyHeader(data)}<h1>Office Cash Flow</h1><p>${esc(data.from)} to ${esc(data.to)} · Generated ${esc(data.generatedOn)} PHT</p><p>Opening ${data.cash.available?esc(pesos(data.summary.openingCents)):'Unavailable'} · Closing ${data.summary.closingCents==null?'Unavailable':esc(pesos(data.summary.closingCents))}</p>${!data.cash.available?`<p>Review required: ${data.cash.reasons.map(esc).join(' ')}</p>`:''}<p>Cash received ${esc(pesos(data.summary.cashReceivedCents))} · Cash added (included in receipts) ${esc(pesos(data.summary.cashAddedCents))} · Expenses ${esc(pesos(data.summary.expensesCents))} · Other releases ${esc(pesos(data.summary.releasedCents))} · Turnovers ${esc(pesos(data.summary.turnoversCents))} · Bank deposits ${esc(pesos(data.summary.bankDepositsCents))}</p><p>Transactions: ${data.count}. Balances use the complete cash ledger; row filters do not change balances.</p><table><thead><tr>${['Date','Reference','Transaction / Client / Payee','Method','Cash In','Cash Out','Running Balance'].map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${data.rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.sourceId)}</td><td>${esc(r.source)}<br>${esc(r.party)}</td><td>${esc(r.method)}</td><td>${esc(pesos(r.cashInCents))}</td><td>${esc(pesos(r.cashOutCents))}</td><td>${r.runningCents===null?'Unavailable':esc(pesos(r.runningCents))}</td></tr>`).join('')}</tbody></table></body></html>`}
 const blank=()=>({date:localDate(),amount:'',recipient:'',reference:'',remarks:'',requestId:submissionId()});
