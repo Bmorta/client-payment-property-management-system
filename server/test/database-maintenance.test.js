@@ -4,6 +4,19 @@ import {EventEmitter} from 'node:events';
 import {restoreConnection} from '../src/services/databaseMaintenance.js';
 import {maintenanceWriteGate,withMaintenance,maintenanceActive,trackedBackgroundWrite} from '../src/services/maintenanceGate.js';
 import {applyActiveContractUpgrade} from '../src/services/activeContractUpgrade.js';
+import {pauseForReset,resumeAfterReset,resetPreparation} from '../src/services/maintenanceGate.js';
+test('reset preparation remains paused between backup and recovery jobs; cancellation resumes writes',async()=>{
+ pauseForReset('admin');try{
+  await withMaintenance(async()=>assert.equal(maintenanceActive(),true));
+  assert.equal(maintenanceActive(),true);assert.equal(await trackedBackgroundWrite(()=>assert.fail('monitoring must remain paused')),null);
+  assert.throws(()=>pauseForReset('other'),/Another administrator/);assert.throws(()=>resumeAfterReset('other'),/Only the administrator/);
+  const request=(method,path)=>{let outcome;maintenanceWriteGate({method,path},{status(n){outcome=n;return this},json(){}},()=>{outcome='allowed'});return outcome};
+  assert.equal(request('GET','/api/maintenance/status'),'allowed');assert.equal(request('POST','/api/maintenance/backups/test/recovery-test'),'allowed');assert.equal(request('POST','/api/maintenance/system-reset'),'allowed');assert.equal(request('POST','/api/finance/payments'),503);assert.equal(request('GET','/api/clients/accounts'),503);assert.equal(request('POST','/api/maintenance/identifiers'),503);
+  await withMaintenance(async()=>assert.equal(await trackedBackgroundWrite(()=>assert.fail('monitoring must remain paused')),null));assert.ok(resetPreparation());
+ }finally{resumeAfterReset('admin')}
+ assert.equal(maintenanceActive(),false);assert.equal(await trackedBackgroundWrite(()=>42),42);
+});
+test('abandoned reset preparation expires automatically',t=>{t.mock.method(Date,'now',()=>1000);pauseForReset('admin');t.mock.method(Date,'now',()=>1000+31*60*1000);assert.equal(resetPreparation(),null);assert.equal(maintenanceActive(),false)});
 test('recovery connection removes live namespace and preserves authentication',()=>{
  assert.equal(restoreConnection('mongodb://localhost:27017/rems?replicaSet=rs0'),'mongodb://localhost:27017/?replicaSet=rs0');
  assert.equal(restoreConnection('mongodb://user:secret@localhost:27017/rems'),'mongodb://user:secret@localhost:27017/?authSource=rems');

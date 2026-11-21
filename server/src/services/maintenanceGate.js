@@ -1,7 +1,12 @@
 let paused=false,active=0;
-export const maintenanceActive=()=>paused;
-export async function trackedBackgroundWrite(work){if(paused)return null;active++;try{return await work()}finally{active--}}
-export function maintenanceWriteGate(req,res,next){if(req.method==='OPTIONS'||req.method==='GET'&&(req.path.startsWith('/api/maintenance/')||req.path==='/api/finance/notifications/stream'))return next();if(paused)return res.status(503).json({success:false,message:'Administrator database maintenance is in progress. Saving is temporarily paused; nothing from this request was started. Keep your inputs and retry when maintenance finishes.'});if(req.path.startsWith('/api/maintenance/'))return next();active++;let finished=false;const completed=()=>{if(!finished){finished=true;active--}};
+let resetHold=null;
+const resetHoldMs=30*60*1000;
+export function resetPreparation(){if(resetHold&&resetHold.expiresAt<=Date.now())resetHold=null;return resetHold?{...resetHold}:null}
+export function pauseForReset(actorId){const existing=resetPreparation();if(existing&&existing.actorId!==String(actorId))throw Object.assign(new Error('Another administrator is preparing a reset.'),{statusCode:409});resetHold={actorId:String(actorId),expiresAt:Date.now()+resetHoldMs};return resetPreparation()}
+export function resumeAfterReset(actorId){const hold=resetPreparation();if(hold&&hold.actorId!==String(actorId))throw Object.assign(new Error('Only the administrator preparing the reset can cancel it.'),{statusCode:409});resetHold=null}
+export const maintenanceActive=()=>paused||!!resetPreparation();
+export async function trackedBackgroundWrite(work){if(maintenanceActive())return null;active++;try{return await work()}finally{active--}}
+export function maintenanceWriteGate(req,res,next){if(req.method==='OPTIONS'||req.method==='GET'&&(req.path.startsWith('/api/maintenance/')||req.path==='/api/finance/notifications/stream'||req.path==='/api/auth/me'||req.path==='/api/health'||!req.path.startsWith('/api/')))return next();const resetRoute=req.path==='/api/maintenance/system-reset'||req.path==='/api/maintenance/system-reset/backup'||req.path==='/api/maintenance/system-reset/cancel'||/^\/api\/maintenance\/backups\/[^/]+\/recovery-test$/.test(req.path);if(paused||resetPreparation()&&!resetRoute)return res.status(503).json({success:false,message:'Administrator database maintenance is in progress. Saving is temporarily paused; nothing from this request was started. Keep your inputs and retry when maintenance finishes.'});if(req.path.startsWith('/api/maintenance/'))return next();active++;let finished=false;const completed=()=>{if(!finished){finished=true;active--}};
  // end() is reached after the controller/audit work settles even if the client
  // disconnected earlier. Socket close alone never proves a write has completed.
  const end=res.end;res.end=function(...args){try{return end.apply(this,args)}finally{completed()}};res.once('finish',completed);next()}

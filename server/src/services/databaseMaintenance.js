@@ -10,7 +10,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import mongoose from 'mongoose';
 import {backupRequirement} from './backupRequirement.js';
 import ActivityLog from '../models/ActivityLog.js';
-import {withMaintenance,maintenanceActive} from './maintenanceGate.js';
+import {withMaintenance,maintenanceActive,pauseForReset,resumeAfterReset,resetPreparation} from './maintenanceGate.js';
 import {inspectActiveContracts,applyActiveContractUpgrade} from './activeContractUpgrade.js';
 const fail=(message,code=409)=>{throw Object.assign(new Error(message),{statusCode:code})},sha=b=>createHash('sha256').update(b).digest('hex'),MAX=(1n<<256n)-1n;
 let jobRunning=false,jobStarting=false;
@@ -40,7 +40,7 @@ export async function saveBackupSettings({enabled,intervalHours,singleBackendCon
 let schemaJob=null;
 export async function readiness(){const health=await inspectDatabaseReadiness(),tools=Object.fromEntries(await Promise.all(['mongodump','bsondump','mongorestore'].map(async t=>[t,!!await findTool(t)]))),backups=await listBackups();return {health,schemaJob,system:await systemHealth(),setupRecovery:await setupRecoveryCopies(),database:mongoose.connection.name,transactionsSupported:health.transactions?.supported===true,tools,preview:health.contracts,pendingUpgrade:health.pendingMaintenance,maintenance:maintenanceActive(),jobRunning:jobRunning||jobStarting,backupDirectory:backupRoot(),backups,settings:await settings(),instructions:'Readiness is based on the current connected database. Routine operations do not require a backup. Only reviewed high-risk maintenance uses a recovery-verified backup. Office devices should use this same backend/database.'}}
 
-function launch(work){if(jobRunning)fail('Another backup, recovery or upgrade operation is running.');jobRunning=true;setImmediate(async()=>{try{await work()}catch(e){console.error('Maintenance job failed:',redact(e.message))}finally{jobRunning=false}})}
+function launch(work){if(jobRunning)fail('Another backup, recovery or upgrade operation is running.');const hold=resetPreparation();jobRunning=true;setImmediate(async()=>{try{await work()}catch(e){console.error('Maintenance job failed:',redact(e.message))}finally{if(hold)pauseForReset(hold.actorId);jobRunning=false}})}
 async function createBackupReserved(actor,{singleBackendConfirmed=false,scheduled=false,purpose='STANDARD'}={}){if(!singleBackendConfirmed)fail('Confirm that other backends and external database writers are stopped.');for(const t of ['mongodump','bsondump'])if(!await findTool(t))fail(`${t} was not found. Install MongoDB Database Tools once.`);if(jobRunning)fail('Another maintenance job is running.');const job={id:'BKP-'+Date.now()+'-'+randomUUID(),createdAt:new Date().toISOString(),state:'RUNNING',database:dbName(),binding:binding(),instance,actor,scheduled,purpose,environment:environment()};job.dumpDir=path.join(jobPath(job.id),'dump');await saveJob(job);if(jobRunning){job.state='NOT_STARTED';await saveJob(job);fail('Another maintenance job started. Retry after it finishes.')}launch(async()=>{try{await withMaintenance(async()=>{job.collections=await sourceMetrics(mongoose.connection.db);job.indexes={};for(const name of Object.keys(job.collections))job.indexes[name]=await indexSignature(mongoose.connection.db,name);await command('mongodump',['--uri',process.env.MONGODB_URI,'--db',job.database,'--out',job.dumpDir]);job.state='VERIFYING';await saveJob(job);const result=await verifyFiles(job);const latest=await sourceMetrics(mongoose.connection.db);if(purpose==='SYSTEM_RESET')assertResetMetricsUnchanged(latest,job.collections,Object.keys(job.collections));else assertProtectedMetricsUnchanged(latest,job.collections);job.files=result.hashes;job.bsonFiles=result.bsonFiles;job.state='FILE_VERIFIED';job.completedAt=new Date().toISOString();await saveJob(job);await auditBackup('DATABASE_BACKUP_VERIFIED',job,actor)})}catch(e){job.state='FAILED';job.error=redact(e.message);await saveJob(job)}});return job.id}
 async function recoveryTestReserved(id,actor,{confirm=false}={}){if(confirm!==true)fail('Approve creation of an isolated recovery-test database.');const job=await readJob(id);if(!['FILE_VERIFIED','RECOVERY_VERIFIED'].includes(job.state))fail('Select a successfully verified backup.');if(!await findTool('mongorestore'))fail('mongorestore was not found.');const target='rems_recovery_'+randomUUID().replaceAll('-','');if(target===job.database)fail('Recovery target must never equal the live database.');const exists=await mongoose.connection.db.admin().listDatabases({nameOnly:true});if(exists.databases.some(d=>d.name===target))fail('Recovery test target already exists; nothing will be overwritten.');launch(async()=>{try{await withMaintenance(async()=>{await checkHashes(job);job.state='RESTORING';job.recoveryTarget=target;job.recoveryActor=actor;await saveJob(job);await command('mongorestore',['--uri',restoreConnection(process.env.MONGODB_URI),'--nsInclude',job.database+'.*','--nsFrom',job.database+'.*','--nsTo',target+'.*','--stopOnError',job.dumpDir]);const db=mongoose.connection.getClient().db(target);for(const [name,expected]of Object.entries(job.collections)){const actual=await digestCollection(db,name);if(JSON.stringify(actual)!==JSON.stringify(expected))fail('Recovery data/count verification failed for '+name);const indexes=await indexSignature(db,name);if(JSON.stringify(indexes)!==JSON.stringify(job.indexes[name]))fail('Recovery index verification failed for '+name)}job.state='RECOVERY_VERIFIED';job.recoveryVerifiedAt=new Date().toISOString();await saveJob(job);await auditBackup('DATABASE_RECOVERY_VERIFIED',job,actor)})}catch(e){job.state='RECOVERY_FAILED';job.error=redact(e.message);await saveJob(job)}});return {id,target}}
 // The approval token covers only the inspected schema/contract plan. Hashing
@@ -95,9 +95,18 @@ export async function assertEligibleBackup(id,{operation='financial-maintenance'
 }
 export async function backupOptions(){return (await listBackups()).filter(j=>['RECOVERY_VERIFIED','UPGRADED'].includes(j.state)&&j.environment===environment()).map(j=>({id:j.id,createdAt:j.createdAt,verifiedAt:j.recoveryVerifiedAt,recoveryTarget:j.recoveryTarget,database:j.database}));}
 
-export const createBackup=(actor,options)=>reserveJob(()=>createBackupReserved(actor,options));
+export const createBackup=(actor,options)=>reserveJob(async()=>{
+ if(options?.purpose!=='SYSTEM_RESET'){if(resetPreparation())fail('A system reset is being prepared. Finish or cancel it first.');return createBackupReserved(actor,options)}
+ pauseForReset(actor.userId);
+ try{return await createBackupReserved(actor,options)}catch(error){resumeAfterReset(actor.userId);throw error}
+});
 
-export const recoveryTest=(id,actor,options)=>reserveJob(()=>recoveryTestReserved(id,actor,options));
+export const recoveryTest=(id,actor,options)=>reserveJob(async()=>{
+ const hold=resetPreparation();
+ if(hold){const job=await readJob(id);if(hold.actorId!==String(actor.userId)||job.purpose!=='SYSTEM_RESET'||String(job.actor?.userId)!==String(actor.userId))fail('Finish or cancel the current system reset preparation first.');pauseForReset(actor.userId)}
+ return recoveryTestReserved(id,actor,options);
+});
+export const cancelResetPreparation=actorId=>reserveJob(async()=>{resumeAfterReset(actorId)});
 
 export const approveUpgrade=(id,actor,options)=>reserveJob(()=>approveUpgradeReserved(id,actor,options));
 

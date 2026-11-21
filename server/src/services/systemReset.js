@@ -4,6 +4,7 @@ import {databaseModels,transactionReadiness} from './databaseReadiness.js';
 import {assertResetBackup,createBackup,readJob,withExclusiveDatabaseMaintenance} from './databaseMaintenance.js';
 import User from '../models/User.js';
 import ActivityLog from '../models/ActivityLog.js';
+import {resetPreparation,resumeAfterReset} from './maintenanceGate.js';
 
 const fail=(message,statusCode=409)=>{throw Object.assign(new Error(message),{statusCode})};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -122,6 +123,7 @@ export async function applyResetPlan(db,session,plan,actor,operationId){
 }
 export async function executeSystemReset(actorId,body){
  if(body.confirm!==true||body.singleBackendConfirmed!==true||body.confirmation!==RESET_PHRASE||typeof body.backupId!=='string'||!body.backupId)fail('Explicit reset approval, database identity and recovery-verified backup are required.',400);
+ const hold=resetPreparation();if(hold&&hold.actorId!==String(actorId))fail('Another administrator is preparing a system reset.');
  return withExclusiveDatabaseMaintenance(async()=>{
   const actor=await verifyAdmin(actorId,body.password),plan=await inspect(actorId,body.backupId);
   if(body.database!==plan.database||body.token!==plan.token||!plan.canReset||plan.backup?.state!=='RECOVERY_VERIFIED')fail('Reset preview or backup changed. Review the current scope again.');
@@ -146,12 +148,12 @@ export async function executeSystemReset(actorId,body){
     if(audit.modifiedCount!==1)fail('Reset audit could not be saved. No reset committed.');
     result={operationId,database:plan.database,backup,totalDeleted,deleted,configurationUpdates:plan.updates,verification};
    },{readConcern:{level:'snapshot'},writeConcern:{w:'majority'},readPreference:'primary'});
-   return result;
+   resumeAfterReset(actorId);return result;
   }catch(error){
    // The audit marker is committed atomically with the reset. Never declare
    // failure if a network interruption left the commit result uncertain.
    const saved=await ActivityLog.findById(journal._id).lean().catch(()=>null);
-   if(saved?.outcome==='SUCCEEDED')return {operationId,database:plan.database,backup,totalDeleted:saved.metadata.totalDeleted,deleted:saved.metadata.deleted,configurationUpdates:plan.updates,verification:saved.metadata.verification};
+   if(saved?.outcome==='SUCCEEDED'){resumeAfterReset(actorId);return {operationId,database:plan.database,backup,totalDeleted:saved.metadata.totalDeleted,deleted:saved.metadata.deleted,configurationUpdates:plan.updates,verification:saved.metadata.verification};}
    if(saved?.outcome==='PENDING'&&!error.hasErrorLabel?.('UnknownTransactionCommitResult'))await ActivityLog.updateOne({_id:journal._id,outcome:'PENDING'},{$set:{outcome:'FAILED',completedAt:new Date(),description:'Reset transaction aborted; no partial reset committed'}}).catch(()=>{});
    throw error;
   }finally{await session.endSession()}

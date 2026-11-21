@@ -1,7 +1,9 @@
-import {readiness,createBackup,recoveryTest,upgradePreview,approveUpgrade,saveBackupSettings} from '../services/databaseMaintenance.js';
+import {readiness,createBackup,recoveryTest,upgradePreview,approveUpgrade,saveBackupSettings,cancelResetPreparation} from '../services/databaseMaintenance.js';
+import {resetPreparation} from '../services/maintenanceGate.js';
 import {resetPreview,prepareResetBackup,executeSystemReset} from '../services/systemReset.js';
 const actor=req=>({username:req.user.username,userId:String(req.user._id),role:req.user.role,timestamp:new Date().toISOString()});
-export const maintenanceStatus=async(req,res,next)=>{try{res.json({success:true,data:await readiness()})}catch(e){next(e)}};
+export const maintenanceStatus=async(req,res,next)=>{try{res.json({success:true,data:{...await readiness(),resetPreparation:resetPreparation()}})}catch(e){next(e)}};
+export const cancelSystemReset=async(req,res,next)=>{try{if(req.body.confirm!==true)throw Object.assign(new Error('Confirm cancellation of reset preparation.'),{statusCode:400});await cancelResetPreparation(String(req.user._id));res.json({success:true,message:'Reset preparation cancelled. No data deleted. Normal processing resumed.'})}catch(e){next(e)}};
 export const startDatabaseBackup=async(req,res,next)=>{try{if(req.body.confirm!==true)throw Object.assign(new Error('Confirm the backup before starting.'),{statusCode:400});const id=await createBackup(actor(req),{singleBackendConfirmed:req.body.singleBackendConfirmed});res.status(202).json({success:true,data:{id},message:'Backup started. This backend pauses saves while creating a consistent copy; no financial records are changed.'})}catch(e){next(e)}};
 export const testDatabaseRecovery=async(req,res,next)=>{try{const data=await recoveryTest(req.params.id,actor(req),{confirm:req.body.confirm});res.status(202).json({success:true,data,message:'Recovery test started in an isolated database. No live data will be restored or overwritten.'})}catch(e){next(e)}};
 export const previewDatabaseUpgrade=async(req,res,next)=>{try{res.json({success:true,data:await upgradePreview()})}catch(e){next(e)}};
