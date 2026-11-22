@@ -36,7 +36,7 @@ export function classifyResetCollections(models,collections){
  return {deletion,preserved,unknown:[...unknown,...unsupported,...unclassified],metadata};
 }
 const attempts=new Map();
-async function verifyAdmin(actorId,password){
+export async function verifyAdmin(actorId,password){
  const now=Date.now(),key=String(actorId),previous=attempts.get(key);
  if(previous&&previous.until>now&&previous.count>=5)fail('Too many password confirmation attempts. Try again in five minutes.',429);
  if(typeof password!=='string'||!password||password.length>4096)fail('Enter your current administrator password.',400);

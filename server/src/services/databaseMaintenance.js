@@ -96,14 +96,14 @@ export async function assertEligibleBackup(id,{operation='financial-maintenance'
 export async function backupOptions(){return (await listBackups()).filter(j=>['RECOVERY_VERIFIED','UPGRADED'].includes(j.state)&&j.environment===environment()).map(j=>({id:j.id,createdAt:j.createdAt,verifiedAt:j.recoveryVerifiedAt,recoveryTarget:j.recoveryTarget,database:j.database}));}
 
 export const createBackup=(actor,options)=>reserveJob(async()=>{
- if(options?.purpose!=='SYSTEM_RESET'){if(resetPreparation())fail('A system reset is being prepared. Finish or cancel it first.');return createBackupReserved(actor,options)}
+ if(!['SYSTEM_RESET','SYSTEM_RESTORE'].includes(options?.purpose)){if(resetPreparation())fail('A system reset or restore is being prepared. Finish or cancel it first.');return createBackupReserved(actor,options)}
  pauseForReset(actor.userId);
  try{return await createBackupReserved(actor,options)}catch(error){resumeAfterReset(actor.userId);throw error}
 });
 
 export const recoveryTest=(id,actor,options)=>reserveJob(async()=>{
  const hold=resetPreparation();
- if(hold){const job=await readJob(id);if(hold.actorId!==String(actor.userId)||job.purpose!=='SYSTEM_RESET'||String(job.actor?.userId)!==String(actor.userId))fail('Finish or cancel the current system reset preparation first.');pauseForReset(actor.userId)}
+ if(hold){const job=await readJob(id);if(hold.actorId!==String(actor.userId)||!['SYSTEM_RESET','SYSTEM_RESTORE'].includes(job.purpose)||String(job.actor?.userId)!==String(actor.userId))fail('Finish or cancel the current system reset or restore preparation first.');pauseForReset(actor.userId)}
  return recoveryTestReserved(id,actor,options);
 });
 export const cancelResetPreparation=actorId=>reserveJob(async()=>{resumeAfterReset(actorId)});
@@ -113,6 +113,16 @@ export const approveUpgrade=(id,actor,options)=>reserveJob(()=>approveUpgradeRes
 // Reset shares the existing backup/recovery job reservation and the write gate.
 // It must not call an asynchronous backup job while holding this lock.
 export const withExclusiveDatabaseMaintenance=work=>reserveJob(()=>withMaintenance(work));
+// Restore uses the same managed files and isolated recovery evidence, but an
+// older source intentionally need not match the current live documents.
+export async function verifiedRestoreSource(id){
+ const job=await readJob(id);
+ if(job.id!==id||!['RECOVERY_VERIFIED','UPGRADED'].includes(job.state)||!job.recoveryVerifiedAt||!/^rems_recovery_[a-f0-9]{32}$/.test(job.recoveryTarget||'')||job.recoveryTarget===job.database||job.environment!==environment())fail('Select a recovery-verified backup from this office environment.');
+ await checkHashes(job);
+ const db=mongoose.connection.getClient().db(job.recoveryTarget);
+ return {job,db};
+}
+export {sourceMetrics,digestCollection,indexSignature};
 export function assertResetMetricsUnchanged(current,expected,names){
  const changed=names.filter(name=>!current[name]||!expected[name]||current[name].count!==expected[name].count||current[name].checksum!==expected[name].checksum);
  if(changed.length)fail('Reset backup no longer matches the reviewed data ('+changed.join(', ')+'). Create and recovery-verify a fresh reset backup.');
